@@ -1,0 +1,56 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --brand-red: #ff0000;
+  --brand-cream: #fff7d1;
+  --brand-ink: #000000;
+  --brand-paper: #ffffff;
+}
+
+html,
+body {
+  min-height: 100%;
+}
+
+body {
+  @apply bg-brand-cream text-brand-ink font-comic antialiased;
+  background-image: radial-gradient(circle, #000000 1px, transparent 1px);
+  background-size: 18px 18px;
+  background-position: 0 0;
+}
+
+@layer components {
+  .comic-panel {
+    @apply border-4 border-brand-ink bg-white shadow-comic;
+  }
+
+  .comic-panel-sm {
+    @apply border-4 border-brand-ink bg-white shadow-comic-sm;
+  }
+
+  .pop-shadow {
+    text-shadow: 4px 4px 0 #000000;
+  }
+
+  .pop-shadow-red {
+    text-shadow: 3px 3px 0 #ff0000;
+  }
+
+  .comic-btn {
+    @apply inline-flex items-center justify-center border-4 border-brand-ink bg-brand-red px-5 py-2 font-display text-xl tracking-wide text-white shadow-comic-sm transition hover:-translate-y-0.5 hover:shadow-comic disabled:cursor-not-allowed disabled:opacity-60;
+  }
+
+  .comic-btn-invert {
+    @apply inline-flex items-center justify-center border-4 border-brand-ink bg-brand-cream px-5 py-2 font-display text-xl tracking-wide text-brand-ink shadow-comic-sm transition hover:-translate-y-0.5 hover:shadow-comic disabled:cursor-not-allowed disabled:opacity-60;
+  }
+
+  .halftone-bar {
+    background-image: repeating-linear-gradient(
+      90deg,
+      #ff0000 0 12px,
+      #fff7d1 12px 24px
+    );
+  }
+}
