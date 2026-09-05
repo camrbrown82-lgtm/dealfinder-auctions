@@ -1,8 +1,9 @@
-import { LotImage } from "@/components/LotImage";
+import { LotGallery } from "@/components/LotGallery";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { AuctionRoom } from "@/components/AuctionRoom";
 import { fetchLot } from "@/lib/lots";
+import { lotImages } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
@@ -35,15 +36,13 @@ export default async function AuctionLotPage({ params }: PageProps) {
 
       <div className="grid gap-8 lg:grid-cols-2">
         <div className="overflow-hidden border-4 border-black bg-[#FFF7D1] shadow-[6px_6px_0_0_#000]">
-          <div className="relative aspect-square bg-[#FFF7D1]">
-            <LotImage
-              src={lot.image}
-              alt={lot.title}
-              fill
-              className="object-cover"
-              priority
-            />
-          </div>
+          <LotGallery
+            images={lotImages(lot)}
+            alt={lot.title}
+            variant="room"
+            sizes="(max-width: 1024px) 100vw, 50vw"
+            priority
+          />
           <div className="space-y-2 border-t-4 border-black p-4">
             <p className="font-comic text-lg">{lot.description}</p>
             <p className="font-comic text-sm">

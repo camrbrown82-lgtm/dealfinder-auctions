@@ -7,10 +7,12 @@ export function LotTimer({
   endsAt,
   fallback,
   extended = false,
+  compact = false,
 }: {
   endsAt: string;
   fallback?: string;
   extended?: boolean;
+  compact?: boolean;
 }) {
   const [label, setLabel] = useState(fallback ?? formatCountdown(endsAt));
 
@@ -26,7 +28,9 @@ export function LotTimer({
   return (
     <div className="text-center">
       <div
-        className={`border-4 border-black px-4 py-2 font-display text-3xl ${
+        className={`border-4 border-black font-display ${
+          compact ? "px-1.5 py-0.5 text-sm sm:text-base" : "px-4 py-2 text-3xl"
+        } ${
           ended
             ? "bg-black text-white"
             : "bg-[#FFF7D1] text-[#FF0000]"

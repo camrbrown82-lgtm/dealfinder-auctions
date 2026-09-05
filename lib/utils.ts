@@ -18,6 +18,7 @@ export type AuctionLot = {
   title: string;
   category: LotCategory;
   image: string;
+  images?: string[];
   currentBid: number;
   minIncrement: number;
   endsAt: string;
@@ -79,6 +80,22 @@ export type ConsignorItem = {
   commissionRate: number;
 };
 
+export function uniqueImageUrls(urls: Array<string | null | undefined>): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const url of urls) {
+    const trimmed = url?.trim();
+    if (!trimmed || seen.has(trimmed)) continue;
+    seen.add(trimmed);
+    out.push(trimmed);
+  }
+  return out;
+}
+
+export function lotImages(lot: Pick<AuctionLot, "image" | "images">): string[] {
+  return uniqueImageUrls([lot.image, ...(lot.images ?? [])]);
+}
+
 export const CATEGORIES: AuctionCategory[] = [
   "All",
   "Comics",
@@ -96,6 +113,11 @@ export const MOCK_LOTS: AuctionLot[] = [
     category: "Comics",
     image:
       "https://images.unsplash.com/photo-1612036782180-6f0b6cd846fe?auto=format&fit=crop&w=800&q=80",
+    images: [
+      "https://images.unsplash.com/photo-1612036782180-6f0b6cd846fe?auto=format&fit=crop&w=800&q=80",
+      "https://images.unsplash.com/photo-1618519764620-7403abdbdfe9?auto=format&fit=crop&w=800&q=80",
+      "https://images.unsplash.com/photo-1588499756884-d725add8dce4?auto=format&fit=crop&w=800&q=80",
+    ],
     currentBid: 240,
     minIncrement: 10,
     endsAt: new Date(Date.now() + 1000 * 60 * 42).toISOString(),
@@ -112,6 +134,11 @@ export const MOCK_LOTS: AuctionLot[] = [
     category: "Toys",
     image:
       "https://images.unsplash.com/photo-1566576912321-d58ddd7a6088?auto=format&fit=crop&w=800&q=80",
+    images: [
+      "https://images.unsplash.com/photo-1566576912321-d58ddd7a6088?auto=format&fit=crop&w=800&q=80",
+      "https://images.unsplash.com/photo-1558060370-d644479cb6f7?auto=format&fit=crop&w=800&q=80",
+      "https://images.unsplash.com/photo-1596461404969-9ae70f2830c1?auto=format&fit=crop&w=800&q=80",
+    ],
     currentBid: 85,
     minIncrement: 5,
     endsAt: new Date(Date.now() + 1000 * 60 * 18).toISOString(),
@@ -128,6 +155,11 @@ export const MOCK_LOTS: AuctionLot[] = [
     category: "Vinyl",
     image:
       "https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?auto=format&fit=crop&w=800&q=80",
+    images: [
+      "https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?auto=format&fit=crop&w=800&q=80",
+      "https://images.unsplash.com/photo-1483412033650-1015ddeb83d1?auto=format&fit=crop&w=800&q=80",
+      "https://images.unsplash.com/photo-1514525253161-7a46d19cd819?auto=format&fit=crop&w=800&q=80",
+    ],
     currentBid: 120,
     minIncrement: 10,
     endsAt: new Date(Date.now() + 1000 * 60 * 95).toISOString(),
@@ -144,6 +176,11 @@ export const MOCK_LOTS: AuctionLot[] = [
     category: "Art",
     image:
       "https://images.unsplash.com/photo-1547891654-e66ed7ebb968?auto=format&fit=crop&w=800&q=80",
+    images: [
+      "https://images.unsplash.com/photo-1547891654-e66ed7ebb968?auto=format&fit=crop&w=800&q=80",
+      "https://images.unsplash.com/photo-1579783902614-a3fb3927b6a5?auto=format&fit=crop&w=800&q=80",
+      "https://images.unsplash.com/photo-1541961017774-22349e4a1262?auto=format&fit=crop&w=800&q=80",
+    ],
     currentBid: 310,
     minIncrement: 25,
     endsAt: new Date(Date.now() + 1000 * 60 * 210).toISOString(),
@@ -160,6 +197,11 @@ export const MOCK_LOTS: AuctionLot[] = [
     category: "Oddities",
     image:
       "https://images.unsplash.com/photo-1513885535751-8b9238bd345a?auto=format&fit=crop&w=800&q=80",
+    images: [
+      "https://images.unsplash.com/photo-1513885535751-8b9238bd345a?auto=format&fit=crop&w=800&q=80",
+      "https://images.unsplash.com/photo-1441986300917-64674bd600d8?auto=format&fit=crop&w=800&q=80",
+      "https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&w=800&q=80",
+    ],
     currentBid: 45,
     minIncrement: 5,
     endsAt: new Date(Date.now() + 1000 * 60 * 8).toISOString(),
@@ -247,6 +289,28 @@ export function filterLots(lots: AuctionLot[], category: AuctionCategory) {
   );
   if (category === "All") return live;
   return live.filter((lot) => lot.category === category);
+}
+
+export function searchLots(lots: AuctionLot[], query: string) {
+  const live = filterLots(lots, "All");
+  const q = query.trim().toLowerCase();
+  if (!q) return live;
+  return live.filter((lot) => {
+    const haystack = [
+      lot.title,
+      lot.description,
+      lot.category,
+      lot.consignor,
+      lot.lotNumber,
+      lot.auctionNumber,
+      lot.id,
+      lot.slug,
+    ]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase();
+    return haystack.includes(q);
+  });
 }
 
 export function formatCountdown(endsAt: string, now = Date.now()) {

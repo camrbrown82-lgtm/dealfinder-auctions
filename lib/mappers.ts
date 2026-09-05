@@ -1,4 +1,4 @@
-import type { AuctionLot, Consignment, LotCategory, LotStatus } from "@/lib/utils";
+import { uniqueImageUrls, type AuctionLot, type Consignment, type LotCategory, type LotStatus } from "@/lib/utils";
 
 export type LotRow = {
   id: string;
@@ -8,6 +8,7 @@ export type LotRow = {
   description: string;
   consignor_name: string;
   image_url: string;
+  image_urls?: string[] | null;
   current_bid: number | string;
   min_increment: number | string;
   ends_at: string;
@@ -38,12 +39,14 @@ export type ConsignmentRow = {
 };
 
 export function mapLot(row: LotRow): AuctionLot {
+  const images = uniqueImageUrls([...(row.image_urls ?? []), row.image_url]);
   return {
     id: row.id,
     slug: row.slug,
     title: row.title,
     category: row.category,
-    image: row.image_url,
+    image: images[0] || row.image_url,
+    images,
     currentBid: Number(row.current_bid),
     minIncrement: Number(row.min_increment),
     endsAt: row.ends_at,

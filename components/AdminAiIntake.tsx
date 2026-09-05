@@ -105,7 +105,7 @@ export function AdminAiIntake({
           startingBid: start,
           reservePrice: reserve,
           commissionRate,
-          imageUrls: imageUrls.slice(0, 1),
+          imageUrls,
           lotNumber,
           eventId: eventId || undefined,
           postLive,

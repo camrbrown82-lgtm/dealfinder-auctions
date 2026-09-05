@@ -124,7 +124,7 @@ export default function ConsignorPage() {
           reservePrice: reserve,
           commissionRate,
           estimatedMarketValue: market,
-          imageUrls: imageUrls.slice(0, 1),
+          imageUrls,
         }),
       });
       const json = await response.json();

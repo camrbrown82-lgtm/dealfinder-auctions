@@ -33,7 +33,7 @@ export default function RootLayout({
         <BidderProvider>
         <div className="flex min-h-screen flex-col">
           <AppHeader />
-          <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-8">{children}</main>
+          <main className="mx-auto w-full max-w-[90rem] flex-1 px-4 py-8">{children}</main>
           <footer className="border-t-4 border-brand-ink bg-brand-red text-brand-paper">
             <div className="mx-auto flex max-w-6xl flex-col gap-1 px-4 py-6 sm:flex-row sm:items-center sm:justify-between">
               <p className="font-display text-2xl">DealFinder Auctions</p>

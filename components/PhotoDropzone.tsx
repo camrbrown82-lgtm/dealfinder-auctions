@@ -47,7 +47,7 @@ export function PhotoDropzone({ files, onChange }: PhotoDropzoneProps) {
         }`}
       >
         <p className="font-display text-2xl">Drop photos here</p>
-        <p className="mt-1 font-comic text-sm">or use the camera / file picker (up to 4)</p>
+        <p className="mt-1 font-comic text-sm">or use the camera / file picker (up to 4 photos per lot)</p>
         <div className="mt-4 flex flex-wrap justify-center gap-2">
           <button
             type="button"
