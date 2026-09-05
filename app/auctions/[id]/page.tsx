@@ -18,7 +18,7 @@ export default async function AuctionLotPage({ params }: PageProps) {
   return (
     <div className="space-y-6">
       <div className="border-4 border-black bg-[#FF0000] px-4 py-5 text-white shadow-[6px_6px_0_0_#000]">
-        <Link href="/" className="font-display text-lg text-white underline">
+        <Link href="/live" className="font-display text-lg text-white underline">
           ← Back to live lots
         </Link>
         <p className="mt-3 inline-block border-4 border-black bg-[#FFF7D1] px-3 py-1 font-display text-black">

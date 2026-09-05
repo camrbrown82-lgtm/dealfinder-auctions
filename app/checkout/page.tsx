@@ -107,7 +107,7 @@ export default function CheckoutPage() {
       {wins.length === 0 ? (
         <p className="font-comic">
           No hammers on your paddle yet.{" "}
-          <Link href="/" className="font-bold underline">
+          <Link href="/live" className="font-bold underline">
             Browse live lots
           </Link>
           .

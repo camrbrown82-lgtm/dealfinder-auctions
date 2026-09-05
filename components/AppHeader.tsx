@@ -25,7 +25,7 @@ export function AppHeader() {
         </Link>
       </div>
       <nav className="absolute right-3 top-3 z-10 flex max-w-[min(100%,28rem)] flex-wrap items-center justify-end gap-x-3 gap-y-1 sm:right-6 sm:top-4 sm:max-w-none sm:gap-x-5">
-        <Link href="/" className={navClass}>
+        <Link href="/live" className={navClass}>
           Live
         </Link>
         <Link href="/consignor" className={navClass}>
