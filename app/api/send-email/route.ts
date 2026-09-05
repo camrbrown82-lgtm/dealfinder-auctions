@@ -51,7 +51,7 @@ export async function POST(request: NextRequest) {
 
   const to = body.broadcast && recipients.length === 0 ? ["floor@dealfinder.auctions"] : recipients;
   const key = process.env.RESEND_API_KEY;
-  const from = process.env.RESEND_FROM || "DealFinder Auctions <noreply@dealfinder.auctions>";
+  const from = process.env.RESEND_FROM || "DealFinder Auctions <onboarding@resend.dev>";
   const logo = await resolveEmailLogo();
   const html = buildEmailHtml(
     rendered.body,
