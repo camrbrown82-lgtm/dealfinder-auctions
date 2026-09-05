@@ -4,72 +4,54 @@ import Image from "next/image";
 import Link from "next/link";
 import { useBidder } from "@/components/BidderProvider";
 
+const navClass =
+  "font-display text-lg uppercase tracking-wide text-brand-cream [text-shadow:2px_2px_0_#000,-1px_-1px_0_#000] hover:text-white sm:text-xl";
+
 export function AppHeader() {
   const { user, logout, requestAuth } = useBidder();
 
   return (
-    <header className="border-b-4 border-brand-ink bg-brand-paper">
-      <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-3">
-        <Link href="/" className="flex items-center bg-black p-1">
+    <header className="relative w-full border-b-4 border-brand-ink bg-black">
+      <div className="relative h-36 w-full sm:h-44 md:h-52 lg:h-60">
+        <Link href="/" className="absolute inset-0 block" aria-label="DealFinder Auctions home">
           <Image
             src="/logo.webp"
-            alt="DealFinder Auctions"
-            width={220}
-            height={220}
-            className="h-16 w-16 object-contain sm:h-[4.5rem] sm:w-[4.5rem]"
+            alt=""
+            fill
+            className="object-fill"
+            sizes="100vw"
             priority
           />
         </Link>
-        <nav className="flex flex-wrap items-center gap-2 sm:gap-3">
-          <Link href="/" className="font-display text-lg hover:text-brand-red">
-            Live
-          </Link>
-          <Link
-            href="/consignor"
-            className="font-display text-lg hover:text-brand-red"
-          >
-            Consign
-          </Link>
-          {user ? (
-            <>
-              <Link
-                href="/profile"
-                className="font-display text-lg hover:text-brand-red"
-              >
-                Profile
-              </Link>
-              <Link
-                href="/checkout"
-                className="font-display text-lg hover:text-brand-red"
-              >
-                Checkout
-              </Link>
-              <button
-                type="button"
-                className="font-display text-lg hover:text-brand-red"
-                onClick={() => void logout()}
-              >
-                Log out
-              </button>
-            </>
-          ) : (
-            <button
-              type="button"
-              className="font-display text-lg hover:text-brand-red"
-              onClick={() => requestAuth(undefined, "login")}
-            >
-              Log in
-            </button>
-          )}
-          <Link
-            href="/admin"
-            className="font-display text-lg hover:text-brand-red"
-          >
-            Admin
-          </Link>
-        </nav>
       </div>
-      <div className="halftone-bar h-2 border-t-4 border-brand-ink" />
+      <nav className="absolute right-3 top-3 z-10 flex max-w-[min(100%,28rem)] flex-wrap items-center justify-end gap-x-3 gap-y-1 sm:right-6 sm:top-4 sm:max-w-none sm:gap-x-5">
+        <Link href="/" className={navClass}>
+          Live
+        </Link>
+        <Link href="/consignor" className={navClass}>
+          Consign
+        </Link>
+        {user ? (
+          <>
+            <Link href="/profile" className={navClass}>
+              Profile
+            </Link>
+            <Link href="/checkout" className={navClass}>
+              Checkout
+            </Link>
+            <button type="button" className={navClass} onClick={() => void logout()}>
+              Log out
+            </button>
+          </>
+        ) : (
+          <button type="button" className={navClass} onClick={() => requestAuth(undefined, "login")}>
+            Log in
+          </button>
+        )}
+        <Link href="/admin" className={navClass}>
+          Admin
+        </Link>
+      </nav>
     </header>
   );
 }

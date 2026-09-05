@@ -1,4 +1,3 @@
-import Image from "next/image";
 import Link from "next/link";
 import { LiveGrid } from "@/components/LiveGrid";
 import { fetchLiveLots } from "@/lib/lots";
@@ -10,19 +9,9 @@ export default async function HomePage() {
 
   return (
     <div className="text-brand-black">
-      <section className="mx-auto max-w-6xl py-12 text-center">
-        <div className="mx-auto inline-block border-4 border-black bg-black shadow-[4px_4px_0px_#000]">
-          <Image
-            src="/logo.webp"
-            alt=""
-            width={420}
-            height={420}
-            className="h-40 w-40 object-contain sm:h-52 sm:w-52"
-            priority
-          />
-        </div>
+      <section className="mx-auto max-w-6xl pb-8 text-center">
         <h1 className="sr-only">DealFinder Auctions</h1>
-        <p className="mt-4 text-xl font-bold">
+        <p className="text-xl font-bold">
           High-Speed Timed Liquidations & Local Consignments
         </p>
 
