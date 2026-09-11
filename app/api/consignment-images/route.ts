@@ -1,19 +1,49 @@
-import { mkdir, writeFile } from "fs/promises";
-import path from "path";
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
+import { getSupabaseAdmin, isSupabaseConfigured } from "@/lib/supabaseClient";
+import {
+  uniqueConsignmentFileName,
+  uploadConsignmentImage,
+} from "@/lib/consignmentStorage";
 
-export async function POST(request: Request) {
-  const form = await request.formData();
-  const files = form.getAll("images").filter((value): value is File => value instanceof File);
-  if (!files.length) return NextResponse.json({ error: "Could not upload to consignment-images." }, { status: 400 });
-  const dir = path.join(process.cwd(), "public", "uploads");
-  await mkdir(dir, { recursive: true });
-  const urls: string[] = [];
-  for (const file of files.slice(0, 4)) {
-    const ext = path.extname(file.name) || ".jpg";
-    const filename = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}${ext}`;
-    await writeFile(path.join(dir, filename), Buffer.from(await file.arrayBuffer()));
-    urls.push(`/uploads/${filename}`);
+export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
+
+export async function POST(request: NextRequest) {
+  const supabase = getSupabaseAdmin();
+  if (!isSupabaseConfigured || !supabase) {
+    return NextResponse.json(
+      { error: "Supabase is not configured.", urls: [] },
+      { status: 400 },
+    );
   }
-  return NextResponse.json({ urls });
+
+  const form = await request.formData();
+  const files = form
+    .getAll("images")
+    .filter((entry): entry is File => entry instanceof File && entry.size > 0)
+    .slice(0, 4);
+
+  if (files.length === 0) {
+    return NextResponse.json({ error: "No images uploaded.", urls: [] }, { status: 400 });
+  }
+
+  const urls: string[] = [];
+  for (const file of files) {
+    try {
+      const fileName = uniqueConsignmentFileName(file);
+      const { publicUrl } = await uploadConsignmentImage(supabase, file, fileName);
+      urls.push(publicUrl);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Upload failed";
+      return NextResponse.json(
+        {
+          error: `${message} Confirm the public bucket consignment-images exists (see supabase/migrations/20260903000009_consignment_images.sql).`,
+          urls,
+        },
+        { status: 400 },
+      );
+    }
+  }
+
+  return NextResponse.json({ ok: true, urls, bucket: "consignment-images" });
 }

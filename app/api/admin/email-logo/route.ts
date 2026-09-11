@@ -1,32 +1,72 @@
-import { mkdir, writeFile } from "fs/promises";
-import path from "path";
-import { NextResponse } from "next/server";
-import { isAdmin } from "@/lib/session";
-import { setEmailLogo } from "@/lib/store";
+import { NextRequest, NextResponse } from "next/server";
+import { isAdminSession, unauthorized } from "@/lib/adminAuth";
+import { parseDataUrl } from "@/lib/emailBrand";
+import { setEmailLogoDataUrl } from "@/lib/demoEmailStore";
+import { resolveEmailLogo } from "@/lib/emailService";
+import { getSupabaseAdmin, isSupabaseConfigured } from "@/lib/supabaseClient";
 
-export async function POST(request: Request) {
-  if (!(await isAdmin())) return NextResponse.json({ error: "Admin login required." }, { status: 401 });
-  const form = await request.formData();
-  const file = form.get("logo");
-  if (!(file instanceof File)) return NextResponse.json({ error: "Could not save logo." }, { status: 400 });
-  const bytes = Buffer.from(await file.arrayBuffer());
-  const ext = path.extname(file.name) || ".png";
-  const dir = path.join(process.cwd(), "public", "uploads");
-  await mkdir(dir, { recursive: true });
-  const filename = `email-logo${ext}`;
-  await writeFile(path.join(dir, filename), bytes);
-  const url = `/uploads/${filename}?t=${Date.now()}`;
-  await setEmailLogo(url);
-  return NextResponse.json({ url });
+export const dynamic = "force-dynamic";
+
+const MAX_BYTES = 900_000;
+
+export async function GET() {
+  if (!isAdminSession()) return unauthorized();
+  const logo = await resolveEmailLogo();
+  if (!logo) {
+    return new NextResponse("Logo not found", { status: 404 });
+  }
+  return new NextResponse(new Uint8Array(logo.buffer), {
+    headers: {
+      "Content-Type": logo.contentType,
+      "Cache-Control": "no-store",
+    },
+  });
+}
+
+export async function POST(request: NextRequest) {
+  if (!isAdminSession()) return unauthorized();
+  const body = (await request.json()) as { dataUrl?: string };
+  const dataUrl = body.dataUrl?.trim() ?? "";
+  const parsed = parseDataUrl(dataUrl);
+  if (!parsed) {
+    return NextResponse.json({ error: "Upload a PNG, JPEG, GIF, or WebP image." }, { status: 400 });
+  }
+  if (!parsed.contentType.startsWith("image/")) {
+    return NextResponse.json({ error: "File must be an image." }, { status: 400 });
+  }
+  if (parsed.buffer.length > MAX_BYTES) {
+    return NextResponse.json({ error: "Logo is too large (keep under ~700KB)." }, { status: 400 });
+  }
+
+  setEmailLogoDataUrl(dataUrl);
+  const supabase = getSupabaseAdmin();
+  if (isSupabaseConfigured && supabase) {
+    const { error } = await supabase.from("email_settings").upsert({
+      id: "default",
+      logo_data_url: dataUrl,
+      updated_at: new Date().toISOString(),
+    });
+    if (error) {
+      return NextResponse.json(
+        {
+          error: `${error.message} Run supabase/migrations/20260903000008_email_branding.sql if email_settings is missing.`,
+        },
+        { status: 400 },
+      );
+    }
+  }
+
+  return NextResponse.json({ ok: true, custom: true });
 }
 
 export async function DELETE() {
-  if (!(await isAdmin())) return NextResponse.json({ error: "Admin login required." }, { status: 401 });
-  await setEmailLogo(null);
-  return NextResponse.json({ ok: true });
-}
-
-export async function GET() {
-  if (!(await isAdmin())) return NextResponse.json({ error: "Admin login required." }, { status: 401 });
-  return NextResponse.json({ ok: true });
+  if (!isAdminSession()) return unauthorized();
+  setEmailLogoDataUrl(null);
+  const supabase = getSupabaseAdmin();
+  if (isSupabaseConfigured && supabase) {
+    await supabase
+      .from("email_settings")
+      .upsert({ id: "default", logo_data_url: null, updated_at: new Date().toISOString() });
+  }
+  return NextResponse.json({ ok: true, custom: false });
 }

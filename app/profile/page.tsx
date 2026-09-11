@@ -1,82 +1,99 @@
 "use client";
 
+import { FormEvent, useEffect, useState } from "react";
 import Link from "next/link";
-import { useEffect, useState } from "react";
-import { ProfileFieldsForm } from "@/components/profile-fields";
-import { useBidder } from "@/components/bidder-provider";
-import { emptyProfile } from "@/lib/catalog";
-import type { ProfileFields } from "@/lib/types";
+import { useBidder } from "@/components/BidderProvider";
+import { ProfileFields } from "@/components/ProfileFields";
+import { INTERAC_EMAIL, PICKUP_INSTRUCTIONS, paymentMethodLabel } from "@/lib/payments";
+import { emptyProfileInput, type ProfileInput } from "@/lib/profileTypes";
 
 export default function ProfilePage() {
   const { user, ready, refresh, requestAuth } = useBidder();
-  const [profile, setProfile] = useState<ProfileFields>(emptyProfile());
-  const [notice, setNotice] = useState<string | null>(null);
+  const [form, setForm] = useState<ProfileInput>(emptyProfileInput());
+  const [message, setMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    if (user) {
-      setProfile({
-        fullName: user.fullName,
-        phone: user.phone,
-        street: user.street,
-        city: user.city,
-        province: user.province || "ON",
-        postalCode: user.postalCode,
-        paymentMethod: user.paymentMethod,
-      });
-    }
+    if (!user) return;
+    setForm({
+      fullName: user.fullName,
+      phone: user.phone,
+      street: user.street,
+      city: user.city,
+      province: user.province || "ON",
+      postalCode: user.postalCode,
+      paymentMethod: user.paymentMethod,
+    });
   }, [user]);
 
-  if (!ready) return <p className="font-display text-4xl">Loading paddle…</p>;
-  if (!user) {
-    return (
-      <div className="comic-panel max-w-lg space-y-4 p-6">
-        <h1 className="font-display text-5xl">Bidder profile</h1>
-        <p className="font-comic font-bold">Log in to restore your paddle and shipping card.</p>
-        <button type="button" className="comic-btn" onClick={() => requestAuth(undefined, "login")}>
-          Log in
-        </button>
-      </div>
-    );
-  }
-
-  async function save(event: React.FormEvent) {
+  async function onSubmit(event: FormEvent) {
     event.preventDefault();
     setBusy(true);
-    setNotice(null);
+    setMessage(null);
     try {
-      const res = await fetch("/api/profile", {
+      const response = await fetch("/api/profile", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(profile),
+        body: JSON.stringify(form),
       });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error || "Could not save.");
+      const json = await response.json();
+      if (!response.ok) throw new Error(json.error || "Could not save.");
       await refresh();
-      setNotice("Bidder card saved.");
-    } catch (err) {
-      setNotice(err instanceof Error ? err.message : "Could not save.");
+      setMessage("Bidder card saved.");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Could not save.");
     } finally {
       setBusy(false);
     }
   }
 
-  return (
-    <div className="mx-auto max-w-xl space-y-6">
-      <h1 className="font-display text-6xl">Bidder profile</h1>
-      <p className="font-comic font-bold">
-        {user.email} · paddle {user.status}
-      </p>
-      <form onSubmit={save} className="comic-panel space-y-4 p-6">
-        <ProfileFieldsForm value={profile} onChange={setProfile} />
-        {notice && <p className="border-4 border-black bg-white px-3 py-2 font-comic text-sm font-bold">{notice}</p>}
-        <button type="submit" className="comic-btn" disabled={busy}>
-          {busy ? "Working…" : "Save profile"}
+  if (!ready) return <p className="font-comic">Loading paddle…</p>;
+
+  if (!user) {
+    return (
+      <div className="border-4 border-black bg-[#FFF7D1] p-6 shadow-[6px_6px_0_0_#000]">
+        <h1 className="font-display text-5xl text-[#FF0000]">Bidder profile</h1>
+        <p className="mt-2 font-comic">Log in to edit shipping and payment prefs.</p>
+        <button
+          type="button"
+          className="comic-btn mt-4"
+          onClick={() => requestAuth(undefined, "login")}
+        >
+          Log In
         </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="border-4 border-black bg-[#FF0000] p-4 text-white shadow-[6px_6px_0_0_#000]">
+        <h1 className="font-display text-5xl">Bidder profile</h1>
+        <p className="font-comic text-sm">{user.email}</p>
+      </div>
+      <form
+        onSubmit={onSubmit}
+        className="space-y-4 border-4 border-black bg-[#FFF7D1] p-5 shadow-[6px_6px_0_0_#000]"
+      >
+        <ProfileFields value={form} onChange={setForm} />
+        <p className="border-4 border-black bg-white px-3 py-2 font-comic text-sm">
+          Interac recipient: <strong>{INTERAC_EMAIL}</strong>
+          <br />
+          {PICKUP_INSTRUCTIONS}
+        </p>
+        <p className="font-comic text-sm">
+          Current method: <strong>{paymentMethodLabel(form.paymentMethod)}</strong>
+        </p>
+        <div className="flex flex-wrap gap-2">
+          <button type="submit" className="comic-btn" disabled={busy}>
+            {busy ? "Saving…" : "Save profile"}
+          </button>
+          <Link href="/checkout" className="comic-btn-invert">
+            Winning checkout
+          </Link>
+        </div>
+        {message && <p className="font-display text-2xl">{message}</p>}
       </form>
-      <Link href="/checkout" className="comic-btn-invert inline-flex">
-        Winning checkout
-      </Link>
     </div>
   );
 }

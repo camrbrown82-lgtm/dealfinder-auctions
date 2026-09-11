@@ -1,16 +1,18 @@
 import Link from "next/link";
-import { LiveGrid } from "@/components/live-grid";
-import { listLiveLots } from "@/lib/store";
+import { LiveGrid } from "@/components/LiveGrid";
+import { fetchLiveLots } from "@/lib/lots";
 
 export const dynamic = "force-dynamic";
 
-export default async function LivePage() {
-  const lots = await listLiveLots();
+export default async function LiveAuctionsPage() {
+  const lots = await fetchLiveLots();
+
   return (
     <div className="text-brand-black">
       <section className="mx-auto max-w-6xl pb-8 text-center">
         <h1 className="sr-only">Live auctions</h1>
         <p className="text-xl font-bold">High-Speed Timed Liquidations & Local Consignments</p>
+
         <div className="mt-8 flex flex-wrap justify-center gap-4">
           <Link
             href="/consignor"
@@ -26,6 +28,7 @@ export default async function LivePage() {
           </Link>
         </div>
       </section>
+
       <LiveGrid lots={lots} />
     </div>
   );
