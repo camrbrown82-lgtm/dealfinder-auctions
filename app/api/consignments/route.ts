@@ -182,8 +182,8 @@ export async function POST(request: NextRequest) {
     ({ data, error } = await supabase.from("consignments").insert(rest).select("id").single());
   }
 
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 400 });
+  if (error || !data) {
+    return NextResponse.json({ error: error?.message || "Could not save consignment." }, { status: 400 });
   }
 
   return NextResponse.json({
