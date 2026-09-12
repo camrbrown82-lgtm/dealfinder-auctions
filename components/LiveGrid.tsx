@@ -4,13 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { LotTimer } from "@/components/LotTimer";
 import { LotGallery } from "@/components/LotGallery";
-import {
-  formatCountdown,
-  formatCurrency,
-  lotImages,
-  searchLots,
-  type AuctionLot,
-} from "@/lib/utils";
+import { formatCurrency, lotImages, searchLots, type AuctionLot } from "@/lib/utils";
 
 const VIEW_OPTIONS = [1, 3, 6, 9, 12] as const;
 type ViewCount = (typeof VIEW_OPTIONS)[number];
@@ -169,11 +163,7 @@ export function LiveGrid({ lots }: { lots: AuctionLot[] }) {
                         {formatCurrency(lot.currentBid)}
                       </p>
                     </div>
-                    <LotTimer
-                      endsAt={lot.endsAt}
-                      fallback={formatCountdown(lot.endsAt)}
-                      compact={compact}
-                    />
+                    <LotTimer endsAt={lot.endsAt} compact={compact} />
                   </div>
                 </div>
               </article>

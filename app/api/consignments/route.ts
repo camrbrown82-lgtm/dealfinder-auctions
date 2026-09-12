@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
+import { addDemoConsignment } from "@/lib/demoAdminStore";
+import { persistPublicImageUrls } from "@/lib/consignmentStorage";
 import { getSupabaseAdmin, isSupabaseConfigured } from "@/lib/supabaseClient";
 import {
   DEFAULT_COMMISSION_RATE,
@@ -65,6 +67,7 @@ export async function GET(request: NextRequest) {
   const items: ConsignorItem[] = (queueRes.data ?? []).map((row) => {
     const lot = lotByConsignment.get(row.id);
     let pipelineStatus: ConsignorItem["pipelineStatus"] = consignmentToPipeline(row.status);
+    if (lot?.status === "paused" || lot?.status === "draft") pipelineStatus = "scheduled";
     if (lot?.status === "live") pipelineStatus = "live";
     if (lot?.status === "ended") pipelineStatus = "sold";
 
@@ -108,6 +111,24 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  let imageUrls = Array.isArray(body.imageUrls) ? body.imageUrls.filter(Boolean) : [];
+  const supabase = getSupabaseAdmin();
+  if (isSupabaseConfigured && supabase && imageUrls.length) {
+    try {
+      imageUrls = await persistPublicImageUrls(supabase, imageUrls);
+    } catch (err) {
+      return NextResponse.json(
+        {
+          error:
+            err instanceof Error
+              ? `Could not save photos: ${err.message}`
+              : "Could not save photos.",
+        },
+        { status: 400 },
+      );
+    }
+  }
+
   const payload = {
     consignor_name: consignorName,
     title,
@@ -118,29 +139,48 @@ export async function POST(request: NextRequest) {
     starting_bid: Number(body.startingBid) || 0,
     reserve_price: Number(body.reservePrice) || 0,
     commission_rate: Number(body.commissionRate) || DEFAULT_COMMISSION_RATE,
-    image_urls: body.imageUrls ?? [],
+    image_urls: imageUrls,
     status: "pending" as const,
   };
 
-  const supabase = getSupabaseAdmin();
+  const item: ConsignorItem = {
+    id: crypto.randomUUID(),
+    title,
+    consignor: consignorName,
+    pipelineStatus: "pending_approval",
+    startingBid: payload.starting_bid,
+    reservePrice: payload.reserve_price,
+    commissionRate: payload.commission_rate,
+  };
+
   if (!isSupabaseConfigured || !supabase) {
-    const item: ConsignorItem = {
-      id: crypto.randomUUID(),
-      title,
+    addDemoConsignment({
+      id: item.id,
       consignor: consignorName,
-      pipelineStatus: "pending_approval",
-      startingBid: payload.starting_bid,
+      title,
+      category: payload.category,
+      description: payload.description,
+      estimatedLow: payload.estimated_low,
+      estimatedHigh: payload.estimated_high,
       reservePrice: payload.reserve_price,
+      startingBid: payload.starting_bid,
       commissionRate: payload.commission_rate,
-    };
+      imageUrls,
+      status: "pending",
+    });
     return NextResponse.json({ source: "demo", item });
   }
 
-  const { data, error } = await supabase
-    .from("consignments")
-    .insert(payload)
-    .select("id")
-    .single();
+  let { data, error } = await supabase.from("consignments").insert(payload).select("id").single();
+  if (error && /starting_bid|reserve_price|commission_rate/i.test(error.message)) {
+    const {
+      starting_bid: _s,
+      reserve_price: _r,
+      commission_rate: _c,
+      ...rest
+    } = payload;
+    ({ data, error } = await supabase.from("consignments").insert(rest).select("id").single());
+  }
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 400 });
@@ -149,13 +189,8 @@ export async function POST(request: NextRequest) {
   return NextResponse.json({
     source: "supabase",
     item: {
+      ...item,
       id: data.id,
-      title,
-      consignor: consignorName,
-      pipelineStatus: "pending_approval",
-      startingBid: payload.starting_bid,
-      reservePrice: payload.reserve_price,
-      commissionRate: payload.commission_rate,
     } satisfies ConsignorItem,
   });
 }

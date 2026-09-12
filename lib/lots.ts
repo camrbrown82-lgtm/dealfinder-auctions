@@ -29,22 +29,27 @@ export async function fetchLiveLots(): Promise<AuctionLot[]> {
   }
 
   const supabase = getSupabaseAdmin();
-  if (!supabase) return filterLots(MOCK_LOTS, "All");
+  if (!supabase) return filterLots(catalogLots(), "All");
 
   const [{ data, error }, eventsRes] = await Promise.all([
-    supabase.from("lots").select("*").in("status", ["live"]).order("ends_at", { ascending: true }),
+    supabase.from("lots").select("*").order("ends_at", { ascending: true }),
     supabase.from("auction_events").select("id, auction_number"),
   ]);
 
-  if (error || !data) return filterLots(MOCK_LOTS, "All");
+  if (error || !data) {
+    console.error("fetchLiveLots", error?.message);
+    return [];
+  }
+
   const numbers = new Map(
     (eventsRes.data ?? []).map((row) => [row.id as string, row.auction_number as string | null]),
   );
-  return (data as LotRow[]).map((row) => {
+  const lots = (data as LotRow[]).map((row) => {
     const lot = withGallery(mapLot(row));
     lot.auctionNumber = row.event_id ? numbers.get(row.event_id) ?? null : lot.auctionNumber;
     return lot;
   });
+  return filterLots(lots, "All");
 }
 
 export async function fetchLot(id: string): Promise<AuctionLot | undefined> {

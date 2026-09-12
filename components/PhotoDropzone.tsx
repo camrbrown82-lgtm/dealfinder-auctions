@@ -1,16 +1,29 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { CameraCapture, requestCamera, stopTracks } from "@/components/CameraCapture";
 
 type PhotoDropzoneProps = {
   files: File[];
   onChange: (files: File[]) => void;
+  maxFiles?: number;
+  hidePreviews?: boolean;
+  onCameraFinished?: (files: File[]) => void;
 };
 
-export function PhotoDropzone({ files, onChange }: PhotoDropzoneProps) {
+export function PhotoDropzone({
+  files,
+  onChange,
+  maxFiles = 4,
+  hidePreviews = false,
+  onCameraFinished,
+}: PhotoDropzoneProps) {
   const galleryRef = useRef<HTMLInputElement>(null);
-  const cameraRef = useRef<HTMLInputElement>(null);
+  const nativeCameraRef = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
+  const [cameraOpen, setCameraOpen] = useState(false);
+  const [facing, setFacing] = useState<"environment" | "user">("environment");
+  const [stream, setStream] = useState<MediaStream | null>(null);
 
   const previews = useMemo(
     () => files.map((file) => ({ name: file.name, url: URL.createObjectURL(file) })),
@@ -23,11 +36,44 @@ export function PhotoDropzone({ files, onChange }: PhotoDropzoneProps) {
     };
   }, [previews]);
 
+  useEffect(() => {
+    return () => stopTracks(stream);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   function merge(next: FileList | File[]) {
-    const incoming = Array.from(next).filter((file) => file.type.startsWith("image/"));
-    const combined = [...files, ...incoming].slice(0, 4);
+    const incoming = Array.from(next).filter(
+      (file) => !file.type || file.type.startsWith("image/") || file.type === "application/octet-stream",
+    );
+    const combined = [...files, ...incoming].slice(0, maxFiles);
     onChange(combined);
   }
+
+  const remaining = Math.max(0, maxFiles - files.length);
+
+  function closeCamera() {
+    stopTracks(stream);
+    setStream(null);
+    setCameraOpen(false);
+    onCameraFinished?.(files);
+  }
+
+  async function openLiveCamera(nextFacing: "environment" | "user" = facing) {
+    const next = await requestCamera(nextFacing);
+    if (!next) {
+      nativeCameraRef.current?.click();
+      return;
+    }
+    stopTracks(stream);
+    setFacing(nextFacing);
+    setStream(next);
+    setCameraOpen(true);
+  }
+
+  useEffect(() => {
+    if (cameraOpen && remaining <= 0) closeCamera();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cameraOpen, remaining]);
 
   return (
     <div className="space-y-3">
@@ -47,12 +93,15 @@ export function PhotoDropzone({ files, onChange }: PhotoDropzoneProps) {
         }`}
       >
         <p className="font-display text-2xl">Drop photos here</p>
-        <p className="mt-1 font-comic text-sm">or use the camera / file picker (up to 4 photos per lot)</p>
+        <p className="mt-1 font-comic text-sm">
+          Webcam, phone camera, or files (up to {maxFiles} photo{maxFiles === 1 ? "" : "s"} per lot)
+        </p>
         <div className="mt-4 flex flex-wrap justify-center gap-2">
           <button
             type="button"
             className="comic-btn !text-base"
-            onClick={() => cameraRef.current?.click()}
+            onClick={() => void openLiveCamera("environment")}
+            disabled={remaining <= 0}
           >
             Camera
           </button>
@@ -60,12 +109,13 @@ export function PhotoDropzone({ files, onChange }: PhotoDropzoneProps) {
             type="button"
             className="comic-btn-invert !text-base"
             onClick={() => galleryRef.current?.click()}
+            disabled={remaining <= 0}
           >
             Upload files
           </button>
         </div>
         <input
-          ref={cameraRef}
+          ref={nativeCameraRef}
           type="file"
           accept="image/*"
           capture="environment"
@@ -79,7 +129,7 @@ export function PhotoDropzone({ files, onChange }: PhotoDropzoneProps) {
           ref={galleryRef}
           type="file"
           accept="image/*"
-          multiple
+          multiple={maxFiles > 1}
           className="sr-only"
           onChange={(event) => {
             if (event.target.files) merge(event.target.files);
@@ -88,7 +138,7 @@ export function PhotoDropzone({ files, onChange }: PhotoDropzoneProps) {
         />
       </div>
 
-      {previews.length > 0 && (
+      {previews.length > 0 && !hidePreviews && (
         <ul className="grid grid-cols-2 gap-3 sm:grid-cols-4">
           {previews.map((file, index) => (
             <li key={`${file.name}-${index}`} className="relative border-4 border-black bg-white">
@@ -105,6 +155,16 @@ export function PhotoDropzone({ files, onChange }: PhotoDropzoneProps) {
           ))}
         </ul>
       )}
+
+      <CameraCapture
+        open={cameraOpen}
+        remaining={remaining}
+        facing={facing}
+        stream={stream}
+        onCapture={(file) => merge([file])}
+        onClose={closeCamera}
+        onFlip={() => void openLiveCamera(facing === "environment" ? "user" : "environment")}
+      />
     </div>
   );
 }

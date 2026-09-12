@@ -4,30 +4,35 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import { ImageUrlPaste } from "@/components/ImageUrlPaste";
 import { PhotoDropzone } from "@/components/PhotoDropzone";
 import { moneySplit } from "@/lib/commission";
+import { OwnerPicker } from "@/components/OwnerPicker";
+import { HOUSE_CONSIGNOR } from "@/lib/consignors";
 import { collectItemImageUrls } from "@/lib/files";
-import { parsePastedImageUrls } from "@/lib/imageUrls";
+import { requestStudioImage } from "@/lib/studioClient";
+import { listingImages, parsePastedImageUrls } from "@/lib/imageUrls";
 import {
   CATEGORIES,
   DEFAULT_COMMISSION_RATE,
   formatCurrency,
-  type AuctionEvent,
   type LotCategory,
 } from "@/lib/utils";
 
 const categories = CATEGORIES.filter((item): item is LotCategory => item !== "All");
 
 export function AdminAiIntake({
-  events,
   suggestedLotNumber,
+  consignors,
   onPosted,
+  workspace = false,
 }: {
-  events: AuctionEvent[];
   suggestedLotNumber: string;
-  onPosted: (message: string) => Promise<void> | void;
+  consignors: string[];
+  workspace?: boolean;
+  onPosted: (message: string, lot?: { id: string; title: string; lotNumber?: string | null }) => Promise<void> | void;
 }) {
-  const [consignorName, setConsignorName] = useState("House stock");
+  const [consignorName, setConsignorName] = useState(HOUSE_CONSIGNOR);
   const [files, setFiles] = useState<File[]>([]);
   const [imageUrlText, setImageUrlText] = useState("");
+  const [resolvedImageUrls, setResolvedImageUrls] = useState<string[]>([]);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [category, setCategory] = useState<LotCategory>("Oddities");
@@ -36,14 +41,33 @@ export function AdminAiIntake({
   const [marketValue, setMarketValue] = useState("");
   const [commissionPercent, setCommissionPercent] = useState("20");
   const [lotNumber, setLotNumber] = useState(suggestedLotNumber);
-  const [eventId, setEventId] = useState(events[0]?.id ?? "");
   const [error, setError] = useState<string | null>(null);
   const [generating, setGenerating] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [filePreview, setFilePreview] = useState<string | null>(null);
+  const [compsNote, setCompsNote] = useState<string | null>(null);
+  const [studioImageUrl, setStudioImageUrl] = useState<string | null>(null);
 
   useEffect(() => {
     setLotNumber(suggestedLotNumber);
   }, [suggestedLotNumber]);
+
+  useEffect(() => {
+    setResolvedImageUrls([]);
+    setStudioImageUrl(null);
+  }, [files, imageUrlText]);
+  useEffect(() => {
+    const file = files[0];
+    if (!file) {
+      setFilePreview(null);
+      return;
+    }
+    const url = URL.createObjectURL(file);
+    setFilePreview(url);
+    return () => URL.revokeObjectURL(url);
+  }, [files]);
+
+  const workingImage = studioImageUrl || resolvedImageUrls[0] || filePreview;
 
   const commissionRate = Number(commissionPercent) / 100 || DEFAULT_COMMISSION_RATE;
   const start = Number(startingBid) || 0;
@@ -58,15 +82,17 @@ export function AdminAiIntake({
     [start, reserve, market, commissionRate],
   );
 
-  async function autoGenerate() {
+  async function autoGenerate(fromFiles?: File[]) {
     setError(null);
-    if (files.length === 0 && parsePastedImageUrls(imageUrlText).length === 0) {
+    const photos = fromFiles ?? files;
+    if (photos.length === 0 && parsePastedImageUrls(imageUrlText).length === 0) {
       setError("Add a photo or paste an image URL first.");
       return;
     }
     setGenerating(true);
     try {
-      const imageUrls = await collectItemImageUrls(files, imageUrlText, { fallbackDataUrl: true });
+      const imageUrls = await collectItemImageUrls(photos, imageUrlText, { fallbackDataUrl: true });
+      setResolvedImageUrls(imageUrls);
       const response = await fetch("/api/ai-intake", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -77,9 +103,25 @@ export function AdminAiIntake({
       setTitle(String(json.title ?? ""));
       setDescription(String(json.description ?? ""));
       if (json.suggested_starting_bid) setStartingBid(String(json.suggested_starting_bid));
-      if (json.estimated_market_value) {
-        setMarketValue(String(json.estimated_market_value));
-        if (!reservePrice) setReservePrice(String(json.estimated_market_value));
+      if (json.estimated_market_value) setMarketValue(String(json.estimated_market_value));
+      if (json.suggested_reserve) setReservePrice(String(json.suggested_reserve));
+      else if (json.estimated_market_value) {
+        setReservePrice(String(Math.round(Number(json.estimated_market_value) * 0.8)));
+      }
+      setCompsNote(json.comps_note ? String(json.comps_note) : null);
+      try {
+        const studio = await requestStudioImage({
+          imageUrls,
+          title: String(json.title ?? ""),
+          objectType: String(json.object_type ?? ""),
+          materials: Array.isArray(json.materials) ? json.materials.map(String) : [],
+          condition: String(json.condition ?? ""),
+          displaySetting: String(json.display_setting ?? ""),
+        });
+        setStudioImageUrl(studio);
+      } catch (studioErr) {
+        setStudioImageUrl(null);
+        setError(studioErr instanceof Error ? studioErr.message : "Listing photo failed.");
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "AI intake failed");
@@ -92,7 +134,14 @@ export function AdminAiIntake({
     setError(null);
     setSubmitting(true);
     try {
-      const imageUrls = await collectItemImageUrls(files, imageUrlText);
+      if (!title.trim() || !description.trim()) {
+        throw new Error("Generate or fill title and description before posting.");
+      }
+      const warehouse =
+        resolvedImageUrls.length > 0
+          ? resolvedImageUrls
+          : await collectItemImageUrls(files, imageUrlText, { fallbackDataUrl: true });
+      const imageUrls = listingImages(studioImageUrl, warehouse);
       const response = await fetch("/api/admin", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -107,7 +156,6 @@ export function AdminAiIntake({
           commissionRate,
           imageUrls,
           lotNumber,
-          eventId: eventId || undefined,
           postLive,
         }),
       });
@@ -120,10 +168,14 @@ export function AdminAiIntake({
       setMarketValue("");
       setFiles([]);
       setImageUrlText("");
+      setResolvedImageUrls([]);
+      setStudioImageUrl(null);
+      setCompsNote(null);
       await onPosted(
         postLive
-          ? `Posted ${lotNumber} live to the site.`
-          : `Saved ${lotNumber} to inventory (paused).`,
+          ? `Posted ${lotNumber} live. Pick the auction inventory.`
+          : `Saved ${lotNumber}. Pick the auction inventory.`,
+        json.lot,
       );
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not save lot.");
@@ -139,23 +191,48 @@ export function AdminAiIntake({
 
   return (
     <section className="space-y-4">
-      <h2 className="font-display text-3xl">Post inventory with AI</h2>
+      {!workspace && <h2 className="font-display text-3xl">Post inventory with AI</h2>}
       <p className="font-comic text-sm">
-        Same photo + GPT-4o catalog as consignors. Assign a lot # and auction, then save
-        or post live to the public grid.
+        {workspace
+          ? "Upload up to 4 warehouse photos. Generate makes a studio listing shot for live and inventory, then the form clears when you save."
+          : "Upload up to 4 warehouse photos. Generate catalogs them, looks up comps, and builds a studio listing photo."}
       </p>
       <form onSubmit={onSubmit} className="grid gap-6 lg:grid-cols-2">
         <div className="space-y-4 border-4 border-black bg-white p-5 shadow-[6px_6px_0_0_#000]">
-          <label className="block font-comic font-bold">
-            Consignor / house
-            <input
-              value={consignorName}
-              onChange={(e) => setConsignorName(e.target.value)}
-              required
-              className="mt-2 w-full border-4 border-black px-3 py-2 font-normal"
-            />
-          </label>
-          <PhotoDropzone files={files} onChange={setFiles} />
+          {workspace && (
+            <div className="relative min-h-[22rem] overflow-hidden border-4 border-black bg-[#FFF7D1]">
+              {workingImage ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={workingImage}
+                  alt="Listing photo"
+                  className="absolute inset-0 h-full w-full object-contain bg-black"
+                />
+              ) : (
+                <p className="flex h-full min-h-[22rem] items-center justify-center p-6 text-center font-display text-2xl">
+                  Drop warehouse photos, then generate
+                </p>
+              )}
+              {workingImage && (
+                <p className="absolute bottom-2 left-2 border-4 border-black bg-white px-2 py-1 font-comic text-xs">
+                  {studioImageUrl ? "AI listing photo" : "Warehouse photo"}
+                </p>
+              )}
+            </div>
+          )}
+          <OwnerPicker
+            value={consignorName ?? ""}
+            consignors={consignors}
+            onChange={setConsignorName}
+          />
+          <PhotoDropzone
+            files={files}
+            onChange={setFiles}
+            maxFiles={4}
+            onCameraFinished={(photos) => {
+              if (photos.length > 0) void autoGenerate(photos);
+            }}
+          />
           <ImageUrlPaste value={imageUrlText} onChange={setImageUrlText} />
           <button
             type="button"
@@ -163,7 +240,7 @@ export function AdminAiIntake({
             onClick={() => void autoGenerate()}
             disabled={generating}
           >
-            {generating ? "Generating…" : "Auto-Generate Details"}
+            {generating ? "Cataloging + studio photo…" : "Auto-Generate Details"}
           </button>
         </div>
         <div className="space-y-4 border-4 border-black bg-white p-5 shadow-[6px_6px_0_0_#000]">
@@ -211,22 +288,6 @@ export function AdminAiIntake({
               />
             </label>
           </div>
-          <label className="block font-comic font-bold">
-            Auction
-            <select
-              value={eventId}
-              onChange={(e) => setEventId(e.target.value)}
-              className="mt-2 w-full border-4 border-black px-3 py-2 font-normal"
-            >
-              <option value="">Unassigned</option>
-              {events.map((event) => (
-                <option key={event.id} value={event.id}>
-                  {event.auctionNumber ? `${event.auctionNumber} · ` : ""}
-                  {event.name}
-                </option>
-              ))}
-            </select>
-          </label>
           <div className="grid gap-3 sm:grid-cols-2">
             <label className="block font-comic font-bold">
               Starting bid ($)
@@ -261,6 +322,9 @@ export function AdminAiIntake({
               className="mt-2 w-full border-4 border-black px-3 py-2 font-normal"
             />
           </label>
+          {compsNote && (
+            <p className="border-4 border-black bg-[#FFF7D1] p-3 font-comic text-sm">{compsNote}</p>
+          )}
           <label className="block font-comic font-bold">
             House commission ({commissionPercent}%)
             <input

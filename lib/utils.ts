@@ -68,7 +68,7 @@ export type Consignment = {
   status: ConsignmentStatus;
 };
 
-export type PipelineStatus = "pending_approval" | "live" | "sold";
+export type PipelineStatus = "pending_approval" | "scheduled" | "live" | "sold";
 
 export type ConsignorItem = {
   id: string;
@@ -334,11 +334,12 @@ export const DEFAULT_COMMISSION_RATE = 0.2;
 
 export function pipelineLabel(status: PipelineStatus) {
   if (status === "pending_approval") return "Pending approval";
+  if (status === "scheduled") return "Scheduled by DealFinder";
   if (status === "live") return "Live auction";
   return "Sold";
 }
 
 export function consignmentToPipeline(status: ConsignmentStatus): PipelineStatus {
-  if (status === "approved") return "live";
+  if (status === "approved") return "scheduled";
   return "pending_approval";
 }

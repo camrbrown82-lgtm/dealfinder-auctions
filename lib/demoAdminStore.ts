@@ -62,6 +62,12 @@ export function addDemoLot(lot: AuctionLot) {
   return lot;
 }
 
+export function addDemoConsignment(item: Consignment) {
+  const state = getAdminDemo();
+  state.queue.unshift(item);
+  return item;
+}
+
 export function seedDemoLots() {
   const state = getAdminDemo();
   const stamp = Date.now();

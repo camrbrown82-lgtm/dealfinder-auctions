@@ -7,6 +7,8 @@ import { getSupabaseAdmin, isSupabaseConfigured } from "@/lib/supabaseClient";
 import { mapConsignment, mapLot, type ConsignmentRow, type LotRow } from "@/lib/mappers";
 import { buildPayoutItems, buildPayoutReport } from "@/lib/payouts";
 import type { AuctionEvent, AuctionLot, ConsignmentStatus, LotCategory, LotStatus } from "@/lib/utils";
+import { persistPublicImageUrls } from "@/lib/consignmentStorage";
+import { uniqueConsignorNames } from "@/lib/consignors";
 import { uniqueImageUrls } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
@@ -19,18 +21,83 @@ function lotPhotos(urls?: string[]) {
   return { image: images[0], images };
 }
 
+function asEventUuid(value?: string) {
+  if (!value) return null;
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+    value,
+  )
+    ? value
+    : null;
+}
+
+function isMissingColumn(error: { message?: string } | null, column: string) {
+  return Boolean(error?.message && new RegExp(column, "i").test(error.message));
+}
+
+function isUniqueConflict(error: { message?: string } | null) {
+  return Boolean(
+    error?.message && /duplicate|unique|already exists/i.test(error.message),
+  );
+}
+
+async function nextLotNumber(
+  supabase: NonNullable<ReturnType<typeof getSupabaseAdmin>>,
+  fallback: Array<{ lotNumber?: string | null }>,
+) {
+  const { data } = await supabase.from("lots").select("lot_number");
+  const rows = (data ?? []).map((row) => ({ lotNumber: row.lot_number as string | null }));
+  return suggestLotNumber(rows.length ? rows : fallback);
+}
+
+async function insertLotRow(
+  supabase: NonNullable<ReturnType<typeof getSupabaseAdmin>>,
+  insertRow: Record<string, unknown>,
+) {
+  let { data, error } = await supabase.from("lots").insert(insertRow).select("*").single();
+  if (isMissingColumn(error, "image_urls")) {
+    const { image_urls: _unused, ...rest } = insertRow;
+    ({ data, error } = await supabase.from("lots").insert(rest).select("*").single());
+  }
+  if (isMissingColumn(error, "reserve_price")) {
+    const { reserve_price: _reserve, ...rest } = insertRow;
+    ({ data, error } = await supabase.from("lots").insert(rest).select("*").single());
+  }
+  if (isMissingColumn(error, "consignment_id")) {
+    const { consignment_id: _cid, ...rest } = insertRow;
+    ({ data, error } = await supabase.from("lots").insert(rest).select("*").single());
+  }
+  if (isUniqueConflict(error)) {
+    const suffix = crypto.randomUUID().slice(0, 8);
+    ({ data, error } = await supabase
+      .from("lots")
+      .insert({
+        ...insertRow,
+        slug: `${String(insertRow.slug ?? "lot")}-${suffix}`,
+        lot_number: `${String(insertRow.lot_number ?? "LOT")}-${suffix}`,
+      })
+      .select("*")
+      .single());
+  }
+  return { data, error };
+}
+
+function reviewQueue<T extends { status: string }>(items: T[]) {
+  return items.filter((item) => item.status === "pending" || item.status === "held");
+}
+
 function payloadFromDemo() {
   const demo = getAdminDemo();
   stampAuctionNumbers(demo);
   return {
     source: "demo" as const,
-    queue: demo.queue,
+    queue: reviewQueue(demo.queue),
     inventory: demo.inventory.filter((lot) => lot.status !== "removed"),
     events: demo.events,
     suggestedLotNumber: suggestLotNumber(demo.inventory),
     suggestedAuctionNumber: suggestAuctionNumber(demo.events),
     payouts: buildPayoutReport(demo.inventory),
     payoutItems: buildPayoutItems(demo.inventory),
+    consignors: uniqueConsignorNames(demo.queue, demo.inventory),
   };
 }
 
@@ -50,6 +117,18 @@ function mapEvent(row: {
   };
 }
 
+function lotHref(lot: AuctionLot) {
+  return `/auctions/${lot.slug || lot.id}`;
+}
+
+function auctionLabel(event?: AuctionEvent | null, lot?: AuctionLot) {
+  if (event) {
+    return event.auctionNumber ? `${event.auctionNumber} · ${event.name}` : event.name;
+  }
+  if (lot?.auctionNumber) return `Auction ${lot.auctionNumber}`;
+  return "DealFinder warehouse (schedule a sale)";
+}
+
 export async function GET() {
   if (!isAdminSession()) return unauthorized();
 
@@ -64,8 +143,11 @@ export async function GET() {
     supabase.from("auction_events").select("*").order("starts_at", { ascending: true }),
   ]);
 
-  if (queueRes.error || lotsRes.error) {
-    return NextResponse.json(payloadFromDemo());
+  if (queueRes.error) {
+    return NextResponse.json({ error: queueRes.error.message }, { status: 500 });
+  }
+  if (lotsRes.error) {
+    return NextResponse.json({ error: lotsRes.error.message }, { status: 500 });
   }
 
   const events: AuctionEvent[] = (eventsRes.data ?? []).map(mapEvent);
@@ -77,16 +159,18 @@ export async function GET() {
       ...lot,
       auctionNumber: lot.eventId ? numbers.get(lot.eventId) ?? lot.auctionNumber : lot.auctionNumber,
     }));
+  const mappedQueue = (queueRes.data as ConsignmentRow[]).map(mapConsignment);
 
   return NextResponse.json({
     source: "supabase",
-    queue: (queueRes.data as ConsignmentRow[]).map(mapConsignment),
+    queue: reviewQueue(mappedQueue),
     inventory,
     events,
     suggestedLotNumber: suggestLotNumber(inventory),
     suggestedAuctionNumber: suggestAuctionNumber(events),
     payouts: buildPayoutReport(inventory),
     payoutItems: buildPayoutItems(inventory),
+    consignors: uniqueConsignorNames(mappedQueue, inventory),
   });
 }
 
@@ -172,9 +256,8 @@ export async function POST(request: NextRequest) {
     if (!title) {
       return NextResponse.json({ error: "Title is required." }, { status: 400 });
     }
-    const lotNumber = body.lotNumber?.trim() || suggestLotNumber(demo.inventory);
     const starting = Number(body.startingBid) || 0;
-    const { image, images } = lotPhotos(body.imageUrls);
+    const reserve = Number(body.reservePrice) || 0;
     const event = body.eventId
       ? demo.events.find((row) => row.id === body.eventId)
       : undefined;
@@ -182,17 +265,39 @@ export async function POST(request: NextRequest) {
     const endsAt = event?.endsAt ?? new Date(Date.now() + 1000 * 60 * 60 * 24).toISOString();
 
     if (isSupabaseConfigured && supabase) {
+      const { data: existingLots } = await supabase.from("lots").select("lot_number");
+      const lotNumber =
+        body.lotNumber?.trim() ||
+        suggestLotNumber(
+          (existingLots ?? []).map((row) => ({ lotNumber: row.lot_number as string | null })),
+        );
+      let photos = body.imageUrls ?? [];
+      try {
+        photos = await persistPublicImageUrls(supabase, photos);
+      } catch (err) {
+        return NextResponse.json(
+          {
+            error:
+              err instanceof Error
+                ? `Could not save photos: ${err.message}`
+                : "Could not save photos to storage.",
+          },
+          { status: 400 },
+        );
+      }
+      const { image, images } = lotPhotos(photos);
+      const eventId = asEventUuid(body.eventId);
       let eventEnds = endsAt;
-      if (body.eventId) {
+      if (eventId) {
         const { data: dbEvent } = await supabase
           .from("auction_events")
           .select("*")
-          .eq("id", body.eventId)
+          .eq("id", eventId)
           .maybeSingle();
         if (dbEvent?.ends_at) eventEnds = dbEvent.ends_at;
       }
-      const insertRow = {
-          slug: lotNumber.toLowerCase(),
+      const insertRow: Record<string, unknown> = {
+          slug: lotNumber.toLowerCase().replace(/[^a-z0-9-]+/g, "-"),
           title,
           category: body.category ?? "Oddities",
           description: body.description ?? "",
@@ -201,22 +306,42 @@ export async function POST(request: NextRequest) {
           image_urls: images,
           starting_bid: starting,
           current_bid: starting,
+          reserve_price: reserve || null,
           min_increment: 5,
           ends_at: eventEnds,
           status,
-          event_id: body.eventId || null,
+          event_id: eventId,
           lot_number: lotNumber,
         };
       let { data, error } = await supabase.from("lots").insert(insertRow).select("*").single();
-      if (error && /image_urls/i.test(error.message)) {
+      if (isMissingColumn(error, "image_urls")) {
         const { image_urls: _unused, ...withoutGallery } = insertRow;
         ({ data, error } = await supabase.from("lots").insert(withoutGallery).select("*").single());
+      }
+      if (isMissingColumn(error, "reserve_price")) {
+        const { reserve_price: _reserve, ...withoutReserve } = insertRow;
+        ({ data, error } = await supabase.from("lots").insert(withoutReserve).select("*").single());
+      }
+      if (isUniqueConflict(error)) {
+        const suffix = crypto.randomUUID().slice(0, 8);
+        ({ data, error } = await supabase
+          .from("lots")
+          .insert({
+            ...insertRow,
+            slug: `${insertRow.slug}-${suffix}`,
+            lot_number: `${lotNumber}-${suffix}`,
+          })
+          .select("*")
+          .single());
       }
       if (error) {
         return NextResponse.json({ error: error.message }, { status: 400 });
       }
       return NextResponse.json({ ok: true, lot: mapLot(data as LotRow) });
     }
+
+    const lotNumber = body.lotNumber?.trim() || suggestLotNumber(demo.inventory);
+    const { image, images } = lotPhotos(body.imageUrls);
 
     const lot: AuctionLot = {
       id: crypto.randomUUID(),
@@ -286,26 +411,43 @@ export async function PATCH(request: NextRequest) {
       if (body.title != null) item.title = body.title;
       if (body.description != null) item.description = body.description;
       if (body.startingBid != null) item.startingBid = body.startingBid;
+      if (body.consignorName != null) item.consignor = body.consignorName.trim();
       if (body.status) item.status = body.status as ConsignmentStatus;
       if (body.status === "approved") {
         const lotNumber = suggestLotNumber(demo.inventory);
+        const event = body.eventId
+          ? demo.events.find((row) => row.id === body.eventId)
+          : undefined;
         const { image, images } = lotPhotos(item.imageUrls);
         const lot: AuctionLot = {
           id: `lot-${item.id}`,
-          slug: `lot-${item.id}`,
+          slug: lotNumber.toLowerCase(),
           title: item.title,
           category: item.category,
           image,
           images,
           currentBid: item.startingBid ?? 0,
           minIncrement: 5,
-          endsAt: new Date(Date.now() + 1000 * 60 * 60 * 24).toISOString(),
+          endsAt: event?.endsAt ?? new Date(Date.now() + 1000 * 60 * 60 * 24).toISOString(),
           consignor: item.consignor,
           description: item.description ?? "",
           status: "paused",
           lotNumber,
+          startingBid: item.startingBid ?? 0,
+          reservePrice: item.reservePrice ?? null,
         };
+        if (event) applyEventToLot(lot, event);
         addDemoLot(lot);
+        if (!isSupabaseConfigured || !supabase) {
+          return NextResponse.json({
+            ok: true,
+            lot,
+            href: "/live",
+            auctionLabel: auctionLabel(event, lot),
+            saleStartsAt: event?.startsAt ?? null,
+            postedLive: lot.status === "live",
+          });
+        }
       }
     }
 
@@ -314,6 +456,7 @@ export async function PATCH(request: NextRequest) {
       if (body.title != null) updates.title = body.title;
       if (body.description != null) updates.description = body.description;
       if (body.startingBid != null) updates.starting_bid = body.startingBid;
+      if (body.consignorName != null) updates.consignor_name = body.consignorName.trim();
       if (body.status) updates.status = body.status;
       const { data: consignment, error } = await supabase
         .from("consignments")
@@ -327,15 +470,62 @@ export async function PATCH(request: NextRequest) {
       if (body.status === "approved" && consignment) {
         const row = consignment as ConsignmentRow;
         const starting = Number(row.starting_bid ?? row.estimated_low) || 0;
-        const { image, images } = lotPhotos(row.image_urls ?? []);
-        const { data: existing } = await supabase
+        const reserve = Number(row.reserve_price ?? 0);
+        let photos = row.image_urls ?? [];
+        try {
+          photos = await persistPublicImageUrls(supabase, photos);
+        } catch (err) {
+          return NextResponse.json(
+            {
+              error:
+                err instanceof Error
+                  ? `Approved the consignment, but photos failed: ${err.message}`
+                  : "Could not save consignment photos.",
+            },
+            { status: 400 },
+          );
+        }
+        const { image, images } = lotPhotos(photos);
+        const { data: eventRows } = await supabase
+          .from("auction_events")
+          .select("*")
+          .order("starts_at", { ascending: true });
+        const mappedEvents = (eventRows ?? []).map(mapEvent);
+        const event = body.eventId
+          ? mappedEvents.find((row) => row.id === body.eventId)
+          : undefined;
+        const eventId = event ? asEventUuid(event.id) ?? event.id : null;
+        const eventEnds =
+          event?.endsAt ?? new Date(Date.now() + 1000 * 60 * 60 * 24).toISOString();
+        const houseStatus: LotStatus = event
+          ? new Date(event.startsAt).getTime() > Date.now()
+            ? "paused"
+            : "live"
+          : "paused";
+        const { data: existingRows, error: existingError } = await supabase
           .from("lots")
-          .select("id")
+          .select("*")
           .eq("consignment_id", row.id)
-          .maybeSingle();
-        if (!existing) {
-          const insertRow = {
+          .limit(1);
+        if (existingError && !isMissingColumn(existingError, "consignment_id")) {
+          return NextResponse.json({ error: existingError.message }, { status: 400 });
+        }
+        if (existingRows?.length) {
+          const lot = mapLot(existingRows[0] as LotRow);
+          lot.auctionNumber = event?.auctionNumber ?? lot.auctionNumber;
+          return NextResponse.json({
+            ok: true,
+            lot,
+            href: "/live",
+            auctionLabel: auctionLabel(event, lot),
+            saleStartsAt: event?.startsAt ?? null,
+            postedLive: lot.status === "live",
+          });
+        }
+        const lotNumber = await nextLotNumber(supabase, demo.inventory);
+        const insertRow: Record<string, unknown> = {
             consignment_id: row.id,
+            slug: lotNumber.toLowerCase().replace(/[^a-z0-9-]+/g, "-"),
             title: row.title,
             category: row.category,
             description: row.description ?? "",
@@ -344,17 +534,31 @@ export async function PATCH(request: NextRequest) {
             image_urls: images,
             starting_bid: starting,
             current_bid: starting,
+            reserve_price: reserve || null,
             min_increment: 5,
-            ends_at: new Date(Date.now() + 1000 * 60 * 60 * 24).toISOString(),
-            status: "paused" satisfies LotStatus,
-            lot_number: suggestLotNumber(demo.inventory),
+            ends_at: eventEnds,
+            status: houseStatus,
+            event_id: eventId,
+            lot_number: lotNumber,
           };
-          const first = await supabase.from("lots").insert(insertRow);
-          if (first.error && /image_urls/i.test(first.error.message)) {
-            const { image_urls: _unused, ...withoutGallery } = insertRow;
-            await supabase.from("lots").insert(withoutGallery);
+          const { data: lotRow, error: lotError } = await insertLotRow(supabase, insertRow);
+          if (lotError || !lotRow) {
+            return NextResponse.json(
+              { error: lotError?.message || "Could not file this item into warehouse inventory." },
+              { status: 400 },
+            );
           }
-        }
+          const lot = mapLot(lotRow as LotRow);
+          lot.auctionNumber = event?.auctionNumber ?? lot.auctionNumber;
+          lot.eventId = eventId ?? lot.eventId;
+          return NextResponse.json({
+            ok: true,
+            lot,
+            href: "/live",
+            auctionLabel: auctionLabel(event, lot),
+            saleStartsAt: event?.startsAt ?? null,
+            postedLive: houseStatus === "live",
+          });
       }
     }
 
