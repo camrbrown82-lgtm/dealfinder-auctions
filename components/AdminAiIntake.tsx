@@ -11,15 +11,13 @@ import { requestStudioImage } from "@/lib/studioClient";
 import { requestCatalog } from "@/lib/aiIntakeClient";
 import { mergeAiRuns, type AiRun } from "@/lib/aiRuns";
 import { AiFeedback } from "@/components/AiFeedback";
+import { ListingGradeFields } from "@/components/ListingGradeFields";
+import { type ListingGrade } from "@/lib/listingGrade";
 import { listingImages, parsePastedImageUrls } from "@/lib/imageUrls";
 import {
-  CATEGORIES,
   DEFAULT_COMMISSION_RATE,
   formatCurrency,
-  type LotCategory,
 } from "@/lib/utils";
-
-const categories = CATEGORIES.filter((item): item is LotCategory => item !== "All");
 
 export function AdminAiIntake({
   suggestedLotNumber,
@@ -40,7 +38,8 @@ export function AdminAiIntake({
   const [resolvedImageUrls, setResolvedImageUrls] = useState<string[]>([]);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
-  const [category, setCategory] = useState<LotCategory>("Oddities");
+  const [itemDetails, setItemDetails] = useState("");
+  const [listingGrade, setListingGrade] = useState<ListingGrade>("Used");
   const [startingBid, setStartingBid] = useState(String(defaultStartingBid));
   const [startingTouched, setStartingTouched] = useState(false);
   const [reservePrice, setReservePrice] = useState("");
@@ -103,7 +102,10 @@ export function AdminAiIntake({
     }
     setGenerating(true);
     try {
-      const catalog = await requestCatalog(photos, imageUrlText);
+      const catalog = await requestCatalog(photos, imageUrlText, {
+        itemDetails,
+        listingGrade,
+      });
       setResolvedImageUrls(catalog.imageUrls);
       setTitle(String(catalog.title ?? ""));
       setDescription(String(catalog.description ?? ""));
@@ -118,6 +120,8 @@ export function AdminAiIntake({
           objectType: String(catalog.object_type ?? ""),
           materials: Array.isArray(catalog.materials) ? catalog.materials.map(String) : [],
           condition: String(catalog.condition ?? ""),
+          itemDetails,
+          listingGrade,
           displaySetting: String(catalog.display_setting ?? ""),
           photoBrief: String(catalog.photo_brief ?? ""),
         });
@@ -155,7 +159,8 @@ export function AdminAiIntake({
           consignorName,
           title,
           description,
-          category,
+          listingGrade,
+          itemDetails,
           startingBid: start || defaultStartingBid,
           buyNowPrice: reserve,
           reservePrice: reserve,
@@ -179,6 +184,8 @@ export function AdminAiIntake({
       setStudioImageUrl(null);
       setCompsNote(null);
       setAiRun(null);
+      setItemDetails("");
+      setListingGrade("Used");
       await onPosted(
         postLive
           ? `Posted ${lotNumber} live. Pick the auction inventory.`
@@ -242,6 +249,12 @@ export function AdminAiIntake({
             }}
           />
           <ImageUrlPaste value={imageUrlText} onChange={setImageUrlText} />
+          <ListingGradeFields
+            details={itemDetails}
+            grade={listingGrade}
+            onDetails={setItemDetails}
+            onGrade={setListingGrade}
+          />
           <button
             type="button"
             className="comic-btn w-full"
@@ -272,20 +285,6 @@ export function AdminAiIntake({
             />
           </label>
           <div className="grid gap-3 sm:grid-cols-2">
-            <label className="block font-comic font-bold">
-              Category
-              <select
-                value={category}
-                onChange={(e) => setCategory(e.target.value as LotCategory)}
-                className="mt-2 w-full border-4 border-black px-3 py-2 font-normal"
-              >
-                {categories.map((item) => (
-                  <option key={item} value={item}>
-                    {item}
-                  </option>
-                ))}
-              </select>
-            </label>
             <label className="block font-comic font-bold">
               Lot #
               <input

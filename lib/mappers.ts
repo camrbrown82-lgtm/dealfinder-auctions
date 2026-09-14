@@ -1,3 +1,4 @@
+import { listingGradeFromSources } from "@/lib/listingGrade";
 import { uniqueImageUrls, type AuctionLot, type Consignment, type LotCategory, type LotStatus } from "@/lib/utils";
 
 export type LotRow = {
@@ -20,6 +21,8 @@ export type LotRow = {
   starting_bid?: number | string | null;
   reserve_price?: number | string | null;
   buy_now_price?: number | string | null;
+  listing_grade?: string | null;
+  item_details?: string | null;
 };
 
 export type ConsignmentRow = {
@@ -28,6 +31,7 @@ export type ConsignmentRow = {
   title: string;
   category: LotCategory;
   condition: string | null;
+  listing_grade?: string | null;
   description: string | null;
   notes: string | null;
   estimated_low: number | string | null;
@@ -62,6 +66,8 @@ export function mapLot(row: LotRow): AuctionLot {
     buyNowPrice: Number(row.buy_now_price ?? row.reserve_price ?? 0) || null,
     eventId: row.event_id ?? null,
     lotNumber: row.lot_number ?? null,
+    listingGrade: listingGradeFromSources(row.listing_grade, row.description),
+    itemDetails: row.item_details ?? null,
   };
 }
 
@@ -72,6 +78,7 @@ export function mapConsignment(row: ConsignmentRow): Consignment {
     title: row.title,
     category: row.category,
     condition: row.condition,
+    listingGrade: listingGradeFromSources(row.listing_grade ?? row.condition, row.description),
     description: row.description,
     notes: row.notes,
     estimatedLow: row.estimated_low === null ? null : Number(row.estimated_low),

@@ -13,6 +13,8 @@ import { requestCatalog } from "@/lib/aiIntakeClient";
 import { parseApiJson } from "@/lib/apiJson";
 import { requestStudioImage } from "@/lib/studioClient";
 import { mergeAiRuns, type AiRun } from "@/lib/aiRuns";
+import { ListingGradeFields } from "@/components/ListingGradeFields";
+import { type ListingGrade } from "@/lib/listingGrade";
 import {
   DEFAULT_COMMISSION_RATE,
   formatCurrency,
@@ -42,6 +44,8 @@ export default function ConsignorPage() {
   const [studioImageUrl, setStudioImageUrl] = useState<string | null>(null);
   const [aiRun, setAiRun] = useState<AiRun | null>(null);
   const [termsOpen, setTermsOpen] = useState(false);
+  const [itemDetails, setItemDetails] = useState("");
+  const [listingGrade, setListingGrade] = useState<ListingGrade>("Used");
 
   const commissionRate = Number(commissionPercent) / 100 || DEFAULT_COMMISSION_RATE;
   const buyNow = Number(buyNowPrice) || 0;
@@ -111,7 +115,10 @@ export default function ConsignorPage() {
 
     setGenerating(true);
     try {
-      const catalog = await requestCatalog(photos, imageUrlText);
+      const catalog = await requestCatalog(photos, imageUrlText, {
+        itemDetails,
+        listingGrade,
+      });
       setResolvedImageUrls(catalog.imageUrls);
       setTitle(String(catalog.title ?? ""));
       setDescription(String(catalog.description ?? ""));
@@ -129,6 +136,8 @@ export default function ConsignorPage() {
           objectType: String(catalog.object_type ?? ""),
           materials: Array.isArray(catalog.materials) ? catalog.materials.map(String) : [],
           condition: String(catalog.condition ?? ""),
+          itemDetails,
+          listingGrade,
           displaySetting: String(catalog.display_setting ?? ""),
           photoBrief: String(catalog.photo_brief ?? ""),
         });
@@ -170,6 +179,8 @@ export default function ConsignorPage() {
           buyNowPrice: buyNow,
           commissionRate,
           estimatedMarketValue: market,
+          listingGrade,
+          itemDetails,
           imageUrls,
           termsAccepted: true,
         }),
@@ -192,6 +203,8 @@ export default function ConsignorPage() {
       setCompsNote(null);
       setStudioImageUrl(null);
       setAiRun(null);
+      setItemDetails("");
+      setListingGrade("Used");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Submit failed");
     } finally {
@@ -239,6 +252,12 @@ export default function ConsignorPage() {
             }}
           />
           <ImageUrlPaste value={imageUrlText} onChange={setImageUrlText} />
+          <ListingGradeFields
+            details={itemDetails}
+            grade={listingGrade}
+            onDetails={setItemDetails}
+            onGrade={setListingGrade}
+          />
           <button
             type="button"
             className="comic-btn w-full"

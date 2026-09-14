@@ -8,6 +8,8 @@ export async function requestStudioImage(payload: {
   objectType?: string;
   materials?: string[];
   condition?: string;
+  itemDetails?: string;
+  listingGrade?: string;
   displaySetting?: string;
   photoBrief?: string;
 }) {
@@ -23,6 +25,8 @@ export async function requestStudioImage(payload: {
         objectType: payload.objectType,
         materials: payload.materials,
         condition: payload.condition,
+        itemDetails: payload.itemDetails,
+        listingGrade: payload.listingGrade,
         displaySetting: payload.displaySetting,
         photoBrief: payload.photoBrief,
       }),
@@ -32,6 +36,8 @@ export async function requestStudioImage(payload: {
     form.set("title", payload.title);
     if (payload.objectType) form.set("objectType", payload.objectType);
     if (payload.condition) form.set("condition", payload.condition);
+    if (payload.itemDetails) form.set("itemDetails", payload.itemDetails);
+    if (payload.listingGrade) form.set("listingGrade", payload.listingGrade);
     if (payload.displaySetting) form.set("displaySetting", payload.displaySetting);
     if (payload.photoBrief) form.set("photoBrief", payload.photoBrief);
     for (const material of payload.materials ?? []) form.append("materials", material);

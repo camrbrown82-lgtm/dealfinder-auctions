@@ -9,6 +9,7 @@ import { listSettlementArchives, listSettlementInvoices } from "@/lib/settlement
 import { demoSettlementArchives, demoSettlementInvoices } from "@/lib/demoSettlementStore";
 import { getSupabaseAdmin, isSupabaseConfigured } from "@/lib/supabaseClient";
 import { mapConsignment, mapLot, type ConsignmentRow, type LotRow } from "@/lib/mappers";
+import { listingGradeOf } from "@/lib/listingGrade";
 import type { AuctionEvent, AuctionLot, Consignment } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
@@ -124,14 +125,14 @@ export async function GET() {
     {
       name: "Inventory",
       rows: [
-        ["Lot #", "Title", "Status", "Auction #", "Consignor", "Category", "Current bid", "Buy now", "High bidder", "Ends"],
+        ["Lot #", "Title", "Status", "Auction #", "Consignor", "Condition", "Current bid", "Buy now", "High bidder", "Ends"],
         ...inventory.map((lot) => [
           lot.lotNumber ?? "",
           lot.title,
           lot.status ?? "",
           lot.auctionNumber ?? "",
           lot.consignor,
-          lot.category,
+          listingGradeOf(lot),
           lot.currentBid,
           lot.buyNowPrice ?? lot.reservePrice ?? "",
           lot.highBidder ?? "",
@@ -233,12 +234,12 @@ export async function GET() {
     {
       name: "Review queue",
       rows: [
-        ["Status", "Consignor", "Title", "Category", "Buy now"],
+        ["Status", "Consignor", "Title", "Condition", "Buy now"],
         ...queue.map((item) => [
           item.status,
           item.consignor,
           item.title,
-          item.category,
+          item.listingGrade ?? item.condition ?? "",
           item.buyNowPrice ?? item.reservePrice ?? 0,
         ]),
       ],

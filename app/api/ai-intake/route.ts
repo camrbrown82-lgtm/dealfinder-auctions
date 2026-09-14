@@ -4,6 +4,7 @@ import { priceFromMarketComps } from "@/lib/marketComps";
 import { identifyLotProduct } from "@/lib/identifyProduct";
 import { catalogTitle, resolveModel } from "@/lib/lotIdentity";
 import { readItemLabels } from "@/lib/readItemLabels";
+import { parseListingGrade } from "@/lib/listingGrade";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
@@ -14,7 +15,8 @@ Product identity must be repeatable: the same object photographed twice must get
 - Transcribe logos and printed model text exactly. visible_text is the source of truth.
 - Do NOT guess a model, generation, SKU, or revision (e.g. DualShock 3 vs 4 vs 5) unless that exact string is readable on the item.
 - Title: specific auction catalog line: maker + product name + confirmed part/model code + color/finish if visible. Example: "Sony DualSense Wireless Controller CFI-ZCT1W White". Never a vague "game controller" or "item in photo".
-- Description: 4–6 auction sentences: what it is, color/finish, visible features (ports, analog sticks, cable), printed model/part numbers from labels, accessories included in the photos, and condition. Do not narrate the room or the snapshot.
+- Description: 4–6 auction sentences: what it is, color/finish, visible features (ports, analog sticks, cable), printed model/part numbers from labels, accessories included in the photos, size/specs from staff notes, and condition. Do not narrate the room or the snapshot.
+- Honor staff notes (size, extras, defects) and the listing grade (Used, New, or Issues). If Issues, name the problems. If New, say it appears unused/new in box only when the notes or photos support that.
 - display_setting: a real catalog scene for this object (not a blank paper sweep). Lamp on a side table, vinyl on a shelf, jewelry on linen, controller on a media console, etc.
 - photo_brief: how to place THIS exact object into that scene.
 
@@ -45,7 +47,10 @@ function asStringList(value: unknown): string[] {
     .slice(0, 40);
 }
 
-function composeDescription(parsed: Record<string, unknown>, extras?: { maker?: string; model?: string; color?: string }) {
+function composeDescription(
+  parsed: Record<string, unknown>,
+  extras?: { maker?: string; model?: string; color?: string; itemDetails?: string; listingGrade?: string },
+) {
   const objectType = String(parsed.object_type ?? "").trim();
   const materials = asStringList(parsed.materials);
   const condition = String(parsed.condition ?? "").trim();
@@ -54,6 +59,8 @@ function composeDescription(parsed: Record<string, unknown>, extras?: { maker?: 
   const color = String(extras?.color ?? parsed.color ?? "").trim();
   const maker = String(extras?.maker ?? parsed.maker ?? "").trim();
   const model = String(extras?.model ?? parsed.model ?? "").trim();
+  const itemDetails = String(extras?.itemDetails ?? "").trim();
+  const listingGrade = String(extras?.listingGrade ?? "").trim();
   let description = String(parsed.description ?? "").trim();
 
   if (!description || description.split(/\s+/).length < 28) {
@@ -64,12 +71,20 @@ function composeDescription(parsed: Record<string, unknown>, extras?: { maker?: 
       materials.length ? `Visible materials: ${materials.join(", ")}.` : "",
       included.length ? `Included in the photos: ${included.join(", ")}.` : "",
       visibleText.length ? `Printed markings: ${visibleText.slice(0, 8).join("; ")}.` : "",
+      itemDetails ? `Seller notes: ${itemDetails}.` : "",
+      listingGrade ? `Listed as ${listingGrade}.` : "",
       condition ? `Condition: ${condition}.` : "",
     ].filter(Boolean);
     description = parts.join(" ");
   } else {
     if (visibleText.length && !visibleText.some((text) => description.includes(text))) {
       description += ` Printed markings: ${visibleText.slice(0, 8).join("; ")}.`;
+    }
+    if (itemDetails && !description.toLowerCase().includes(itemDetails.toLowerCase().slice(0, 24))) {
+      description += ` Seller notes: ${itemDetails}.`;
+    }
+    if (listingGrade && !description.toLowerCase().includes(listingGrade.toLowerCase())) {
+      description += ` Listed as ${listingGrade}.`;
     }
     if (condition && !description.toLowerCase().includes("condition")) {
       description += ` Condition: ${condition}.`;
@@ -79,13 +94,22 @@ function composeDescription(parsed: Record<string, unknown>, extras?: { maker?: 
   return description.trim();
 }
 
-async function collectImageUrls(request: NextRequest): Promise<string[]> {
+async function collectIntake(request: NextRequest) {
   const contentType = request.headers.get("content-type") ?? "";
 
   if (contentType.includes("application/json")) {
-    const body = (await request.json()) as { imageUrls?: unknown; photoUrls?: unknown };
+    const body = (await request.json()) as {
+      imageUrls?: unknown;
+      photoUrls?: unknown;
+      itemDetails?: unknown;
+      listingGrade?: unknown;
+    };
     const list = body.imageUrls ?? body.photoUrls ?? [];
-    return Array.isArray(list) ? list.map(String).filter(Boolean) : [];
+    return {
+      imageUrls: Array.isArray(list) ? list.map(String).filter(Boolean) : [],
+      itemDetails: String(body.itemDetails ?? "").trim(),
+      listingGrade: parseListingGrade(body.listingGrade),
+    };
   }
 
   const form = await request.formData();
@@ -107,7 +131,11 @@ async function collectImageUrls(request: NextRequest): Promise<string[]> {
     }),
   );
 
-  return [...fromFields, ...fromFiles].slice(0, 4);
+  return {
+    imageUrls: [...fromFields, ...fromFiles].slice(0, 4),
+    itemDetails: String(form.get("itemDetails") ?? "").trim(),
+    listingGrade: parseListingGrade(form.get("listingGrade")),
+  };
 }
 
 export async function POST(request: NextRequest) {
@@ -119,7 +147,10 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const imageUrls = await collectImageUrls(request);
+  const intake = await collectIntake(request);
+  const imageUrls = intake.imageUrls;
+  const itemDetails = intake.itemDetails;
+  const listingGrade = intake.listingGrade;
   if (imageUrls.length === 0) {
     return NextResponse.json(
       { error: "Provide at least one photo URL in imageUrls (or upload images)." },
@@ -155,7 +186,7 @@ export async function POST(request: NextRequest) {
           content: [
             {
               type: "text",
-              text: `Read every label. ${labelBlock}\nName the lot from those markings. Do not guess a generation that is not printed.`,
+              text: `Read every label. ${labelBlock}\nListing grade: ${listingGrade}.\nStaff/consignor notes: ${itemDetails || "none"}.\nName the lot from those markings plus the notes. Do not guess a generation that is not printed.`,
             },
             ...imageUrls.map((url) => ({
               type: "image_url" as const,
@@ -201,7 +232,7 @@ export async function POST(request: NextRequest) {
     catalogTitle({ maker, model, objectType, color }) ||
     String(parsed.title ?? "").trim() ||
     "Untitled lot";
-  let description = composeDescription(parsed, { maker, model, color });
+  let description = composeDescription(parsed, { maker, model, color, itemDetails, listingGrade });
   let displaySetting = String(parsed.display_setting ?? "").trim();
   let photoBrief = String(parsed.photo_brief ?? "").trim();
   const identifyIds: string[] = [];
@@ -213,6 +244,8 @@ export async function POST(request: NextRequest) {
       visibleText,
       materials: asStringList(parsed.materials),
       condition: String(parsed.condition ?? "").trim(),
+      itemDetails,
+      listingGrade,
       uncertainties: asStringList(parsed.uncertainties),
     });
     if (identified) {
@@ -229,11 +262,14 @@ export async function POST(request: NextRequest) {
           ? named
           : built || named || title;
       if (identified.description && identified.description.split(/\s+/).length >= 28) {
-        description = identified.description;
+        description = composeDescription(
+          { ...parsed, description: identified.description },
+          { maker, model, color, itemDetails, listingGrade },
+        );
       } else {
         description = composeDescription(
           { ...parsed, description: identified.description || parsed.description },
-          { maker, model, color },
+          { maker, model, color, itemDetails, listingGrade },
         );
       }
       if (identified.displaySetting) displaySetting = identified.displaySetting;
@@ -245,7 +281,7 @@ export async function POST(request: NextRequest) {
 
   model = resolveModel(model, visibleText);
   title = catalogTitle({ maker, model, objectType, color }) || title;
-  description = composeDescription({ ...parsed, description }, { maker, model, color });
+  description = composeDescription({ ...parsed, description }, { maker, model, color, itemDetails, listingGrade });
 
   let pricing = {
     estimated_market_value: 0,
@@ -261,7 +297,7 @@ export async function POST(request: NextRequest) {
       model,
       objectType,
       visibleText,
-      condition: String(parsed.condition ?? "").trim(),
+      condition: [listingGrade, itemDetails, String(parsed.condition ?? "").trim()].filter(Boolean).join(". "),
       uncertainties: asStringList(parsed.uncertainties),
     });
   } catch {
@@ -277,7 +313,7 @@ export async function POST(request: NextRequest) {
     description,
     object_type: objectType,
     materials: asStringList(parsed.materials),
-    condition: String(parsed.condition ?? "").trim(),
+    condition: [listingGrade, itemDetails, String(parsed.condition ?? "").trim()].filter(Boolean).join(". "),
     display_setting: displaySetting,
     photo_brief: photoBrief,
     suggested_starting_bid: 0,

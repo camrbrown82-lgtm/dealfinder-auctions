@@ -23,7 +23,11 @@ function isHttpUrl(value: string) {
   return /^https?:\/\//i.test(value);
 }
 
-export async function requestCatalog(files: File[], pasted: string): Promise<CatalogResult> {
+export async function requestCatalog(
+  files: File[],
+  pasted: string,
+  extras?: { itemDetails?: string; listingGrade?: string },
+): Promise<CatalogResult> {
   const photos = await compressImageFiles(files);
   const fromPaste = parsePastedImageUrls(pasted);
   let imageUrls = [...fromPaste];
@@ -41,12 +45,18 @@ export async function requestCatalog(files: File[], pasted: string): Promise<Cat
     response = await fetch("/api/ai-intake", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ imageUrls }),
+      body: JSON.stringify({
+        imageUrls,
+        itemDetails: extras?.itemDetails ?? "",
+        listingGrade: extras?.listingGrade ?? "Used",
+      }),
     });
   } else {
     const form = new FormData();
     for (const url of fromPaste) form.append("imageUrls", url);
     for (const file of photos) form.append("images", file);
+    if (extras?.itemDetails) form.set("itemDetails", extras.itemDetails);
+    form.set("listingGrade", extras?.listingGrade ?? "Used");
     response = await fetch("/api/ai-intake", { method: "POST", body: form });
   }
 

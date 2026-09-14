@@ -15,6 +15,8 @@ async function readStudioBody(request: NextRequest) {
       objectType?: string;
       materials?: unknown;
       condition?: string;
+      itemDetails?: string;
+      listingGrade?: string;
       displaySetting?: string;
       photoBrief?: string;
     };
@@ -24,6 +26,8 @@ async function readStudioBody(request: NextRequest) {
       objectType: body.objectType,
       materials: Array.isArray(body.materials) ? body.materials.map(String) : [],
       condition: body.condition,
+      itemDetails: String(body.itemDetails ?? ""),
+      listingGrade: String(body.listingGrade ?? ""),
       displaySetting: body.displaySetting,
       photoBrief: body.photoBrief,
     };
@@ -48,6 +52,8 @@ async function readStudioBody(request: NextRequest) {
     objectType: String(form.get("objectType") ?? ""),
     materials: form.getAll("materials").map(String).filter(Boolean),
     condition: String(form.get("condition") ?? ""),
+    itemDetails: String(form.get("itemDetails") ?? ""),
+    listingGrade: String(form.get("listingGrade") ?? ""),
     displaySetting: String(form.get("displaySetting") ?? ""),
     photoBrief: String(form.get("photoBrief") ?? ""),
   };
@@ -71,6 +77,8 @@ export async function POST(request: NextRequest) {
       objectType: body.objectType?.trim() || "",
       materials: Array.isArray(body.materials) ? body.materials.map(String) : [],
       condition: body.condition?.trim() || "",
+      itemDetails: body.itemDetails?.trim() || "",
+      listingGrade: body.listingGrade?.trim() || "",
       displaySetting: body.displaySetting?.trim() || "",
       photoBrief: body.photoBrief?.trim() || "",
     });

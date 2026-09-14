@@ -1,3 +1,5 @@
+import type { ListingGrade } from "@/lib/listingGrade";
+
 export type AuctionCategory =
   | "All"
   | "Comics"
@@ -34,6 +36,8 @@ export type AuctionLot = {
   reservePrice?: number | null;
   buyNowPrice?: number | null;
   commissionRate?: number | null;
+  listingGrade?: ListingGrade;
+  itemDetails?: string | null;
 };
 
 export type AuctionEvent = {
@@ -69,6 +73,7 @@ export type Consignment = {
   commissionRate?: number | null;
   imageUrls: string[];
   status: ConsignmentStatus;
+  listingGrade?: ListingGrade;
 };
 
 export type PipelineStatus = "pending_approval" | "scheduled" | "live" | "sold";
@@ -318,6 +323,7 @@ export function searchLots(lots: AuctionLot[], query: string) {
       lot.title,
       lot.description,
       lot.category,
+      lot.listingGrade,
       lot.consignor,
       lot.lotNumber,
       lot.auctionNumber,

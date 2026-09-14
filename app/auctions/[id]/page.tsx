@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { InterestBeacon } from "@/components/InterestBeacon";
 import { AuctionRoom } from "@/components/AuctionRoom";
 import { fetchLot } from "@/lib/lots";
+import { listingGradeOf } from "@/lib/listingGrade";
 import { lotImages } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
@@ -24,7 +25,7 @@ export default async function AuctionLotPage({ params }: PageProps) {
           ← Back to live lots
         </Link>
         <p className="mt-3 inline-block border-4 border-black bg-white px-3 py-1 font-display text-brand-red shadow-comic-red-sm">
-          {lot.category}
+          {listingGradeOf(lot)}
         </p>
         {(lot.lotNumber || lot.auctionNumber) && (
           <p className="mt-2 font-comic text-sm">

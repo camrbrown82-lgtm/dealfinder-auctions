@@ -13,6 +13,7 @@ import { LiveMonitor } from "@/components/admin/LiveMonitor";
 import { weeklySaleName, weeklySaleTimes } from "@/lib/auctionCalendar";
 import { DEFAULT_HOUSE_STARTING_BID } from "@/lib/houseDesk";
 import { lotNeedsRelist } from "@/lib/settlements";
+import { listingGradeOf } from "@/lib/listingGrade";
 import type { AuctionLot } from "@/lib/utils";
 
 export default function AdminPage() {
@@ -67,7 +68,7 @@ export default function AdminPage() {
       (lot) =>
         lot.title.toLowerCase().includes(q) ||
         lot.consignor.toLowerCase().includes(q) ||
-        lot.category.toLowerCase().includes(q) ||
+        listingGradeOf(lot).toLowerCase().includes(q) ||
         (lot.lotNumber ?? "").toLowerCase().includes(q) ||
         (lot.auctionNumber ?? "").toLowerCase().includes(q) ||
         lot.description.toLowerCase().includes(q),

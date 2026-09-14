@@ -40,6 +40,8 @@ export async function identifyLotProduct(
     visibleText: string[];
     materials: string[];
     condition: string;
+    itemDetails?: string;
+    listingGrade?: string;
     uncertainties: string[];
   },
 ): Promise<ProductIdentity | null> {
@@ -51,13 +53,15 @@ Vision clues:
 - Readable markings (use these for model): ${clues.visibleText.join("; ") || "none"}
 - Materials: ${clues.materials.join(", ") || "unspecified"}
 - Condition: ${clues.condition || "unknown"}
+- Listing grade: ${clues.listingGrade || "Used"}
+- Staff/consignor notes (size, extras, defects): ${clues.itemDetails || "none"}
 - Uncertain: ${clues.uncertainties.join("; ") || "none"}
 
 Rules:
 - maker: brand from a visible logo/wordmark only.
 - model: copy printed model text only. Empty string if the model/generation is not readable. Do not choose DualShock 3/4/5, Slim vs Pro, etc. from memory or similar listings.
 - title: specific catalog line with maker, product, confirmed part/model code, and color if visible. Not vague ("controller", "electronic item").
-- description: 4–6 auction sentences covering identity, color/finish, visible features, printed markings, what is included, and condition. Not a snapshot walkthrough.
+- description: 4–6 auction sentences covering identity, color/finish, visible features, printed markings, what is included, size from notes, and condition. Use the listing grade. Not a snapshot walkthrough.
 - display_setting: a lived-in catalog scene that fits the object (lamp on a wooden side table, not a blank sweep).
 - photo_brief: place this exact object in that scene.
 

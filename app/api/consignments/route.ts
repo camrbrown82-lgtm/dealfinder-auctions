@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { parseListingGrade, withListedGrade } from "@/lib/listingGrade";
 import { addDemoConsignment } from "@/lib/demoAdminStore";
 import { startingBidFromBuyNow } from "@/lib/buyNow";
 import { getSupabaseAdmin, isSupabaseConfigured } from "@/lib/supabaseClient";
@@ -103,6 +104,9 @@ export async function POST(request: NextRequest) {
     estimatedMarketValue?: number;
     imageUrls?: string[];
     termsAccepted?: boolean;
+    listingGrade?: string;
+    itemDetails?: string;
+    notes?: string;
   };
 
   const consignorName = body.consignorName?.trim();
@@ -144,11 +148,17 @@ export async function POST(request: NextRequest) {
   }
   const starting = Number(body.startingBid) || startingBidFromBuyNow(buyNow);
 
+  const listingGrade = parseListingGrade(body.listingGrade);
+  const itemDetails = String(body.itemDetails ?? body.notes ?? "").trim();
+
   const payload = {
     consignor_name: consignorName,
     title,
     category: body.category ?? "Oddities",
-    description: body.description ?? "",
+    listing_grade: listingGrade,
+    condition: listingGrade,
+    notes: itemDetails || null,
+    description: withListedGrade(body.description ?? "", listingGrade),
     estimated_high: body.estimatedMarketValue ?? null,
     estimated_low: starting,
     starting_bid: starting,
@@ -184,11 +194,18 @@ export async function POST(request: NextRequest) {
       commissionRate: payload.commission_rate,
       imageUrls,
       status: "pending",
+      listingGrade,
+      notes: itemDetails || null,
+      condition: listingGrade,
     });
     return NextResponse.json({ source: "demo", item });
   }
 
   let { data, error } = await supabase.from("consignments").insert(payload).select("id").single();
+  if (error && /listing_grade/i.test(error.message)) {
+    const { listing_grade: _g, ...rest } = payload;
+    ({ data, error } = await supabase.from("consignments").insert(rest).select("id").single());
+  }
   if (error && /buy_now_price/i.test(error.message)) {
     const { buy_now_price: _b, ...rest } = payload;
     ({ data, error } = await supabase.from("consignments").insert(rest).select("id").single());

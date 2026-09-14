@@ -11,6 +11,7 @@ import {
   readInterest,
   type InterestProfile,
 } from "@/lib/interest";
+import { listingGradeOf } from "@/lib/listingGrade";
 import { formatCurrency, isLotOpen, lotImages, type AuctionLot } from "@/lib/utils";
 import { defaultSaleId, lotsForSale, type SaleWindowItem } from "@/lib/liveSales";
 
@@ -88,7 +89,7 @@ export function LiveGrid({
           const haystack = [
             lot.title,
             lot.description,
-            lot.category,
+            listingGradeOf(lot),
             lot.consignor,
             lot.lotNumber,
             lot.auctionNumber,
@@ -147,7 +148,7 @@ export function LiveGrid({
               type="search"
               value={query}
               onChange={(event) => setQuery(event.target.value)}
-              placeholder="Title, category, lot #, consignor…"
+              placeholder="Title, Used/New/Issues, lot #, consignor…"
               className="comic-field mt-1 w-full px-3 py-2 text-lg"
               autoComplete="off"
             />
@@ -255,7 +256,7 @@ function LotCard({
             fit="cover"
           />
           <span className="absolute left-2 top-2 z-20 border-4 border-brand-ink bg-brand-red px-2 py-0.5 font-display text-xs text-brand-paper">
-            {lot.category}
+            {listingGradeOf(lot)}
           </span>
           {forYou && (
             <span className="absolute right-2 top-2 z-20 border-4 border-brand-ink bg-white px-2 py-0.5 font-display text-[10px] text-brand-ink shadow-comic-red-sm">

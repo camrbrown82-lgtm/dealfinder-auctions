@@ -3,6 +3,8 @@ export type StudioFacts = {
   objectType: string;
   materials: string[];
   condition: string;
+  itemDetails?: string;
+  listingGrade?: string;
   displaySetting?: string;
   photoBrief?: string;
 };
@@ -84,6 +86,8 @@ function studioPrompt(facts: StudioFacts) {
   const setting = catalogScene(facts);
   const materials = facts.materials.length ? `Keep these materials unchanged: ${facts.materials.join(", ")}.` : "";
   const condition = facts.condition ? `Keep this exact wear and condition: ${facts.condition}.` : "";
+  const grade = facts.listingGrade ? `Listing grade is ${facts.listingGrade}.` : "";
+  const notes = facts.itemDetails ? `Honor these physical notes (size/defects/extras): ${facts.itemDetails}.` : "";
   return [
     "Edit the submitted photograph. The lot in the output MUST be the same physical object as in the input — same silhouette, colors, labels, scratches, and proportions.",
     "Do not invent, swap, or 'improve' the item into a different model or lookalike.",
@@ -93,6 +97,8 @@ function studioPrompt(facts: StudioFacts) {
     "No people, no hands, no text, no watermark, no logo.",
     materials,
     condition,
+    grade,
+    notes,
   ]
     .filter(Boolean)
     .join(" ");
