@@ -88,7 +88,7 @@ export async function POST(request: NextRequest) {
   }
 
   const supabase = getSupabaseAdmin();
-  if (isSupabaseConfigured && supabase && isUuid(lotId)) {
+  if (isSupabaseConfigured && supabase) {
     return persistSupabase(supabase, lotId, bidder, session.id, session.email, body);
   }
 
@@ -213,14 +213,20 @@ async function persistSupabase(
   email: string,
   body: { mode?: "live" | "absentee" | "buy_now"; amount?: number; maxAmount?: number },
 ) {
-  const { data: lot, error: lotError } = await supabase
+  let { data: lot, error: lotError } = await supabase
     .from("lots")
     .select("*")
     .eq("id", lotId)
-    .single();
+    .maybeSingle();
+  if (!lot && !isUuid(lotId)) {
+    const bySlug = await supabase.from("lots").select("*").eq("slug", lotId).limit(1).maybeSingle();
+    lot = bySlug.data;
+    lotError = bySlug.error;
+  }
   if (lotError || !lot) {
     return NextResponse.json({ error: lotError?.message || "Lot not found" }, { status: 404 });
   }
+  const resolvedId = String(lot.id);
   const end = parseLotEndMs(lot.ends_at as string);
   const sold = lot.status === "ended" && Boolean(lot.high_bidder || lot.high_bidder_id);
   if (lot.status === "removed" || (sold && Number.isFinite(end) && end <= Date.now())) {
@@ -232,7 +238,7 @@ async function persistSupabase(
     patch.ends_at = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
   }
   if (Object.keys(patch).length) {
-    const { error: openError } = await supabase.from("lots").update(patch).eq("id", lotId);
+    const { error: openError } = await supabase.from("lots").update(patch).eq("id", resolvedId);
     if (openError) {
       return NextResponse.json({ error: openError.message }, { status: 400 });
     }
@@ -242,7 +248,7 @@ async function persistSupabase(
   const { data: absenteeRows } = await supabase
     .from("absentee_bids")
     .select("bidder_name, max_amount")
-    .eq("lot_id", lotId);
+    .eq("lot_id", resolvedId);
 
   const clock: AuctionClock = {
     currentBid: Number(lot.current_bid),
@@ -265,12 +271,12 @@ async function persistSupabase(
       const { error: stageError } = await supabase
         .from("lots")
         .update({ current_bid: buyNow - increment })
-        .eq("id", lotId);
+        .eq("id", resolvedId);
       if (stageError) {
         return NextResponse.json({ error: stageError.message }, { status: 400 });
       }
       const { error: bidError } = await supabase.from("bids").insert({
-        lot_id: lotId,
+        lot_id: resolvedId,
         bidder_name: bidder,
         bidder_id: bidderId,
         bidder_email: email,
@@ -290,7 +296,7 @@ async function persistSupabase(
           status: "ended",
           ends_at: endedAt,
         })
-        .eq("id", lotId);
+        .eq("id", resolvedId);
       return NextResponse.json({
         currentBid: buyNow,
         endsAt: endedAt,
@@ -314,7 +320,7 @@ async function persistSupabase(
     if (body.mode === "absentee") {
       await supabase.from("absentee_bids").upsert(
         {
-          lot_id: lotId,
+          lot_id: resolvedId,
           bidder_name: bidder,
           max_amount: Number(body.maxAmount),
         },
@@ -324,7 +330,7 @@ async function persistSupabase(
 
     for (const event of result.events) {
       let { error } = await supabase.from("bids").insert({
-        lot_id: lotId,
+        lot_id: resolvedId,
         bidder_name: event.bidder,
         bidder_id: event.bidder === bidder ? bidderId : null,
         bidder_email: event.bidder === bidder ? email : null,
@@ -333,7 +339,7 @@ async function persistSupabase(
       });
       if (error && /kind|bidder_id|bidder_email/i.test(error.message)) {
         ({ error } = await supabase.from("bids").insert({
-          lot_id: lotId,
+          lot_id: resolvedId,
           bidder_name: event.bidder,
           amount: event.amount,
         }));
@@ -351,7 +357,7 @@ async function persistSupabase(
         high_bidder_id: result.state.highBidder === bidder ? bidderId : null,
         ends_at: result.state.endsAt,
       })
-      .eq("id", lotId);
+      .eq("id", resolvedId);
 
     return NextResponse.json({
       currentBid: result.state.currentBid,
