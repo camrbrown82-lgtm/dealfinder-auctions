@@ -118,11 +118,6 @@ export default function ConsignorPage() {
       if (catalog.estimated_market_value) {
         setMarketValue(String(catalog.estimated_market_value));
       }
-      if (catalog.suggested_reserve) {
-        setBuyNowPrice(String(catalog.suggested_reserve));
-      } else if (catalog.estimated_market_value) {
-        setBuyNowPrice(String(Math.round(Number(catalog.estimated_market_value) * 0.8)));
-      }
       setCompsNote(catalog.comps_note ? String(catalog.comps_note) : null);
       let run = catalog.ai ?? null;
       setNotice("Catalog ready. Creating the AI listing photo…");
@@ -276,6 +271,7 @@ export default function ConsignorPage() {
           </label>
           <label className="block font-comic font-bold">
             Buy now ($)
+            <span className="block font-normal">You set this — Auto-Generate does not fill buy now.</span>
             <input
               type="number"
               min={1}

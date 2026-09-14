@@ -108,10 +108,6 @@ export function AdminAiIntake({
       setTitle(String(catalog.title ?? ""));
       setDescription(String(catalog.description ?? ""));
       if (catalog.estimated_market_value) setMarketValue(String(catalog.estimated_market_value));
-      if (catalog.suggested_reserve) setReservePrice(String(catalog.suggested_reserve));
-      else if (catalog.estimated_market_value) {
-        setReservePrice(String(Math.round(Number(catalog.estimated_market_value) * 0.8)));
-      }
       setCompsNote(catalog.comps_note ? String(catalog.comps_note) : null);
       let run = catalog.ai ?? null;
       try {
@@ -317,6 +313,7 @@ export function AdminAiIntake({
             </label>
             <label className="block font-comic font-bold">
               Buy now ($)
+              <span className="block font-normal">You set this — Auto-Generate does not fill buy now.</span>
               <input
                 type="number"
                 min={0}

@@ -4,6 +4,7 @@ export type ProductIdentity = {
   identifiedAs: string;
   maker: string;
   model: string;
+  color: string;
   displaySetting: string;
   photoBrief: string;
   openaiId: string;
@@ -55,15 +56,16 @@ Vision clues:
 Rules:
 - maker: brand from a visible logo/wordmark only.
 - model: copy printed model text only. Empty string if the model/generation is not readable. Do not choose DualShock 3/4/5, Slim vs Pro, etc. from memory or similar listings.
-- title: maker + model (if confirmed) + object type. No snapshot language.
-- description: the object and condition, not the photograph.
-- Ignore serial numbers and barcodes for naming.
+- title: specific catalog line with maker, product, confirmed part/model code, and color if visible. Not vague ("controller", "electronic item").
+- description: 4–6 auction sentences covering identity, color/finish, visible features, printed markings, what is included, and condition. Not a snapshot walkthrough.
+- Ignore serial numbers and barcodes for naming. Do not set prices.
 
 Return JSON only:
 {
   "identified_as": string,
   "maker": string,
   "model": string,
+  "color": string,
   "title": string,
   "description": string,
   "display_setting": string,
@@ -103,6 +105,7 @@ Return JSON only:
     identifiedAs: String(parsed.identified_as ?? "").trim(),
     maker: String(parsed.maker ?? "").trim(),
     model: String(parsed.model ?? "").trim(),
+    color: String(parsed.color ?? "").trim(),
     displaySetting: String(parsed.display_setting ?? "").trim(),
     photoBrief: String(parsed.photo_brief ?? "").trim(),
     openaiId: typeof json.id === "string" ? json.id : "",

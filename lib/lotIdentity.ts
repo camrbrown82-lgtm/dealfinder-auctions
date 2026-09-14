@@ -63,14 +63,16 @@ export function confirmedModel(claimed: string, visibleText: string[]) {
   return ok ? model : "";
 }
 
-export function catalogTitle(parts: { maker?: string; model?: string; objectType?: string }) {
+export function catalogTitle(parts: { maker?: string; model?: string; objectType?: string; color?: string }) {
   const maker = normalizeMarking(parts.maker ?? "");
   const model = normalizeMarking(parts.model ?? "");
   const objectType = normalizeMarking(parts.objectType ?? "");
+  const color = normalizeMarking(parts.color ?? "");
   const bits: string[] = [];
   if (maker) bits.push(maker);
-  if (model && !maker.toLowerCase().includes(model.toLowerCase())) bits.push(model);
+  if (model && !bits.join(" ").toLowerCase().includes(model.toLowerCase())) bits.push(model);
   if (objectType && !bits.join(" ").toLowerCase().includes(objectType.toLowerCase())) bits.push(objectType);
+  if (color && !bits.join(" ").toLowerCase().includes(color.toLowerCase())) bits.push(color);
   return bits.join(" ").replace(/\s+/g, " ").trim();
 }
 

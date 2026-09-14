@@ -13,11 +13,9 @@ const SYSTEM = `You are an auction cataloger identifying ONE consigned lot from 
 Product identity must be repeatable: the same object photographed twice must get the same maker/model.
 - Transcribe logos and printed model text exactly. visible_text is the source of truth.
 - Do NOT guess a model, generation, SKU, or revision (e.g. DualShock 3 vs 4 vs 5) unless that exact string is readable on the item.
-- If maker is clear from a logo but model is not printed, leave model out of the title. Title = maker + object type only.
-- Ignore rooms, tables, hands, clutter, and serial/barcode numbers for naming.
-- Description: what the object is and visible condition. Do not narrate the snapshot.
-- display_setting: studio set that suits this object type.
-- Do not estimate prices.
+- Title: specific auction catalog line: maker + product name + confirmed part/model code + color/finish if visible. Example: "Sony DualSense Wireless Controller CFI-ZCT1W White". Never a vague "game controller" or "item in photo".
+- Description: 4–6 auction sentences: what it is, color/finish, visible features (ports, analog sticks, cable), printed model/part numbers from labels, accessories included in the photos, and condition. Do not narrate the room or the snapshot.
+- Do not suggest buy-now, reserve, or starting prices. House and consignor set those.
 
 Return JSON with:
 {
@@ -28,6 +26,8 @@ Return JSON with:
   "materials": string[],
   "condition": string,
   "uncertainties": string[],
+  "color": string,
+  "included": string[],
   "title": string,
   "description": string,
   "display_setting": string,
@@ -44,33 +44,35 @@ function asStringList(value: unknown): string[] {
     .slice(0, 40);
 }
 
-function composeDescription(parsed: Record<string, unknown>): string {
-  let description = String(parsed.description ?? "").trim();
+function composeDescription(parsed: Record<string, unknown>, extras?: { maker?: string; model?: string; color?: string }) {
   const objectType = String(parsed.object_type ?? "").trim();
   const materials = asStringList(parsed.materials);
   const condition = String(parsed.condition ?? "").trim();
   const visibleText = asStringList(parsed.visible_text);
-  const uncertainties = asStringList(parsed.uncertainties);
+  const included = asStringList(parsed.included);
+  const color = String(extras?.color ?? parsed.color ?? "").trim();
+  const maker = String(extras?.maker ?? parsed.maker ?? "").trim();
+  const model = String(extras?.model ?? parsed.model ?? "").trim();
+  let description = String(parsed.description ?? "").trim();
 
-  if (!description) {
+  if (!description || description.split(/\s+/).length < 28) {
+    const who = [maker, model, color, objectType].filter(Boolean).join(" ");
     const parts = [
-      objectType ? `Appears to be a ${objectType}.` : "",
+      who ? `${who} offered as one auction lot.` : "",
+      color && !who.toLowerCase().includes(color.toLowerCase()) ? `Finish appears ${color}.` : "",
       materials.length ? `Visible materials: ${materials.join(", ")}.` : "",
-      visibleText.length ? `Readable markings: ${visibleText.join("; ")}.` : "",
+      included.length ? `Included in the photos: ${included.join(", ")}.` : "",
+      visibleText.length ? `Printed markings: ${visibleText.slice(0, 8).join("; ")}.` : "",
       condition ? `Condition: ${condition}.` : "",
     ].filter(Boolean);
     description = parts.join(" ");
   } else {
     if (visibleText.length && !visibleText.some((text) => description.includes(text))) {
-      description += ` Readable markings: ${visibleText.join("; ")}.`;
+      description += ` Printed markings: ${visibleText.slice(0, 8).join("; ")}.`;
     }
     if (condition && !description.toLowerCase().includes("condition")) {
       description += ` Condition: ${condition}.`;
     }
-  }
-
-  if (uncertainties.length) {
-    description += ` Unconfirmed from photos: ${uncertainties.join("; ")}.`;
   }
 
   return description.trim();
@@ -193,8 +195,12 @@ export async function POST(request: NextRequest) {
   let maker = String(parsed.maker ?? labels.brandLines[0] ?? "").trim();
   let model = resolveModel(String(parsed.model ?? ""), visibleText);
   let objectType = String(parsed.object_type ?? "").trim();
-  let title = catalogTitle({ maker, model, objectType }) || String(parsed.title ?? "").trim() || "Untitled lot";
-  let description = composeDescription(parsed);
+  let color = String(parsed.color ?? "").trim();
+  let title =
+    catalogTitle({ maker, model, objectType, color }) ||
+    String(parsed.title ?? "").trim() ||
+    "Untitled lot";
+  let description = composeDescription(parsed, { maker, model, color });
   let displaySetting = String(parsed.display_setting ?? "").trim();
   let photoBrief = String(parsed.photo_brief ?? "").trim();
   const identifyIds: string[] = [];
@@ -211,9 +217,24 @@ export async function POST(request: NextRequest) {
     if (identified) {
       if (identified.openaiId) identifyIds.push(identified.openaiId);
       if (identified.maker) maker = identified.maker;
+      if (identified.color) color = identified.color;
       model = resolveModel(identified.model, visibleText);
-      title = catalogTitle({ maker, model, objectType }) || identified.title || title;
-      if (identified.description) description = identified.description;
+      const built = catalogTitle({ maker, model, objectType, color });
+      const named = identified.title.trim();
+      const modelHint = model.split(/\s+/).pop()?.toLowerCase() ?? "";
+      title =
+        named.length > (built?.length ?? 0) &&
+        (!modelHint || named.toLowerCase().includes(modelHint) || named.toLowerCase().includes(maker.toLowerCase()))
+          ? named
+          : built || named || title;
+      if (identified.description && identified.description.split(/\s+/).length >= 28) {
+        description = identified.description;
+      } else {
+        description = composeDescription(
+          { ...parsed, description: identified.description || parsed.description },
+          { maker, model, color },
+        );
+      }
       if (identified.displaySetting) displaySetting = identified.displaySetting;
       if (identified.photoBrief) photoBrief = identified.photoBrief;
     }
@@ -221,9 +242,9 @@ export async function POST(request: NextRequest) {
     /* keep first-pass catalog */
   }
 
-  title = catalogTitle({ maker, model, objectType }) || title;
   model = resolveModel(model, visibleText);
-  title = catalogTitle({ maker, model, objectType }) || title;
+  title = catalogTitle({ maker, model, objectType, color }) || title;
+  description = composeDescription({ ...parsed, description }, { maker, model, color });
 
   let pricing = {
     estimated_market_value: 0,
@@ -258,9 +279,9 @@ export async function POST(request: NextRequest) {
     condition: String(parsed.condition ?? "").trim(),
     display_setting: displaySetting,
     photo_brief: photoBrief,
-    suggested_starting_bid: pricing.suggested_starting_bid,
+    suggested_starting_bid: 0,
     estimated_market_value: pricing.estimated_market_value,
-    suggested_reserve: pricing.suggested_reserve,
+    suggested_reserve: 0,
     comps_note: pricing.comps_note,
     ai: {
       ids: [labels.id, completion.id, ...identifyIds, ...(pricing.openaiIds ?? [])].filter(Boolean),
