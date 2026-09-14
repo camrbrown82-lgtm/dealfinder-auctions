@@ -58,7 +58,8 @@ Rules:
 - model: copy printed model text only. Empty string if the model/generation is not readable. Do not choose DualShock 3/4/5, Slim vs Pro, etc. from memory or similar listings.
 - title: specific catalog line with maker, product, confirmed part/model code, and color if visible. Not vague ("controller", "electronic item").
 - description: 4–6 auction sentences covering identity, color/finish, visible features, printed markings, what is included, and condition. Not a snapshot walkthrough.
-- Ignore serial numbers and barcodes for naming. Do not set prices.
+- display_setting: a lived-in catalog scene that fits the object (lamp on a wooden side table, not a blank sweep).
+- photo_brief: place this exact object in that scene.
 
 Return JSON only:
 {

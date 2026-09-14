@@ -15,7 +15,8 @@ Product identity must be repeatable: the same object photographed twice must get
 - Do NOT guess a model, generation, SKU, or revision (e.g. DualShock 3 vs 4 vs 5) unless that exact string is readable on the item.
 - Title: specific auction catalog line: maker + product name + confirmed part/model code + color/finish if visible. Example: "Sony DualSense Wireless Controller CFI-ZCT1W White". Never a vague "game controller" or "item in photo".
 - Description: 4–6 auction sentences: what it is, color/finish, visible features (ports, analog sticks, cable), printed model/part numbers from labels, accessories included in the photos, and condition. Do not narrate the room or the snapshot.
-- Do not suggest buy-now, reserve, or starting prices. House and consignor set those.
+- display_setting: a real catalog scene for this object (not a blank paper sweep). Lamp on a side table, vinyl on a shelf, jewelry on linen, controller on a media console, etc.
+- photo_brief: how to place THIS exact object into that scene.
 
 Return JSON with:
 {

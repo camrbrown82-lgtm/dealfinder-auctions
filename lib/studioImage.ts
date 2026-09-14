@@ -46,19 +46,51 @@ async function loadImageBlob(url: string): Promise<{ blob: Blob; name: string } 
   }
 }
 
+function catalogScene(facts: StudioFacts) {
+  const hay = `${facts.objectType} ${facts.title} ${facts.displaySetting ?? ""}`.toLowerCase();
+  if (/lamp|sconce|lantern|light fixture/.test(hay)) {
+    return "standing on a stained wooden side table against a warm plaster wall, lamp shade fully visible";
+  }
+  if (/chair|stool|bench/.test(hay)) {
+    return "in a simple interior corner on a hardwood floor with a plain wall behind";
+  }
+  if (/vinyl|record|album|lp\b/.test(hay)) {
+    return "upright on a mid-century record shelf with a hint of living-room depth";
+  }
+  if (/guitar|ukulele|violin|instrument/.test(hay)) {
+    return "resting on a wood bench with a softly blurred studio wall";
+  }
+  if (/controller|gamepad|console|joystick/.test(hay)) {
+    return "on a dark media console with a softly blurred living room behind it";
+  }
+  if (/jewelry|ring|necklace|watch|bracelet/.test(hay)) {
+    return "on a linen jewelry tray on a small vanity table";
+  }
+  if (/mug|cup|bowl|plate|vase|ceramic|glass/.test(hay)) {
+    return "on a rustic wood table with a simple kitchen wall behind";
+  }
+  if (/book|magazine/.test(hay)) {
+    return "stacked on a walnut side table";
+  }
+  if (/toy|figure|doll/.test(hay)) {
+    return "on a painted wood toy shelf";
+  }
+  const requested = facts.displaySetting?.trim() ?? "";
+  if (requested && !/sweep|paper|blank|seamless|cream/i.test(requested)) return requested;
+  return "on a simple furniture surface that matches how this object is used, with a shallow-depth interior background — not a blank paper sweep";
+}
+
 function studioPrompt(facts: StudioFacts) {
-  const setting =
-    facts.displaySetting?.trim() ||
-    (facts.objectType
-      ? `a clean catalog set that suits a ${facts.objectType}`
-      : "a cream paper photography sweep");
+  const setting = catalogScene(facts);
   const materials = facts.materials.length ? `Keep these materials unchanged: ${facts.materials.join(", ")}.` : "";
   const condition = facts.condition ? `Keep this exact wear and condition: ${facts.condition}.` : "";
   return [
-    "Edit the submitted photograph. The lot in the output MUST be the same physical object as in the input — same silhouette, colors, buttons, ports, labels, scratches, and proportions.",
-    "Do not invent, swap, or 'improve' the item into a different model, brand, or generic lookalike.",
-    `Only replace the background, table, hands, and clutter with ${setting}. Soft even catalog lighting. Center the same item. Full object in frame.`,
-    "No people, no extra props, no text, no watermark, no logo.",
+    "Edit the submitted photograph. The lot in the output MUST be the same physical object as in the input — same silhouette, colors, labels, scratches, and proportions.",
+    "Do not invent, swap, or 'improve' the item into a different model or lookalike.",
+    `Place that exact object into this catalog scene: ${setting}.`,
+    "Build a real environment (table, shelf, or surface plus a tasteful room behind). Do not use a blank paper sweep or empty studio cyc.",
+    "Soft even catalog lighting. Center the object. Full item in frame. Supporting furniture is required; keep extra props minimal and behind/under the lot.",
+    "No people, no hands, no text, no watermark, no logo.",
     materials,
     condition,
   ]

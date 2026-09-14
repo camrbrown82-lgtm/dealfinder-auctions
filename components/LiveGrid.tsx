@@ -234,21 +234,25 @@ function LotCard({
   const compact = view >= 6;
   const wide = view <= 2;
   const sizes = `(max-width: 1023px) 100vw, ${Math.round(100 / view)}vw`;
+  const photoFrame =
+    view === 1
+      ? "aspect-[4/3] lg:aspect-[16/10] lg:max-h-64"
+      : view === 2
+        ? "aspect-[4/3] lg:max-h-52"
+        : view <= 4
+          ? "aspect-[4/3] lg:aspect-square lg:max-h-44"
+          : "aspect-[4/3] lg:aspect-square";
 
   return (
     <article className="comic-panel flex min-w-0 shrink-0 basis-full snap-center flex-col overflow-hidden lg:h-auto lg:basis-auto">
       <Link href={href} className="block shrink-0">
-        <div
-          className={`relative h-40 w-full overflow-hidden border-b-4 border-brand-ink bg-brand-cream ${
-            wide ? "lg:h-44" : compact ? "lg:h-24" : "lg:h-32"
-          }`}
-        >
+        <div className={`relative w-full overflow-hidden border-b-4 border-brand-ink bg-brand-cream ${photoFrame}`}>
           <LotGallery
             images={lotImages(lot)}
             alt={lot.title}
             variant={compact ? "compact" : "card"}
             sizes={sizes}
-            fit="contain"
+            fit="cover"
           />
           <span className="absolute left-2 top-2 z-20 border-4 border-brand-ink bg-brand-red px-2 py-0.5 font-display text-xs text-brand-paper">
             {lot.category}
