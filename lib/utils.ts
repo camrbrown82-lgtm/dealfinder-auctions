@@ -353,7 +353,7 @@ export function formatCountdown(endsAt: string, now = Date.now()) {
 }
 
 export function isLotOpen(lot: Pick<AuctionLot, "endsAt" | "status">, now = Date.now()) {
-  if (lot.status === "ended" || lot.status === "removed" || lot.status === "draft") return false;
+  if (lot.status === "removed") return false;
   return new Date(lot.endsAt).getTime() > now;
 }
 

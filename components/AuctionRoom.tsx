@@ -10,7 +10,6 @@ import { buyNowPriceOf, canBuyNow } from "@/lib/buyNow";
 import { recordInterest } from "@/lib/interest";
 import {
   formatCurrency,
-  isLotOpen,
   type AuctionLot,
 } from "@/lib/utils";
 
@@ -25,7 +24,11 @@ export function AuctionRoom({ lot }: { lot: AuctionLot }) {
   const [currentBid, setCurrentBid] = useState(lot.currentBid);
   const [endsAt, setEndsAt] = useState(lot.endsAt);
   const [highBidder, setHighBidder] = useState(lot.highBidder ?? null);
-  const [status, setStatus] = useState(lot.status ?? "live");
+  const [status, setStatus] = useState(
+    lot.status !== "removed" && new Date(lot.endsAt).getTime() > Date.now()
+      ? "live"
+      : (lot.status ?? "live"),
+  );
   const [extended, setExtended] = useState(false);
   const [mode, setMode] = useState<"live" | "absentee">("live");
   const [maxAmount, setMaxAmount] = useState("");
@@ -44,7 +47,7 @@ export function AuctionRoom({ lot }: { lot: AuctionLot }) {
     [currentBid, lot.minIncrement],
   );
   const buyNow = buyNowPriceOf(lot);
-  const open = isLotOpen({ endsAt, status }, now);
+  const open = status !== "removed" && new Date(endsAt).getTime() > now;
   const showBuyNow = open && canBuyNow(currentBid, buyNow);
 
   useEffect(() => {
@@ -120,7 +123,10 @@ export function AuctionRoom({ lot }: { lot: AuctionLot }) {
             });
           }
           if (next.high_bidder !== undefined) setHighBidder(next.high_bidder);
-          if (next.status) setStatus(next.status);
+          if (next.status && next.status !== "ended") setStatus(next.status);
+          if (next.status === "ended" && next.ends_at && new Date(next.ends_at).getTime() <= Date.now()) {
+            setStatus("ended");
+          }
         },
       )
       .subscribe();

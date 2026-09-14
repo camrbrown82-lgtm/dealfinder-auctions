@@ -5,6 +5,14 @@ import { getAdminDemo, stampAuctionNumbers } from "@/lib/demoAdminStore";
 import { MOCK_LOTS, getLotById, filterLots, lotImages, type AuctionLot } from "@/lib/utils";
 import type { AuctionEvent } from "@/lib/utils";
 
+async function openActiveFloors(supabase: NonNullable<ReturnType<typeof getSupabaseAdmin>>) {
+  await supabase
+    .from("lots")
+    .update({ status: "live" })
+    .gt("ends_at", new Date().toISOString())
+    .in("status", ["paused", "draft", "ended"]);
+}
+
 function withGallery(lot: AuctionLot): AuctionLot {
   if (lotImages(lot).length > 1) return lot;
   const mock = MOCK_LOTS.find(
@@ -54,6 +62,8 @@ export async function fetchLiveCatalog(): Promise<{ lots: AuctionLot[]; events: 
     return { lots: catalogLots(), events: demo.events };
   }
 
+  await openActiveFloors(supabase);
+
   const [{ data, error }, eventsRes] = await Promise.all([
     supabase.from("lots").select("*").order("ends_at", { ascending: true }),
     supabase.from("auction_events").select("*").order("starts_at", { ascending: true }),
@@ -97,6 +107,14 @@ export async function fetchLot(id: string): Promise<AuctionLot | undefined> {
         : supabase.from("lots").select("*").eq("slug", id);
       const { data, error } = await query.maybeSingle();
       if (!error && data) {
+        if (
+          data.status !== "removed" &&
+          data.status !== "live" &&
+          new Date(data.ends_at).getTime() > Date.now()
+        ) {
+          await supabase.from("lots").update({ status: "live" }).eq("id", data.id);
+          data.status = "live";
+        }
         lot = withGallery(mapLot(data as LotRow));
         if (lot.eventId) {
           const { data: event } = await supabase

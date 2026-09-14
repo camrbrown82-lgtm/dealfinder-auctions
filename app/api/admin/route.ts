@@ -374,7 +374,7 @@ export async function POST(request: NextRequest) {
     const event = body.eventId
       ? demo.events.find((row) => row.id === body.eventId)
       : undefined;
-    const status: LotStatus = body.postLive ? "live" : "paused";
+    const status: LotStatus = "live";
     const endsAt = event?.endsAt ?? new Date(Date.now() + 1000 * 60 * 60 * 24).toISOString();
 
     if (isSupabaseConfigured && supabase) {
@@ -640,11 +640,7 @@ export async function PATCH(request: NextRequest) {
         const eventId = event ? asEventUuid(event.id) ?? event.id : null;
         const eventEnds =
           event?.endsAt ?? new Date(Date.now() + 1000 * 60 * 60 * 24).toISOString();
-        const houseStatus: LotStatus = event
-          ? new Date(event.startsAt).getTime() > Date.now()
-            ? "paused"
-            : "live"
-          : "paused";
+        const houseStatus: LotStatus = "live";
         const { data: existingRows, error: existingError } = await supabase
           .from("lots")
           .select("*")

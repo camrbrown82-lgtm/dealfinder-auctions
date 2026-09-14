@@ -47,8 +47,5 @@ export function lotsForSale(lots: AuctionLot[], sale: SaleWindowItem | undefined
   if (sale.kind === "past") {
     return inSale.filter((lot) => lot.status === "ended");
   }
-  if (sale.kind === "upcoming") {
-    return inSale.filter((lot) => lot.status !== "ended");
-  }
-  return inSale.filter((lot) => lot.status === "live");
+  return inSale.filter((lot) => lot.status !== "ended" && lot.status !== "removed");
 }

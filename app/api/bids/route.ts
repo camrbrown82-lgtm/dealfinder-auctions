@@ -105,10 +105,10 @@ async function persistDemo(
   if (!demo) {
     return NextResponse.json({ error: "Lot not found" }, { status: 404 });
   }
-  if ((demo.status === "ended" || demo.status === "removed") || new Date(demo.endsAt).getTime() <= Date.now()) {
+  if (demo.status === "removed" || new Date(demo.endsAt).getTime() <= Date.now()) {
     return NextResponse.json({ error: "Lot is not open for bidding" }, { status: 400 });
   }
-  if (demo.status === "paused" || demo.status === "draft") {
+  if (demo.status !== "live") {
     demo.status = "live";
   }
 
@@ -218,7 +218,7 @@ async function persistSupabase(
   if (lotError || !lot) {
     return NextResponse.json({ error: lotError?.message || "Lot not found" }, { status: 404 });
   }
-  if (lot.status === "ended" || lot.status === "removed" || new Date(lot.ends_at).getTime() <= Date.now()) {
+  if (lot.status === "removed" || new Date(lot.ends_at).getTime() <= Date.now()) {
     return NextResponse.json({ error: "Lot is not open for bidding" }, { status: 400 });
   }
   if (lot.status !== "live") {
