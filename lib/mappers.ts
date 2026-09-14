@@ -1,11 +1,8 @@
 import { listingGradeFromSources } from "@/lib/listingGrade";
-import { uniqueImageUrls, type AuctionLot, type Consignment, type LotCategory, type LotStatus } from "@/lib/utils";
+import { parseLotEndMs, uniqueImageUrls, type AuctionLot, type Consignment, type LotCategory, type LotStatus } from "@/lib/utils";
 
 function isoEndsAt(value: string | null | undefined) {
-  if (!value) return new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
-  const raw = String(value).trim();
-  const normalized = raw.includes("T") ? raw : raw.replace(" ", "T");
-  const ms = Date.parse(normalized);
+  const ms = parseLotEndMs(value);
   if (Number.isFinite(ms)) return new Date(ms).toISOString();
   return new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
 }
@@ -64,7 +61,7 @@ export function mapLot(row: LotRow): AuctionLot {
     images,
     currentBid: Number(row.current_bid),
     minIncrement: Number(row.min_increment),
-    endsAt: row.ends_at,
+    endsAt: isoEndsAt(row.ends_at),
     consignor: row.consignor_name,
     description: row.description,
     status: row.status,

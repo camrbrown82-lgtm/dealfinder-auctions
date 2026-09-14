@@ -26,11 +26,16 @@ export async function GET(request: NextRequest) {
   }
 
   const supabase = getSupabaseAdmin();
-  if (isSupabaseConfigured && supabase && isUuid(lotId)) {
+  if (isSupabaseConfigured && supabase) {
+    let resolvedId = lotId;
+    if (!isUuid(lotId)) {
+      const bySlug = await supabase.from("lots").select("id").eq("slug", lotId).limit(1).maybeSingle();
+      if (bySlug.data?.id) resolvedId = String(bySlug.data.id);
+    }
     const primary = await supabase
       .from("bids")
       .select("bidder_name, amount, kind, created_at")
-      .eq("lot_id", lotId)
+      .eq("lot_id", resolvedId)
       .order("created_at", { ascending: false })
       .limit(12);
     const fallback =
@@ -38,7 +43,7 @@ export async function GET(request: NextRequest) {
         ? await supabase
             .from("bids")
             .select("bidder_name, amount, created_at")
-            .eq("lot_id", lotId)
+            .eq("lot_id", resolvedId)
             .order("created_at", { ascending: false })
             .limit(12)
         : primary;
@@ -110,6 +115,10 @@ async function persistDemo(
     return NextResponse.json({ error: "Lot is not open for bidding" }, { status: 400 });
   }
   const demoEnd = parseLotEndMs(demo.endsAt);
+  const demoSold = demo.status === "ended" && Boolean(demo.highBidder || demo.highBidderId);
+  if (demoSold && Number.isFinite(demoEnd) && demoEnd <= Date.now()) {
+    return NextResponse.json({ error: "Lot is not open for bidding" }, { status: 400 });
+  }
   if (!Number.isFinite(demoEnd) || demoEnd <= Date.now()) {
     demo.endsAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
   }

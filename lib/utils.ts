@@ -341,10 +341,12 @@ export function parseLotEndMs(endsAt: string | null | undefined, now = Date.now(
   if (endsAt == null || endsAt === "") return NaN;
   const raw = String(endsAt).trim();
   const asNumber = Number(raw);
-  if (Number.isFinite(asNumber) && asNumber > 0) {
+  if (Number.isFinite(asNumber) && asNumber > 0 && !/[T:\-]/.test(raw)) {
     return asNumber < 1e12 ? asNumber * 1000 : asNumber;
   }
-  const normalized = raw.includes("T") ? raw : raw.replace(" ", "T");
+  let normalized = raw.includes("T") ? raw : raw.replace(" ", "T");
+  normalized = normalized.replace(/([+-]\d{2})$/, "$1:00");
+  normalized = normalized.replace(/([+-]\d{2})(\d{2})$/, "$1:$2");
   const ms = Date.parse(normalized);
   if (Number.isFinite(ms)) return ms;
   const fallback = Date.parse(raw);

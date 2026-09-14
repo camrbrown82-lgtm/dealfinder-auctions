@@ -1,3 +1,5 @@
+import { parseLotEndMs } from "@/lib/utils";
+
 export const ANTI_SNIPE_WINDOW_MS = 2 * 60 * 1000;
 export const ANTI_SNIPE_EXTEND_MS = 2 * 60 * 1000;
 
@@ -27,7 +29,7 @@ export function nextLiveAmount(currentBid: number, minIncrement: number) {
 }
 
 export function extendIfSniping(endsAt: string, now = Date.now()) {
-  const remaining = new Date(endsAt).getTime() - now;
+  const remaining = parseLotEndMs(endsAt, now) - now;
   if (remaining > 0 && remaining <= ANTI_SNIPE_WINDOW_MS) {
     return {
       endsAt: new Date(now + ANTI_SNIPE_EXTEND_MS).toISOString(),

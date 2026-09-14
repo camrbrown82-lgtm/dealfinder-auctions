@@ -26,7 +26,9 @@ export function AuctionRoom({ lot }: { lot: AuctionLot }) {
   const [currentBid, setCurrentBid] = useState(lot.currentBid);
   const [endsAt, setEndsAt] = useState(lot.endsAt);
   const [highBidder, setHighBidder] = useState(lot.highBidder ?? null);
-  const [status, setStatus] = useState(lot.status === "removed" ? "removed" : "live");
+  const [status, setStatus] = useState<AuctionLot["status"]>(
+    lot.status === "removed" ? "removed" : "live",
+  );
   const [extended, setExtended] = useState(false);
   const [mode, setMode] = useState<"live" | "absentee">("live");
   const [maxAmount, setMaxAmount] = useState("");
@@ -71,9 +73,24 @@ export function AuctionRoom({ lot }: { lot: AuctionLot }) {
           : null;
         if (!row) return;
         if (row.currentBid != null) setCurrentBid(Number(row.currentBid));
-        if (row.endsAt) setEndsAt(String(row.endsAt));
+        if (row.endsAt) {
+          const nextEnd = parseLotEndMs(String(row.endsAt));
+          setEndsAt((prev) => {
+            const prevEnd = parseLotEndMs(prev);
+            if (
+              Number.isFinite(prevEnd) &&
+              prevEnd > Date.now() &&
+              Number.isFinite(nextEnd) &&
+              nextEnd <= Date.now()
+            ) {
+              return prev;
+            }
+            return String(row.endsAt);
+          });
+        }
         if (row.highBidder !== undefined) setHighBidder(row.highBidder);
-        if (row.status && row.status !== "removed") setStatus("live");
+        if (row.status === "removed") setStatus("removed");
+        else if (row.status) setStatus("live");
       })
       .catch(() => undefined);
   }, [lot.id]);
