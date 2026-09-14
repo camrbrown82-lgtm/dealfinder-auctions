@@ -1,6 +1,15 @@
 import { listingGradeFromSources } from "@/lib/listingGrade";
 import { uniqueImageUrls, type AuctionLot, type Consignment, type LotCategory, type LotStatus } from "@/lib/utils";
 
+function isoEndsAt(value: string | null | undefined) {
+  if (!value) return new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+  const raw = String(value).trim();
+  const normalized = raw.includes("T") ? raw : raw.replace(" ", "T");
+  const ms = Date.parse(normalized);
+  if (Number.isFinite(ms)) return new Date(ms).toISOString();
+  return new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+}
+
 export type LotRow = {
   id: string;
   slug: string | null;

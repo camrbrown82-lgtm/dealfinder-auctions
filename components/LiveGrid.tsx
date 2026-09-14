@@ -249,9 +249,9 @@ function LotCard({
   forYou: boolean;
   view: ViewCount;
 }) {
-  const href = `/auctions/${lot.slug || lot.id}`;
+  const href = `/auctions/${lot.id}`;
   const open = isLotOpen(lot);
-  const bidLabel = lot.status === "ended" || !open ? "View lot" : "Bid now";
+  const bidLabel = open ? "Bid now" : "View lot";
   const catalogLine = [lot.auctionNumber, lot.lotNumber].filter(Boolean).join(" · ");
   const compact = view >= 6;
   const sizes =

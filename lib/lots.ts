@@ -2,15 +2,35 @@ import { getSupabaseAdmin, isSupabaseConfigured } from "@/lib/supabaseClient";
 import { mapLot, type LotRow } from "@/lib/mappers";
 import { getDemoLot } from "@/lib/demoAuctionStore";
 import { getAdminDemo, stampAuctionNumbers } from "@/lib/demoAdminStore";
-import { MOCK_LOTS, getLotById, filterLots, lotImages, type AuctionLot } from "@/lib/utils";
+import { MOCK_LOTS, getLotById, filterLots, lotImages, parseLotEndMs, type AuctionLot } from "@/lib/utils";
 import type { AuctionEvent } from "@/lib/utils";
 
+const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+
+async function ensureLotBidable(
+  supabase: NonNullable<ReturnType<typeof getSupabaseAdmin>>,
+  row: Record<string, unknown>,
+) {
+  if (row.status === "removed") return row;
+  const now = Date.now();
+  const end = parseLotEndMs(row.ends_at as string);
+  const sold = row.status === "ended" && Boolean(row.high_bidder || row.high_bidder_id);
+  if (sold && Number.isFinite(end) && end <= now) return row;
+  const patch: Record<string, unknown> = {};
+  if (row.status !== "live") patch.status = "live";
+  if (!Number.isFinite(end) || end <= now) {
+    patch.ends_at = new Date(now + WEEK_MS).toISOString();
+  }
+  if (!Object.keys(patch).length) return row;
+  await supabase.from("lots").update(patch).eq("id", row.id);
+  return { ...row, ...patch };
+}
+
 async function openActiveFloors(supabase: NonNullable<ReturnType<typeof getSupabaseAdmin>>) {
-  await supabase
-    .from("lots")
-    .update({ status: "live" })
-    .gt("ends_at", new Date().toISOString())
-    .in("status", ["paused", "draft", "ended"]);
+  const { data } = await supabase.from("lots").select("*").neq("status", "removed");
+  for (const row of data ?? []) {
+    await ensureLotBidable(supabase, row as Record<string, unknown>);
+  }
 }
 
 function withGallery(lot: AuctionLot): AuctionLot {
@@ -98,24 +118,27 @@ export async function fetchLot(id: string): Promise<AuctionLot | undefined> {
   if (isSupabaseConfigured) {
     const supabase = getSupabaseAdmin();
     if (supabase) {
+      const decoded = decodeURIComponent(id);
       const uuid =
         /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
-          id,
+          decoded,
         );
-      const query = uuid
-        ? supabase.from("lots").select("*").or(`id.eq.${id},slug.eq.${id}`)
-        : supabase.from("lots").select("*").eq("slug", id);
-      const { data, error } = await query.maybeSingle();
-      if (!error && data) {
-        if (
-          data.status !== "removed" &&
-          data.status !== "live" &&
-          new Date(data.ends_at).getTime() > Date.now()
-        ) {
-          await supabase.from("lots").update({ status: "live" }).eq("id", data.id);
-          data.status = "live";
-        }
-        lot = withGallery(mapLot(data as LotRow));
+      let data: Record<string, unknown> | null = null;
+      if (uuid) {
+        const byId = await supabase.from("lots").select("*").eq("id", decoded).maybeSingle();
+        data = (byId.data as Record<string, unknown> | null) ?? null;
+      }
+      if (!data) {
+        const bySlug = await supabase.from("lots").select("*").eq("slug", decoded).limit(1).maybeSingle();
+        data = (bySlug.data as Record<string, unknown> | null) ?? null;
+      }
+      if (!data) {
+        const byNumber = await supabase.from("lots").select("*").eq("lot_number", decoded).limit(1).maybeSingle();
+        data = (byNumber.data as Record<string, unknown> | null) ?? null;
+      }
+      if (data) {
+        data = await ensureLotBidable(supabase, data);
+        lot = withGallery(mapLot(data as unknown as LotRow));
         if (lot.eventId) {
           const { data: event } = await supabase
             .from("auction_events")

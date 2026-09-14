@@ -9,6 +9,7 @@ import {
 } from "@/lib/bidding";
 import { getSupabaseAdmin, isSupabaseConfigured } from "@/lib/supabaseClient";
 import { isProfileComplete } from "@/lib/profileTypes";
+import { parseLotEndMs } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
@@ -105,12 +106,14 @@ async function persistDemo(
   if (!demo) {
     return NextResponse.json({ error: "Lot not found" }, { status: 404 });
   }
-  if (demo.status === "removed" || new Date(demo.endsAt).getTime() <= Date.now()) {
+  if (demo.status === "removed") {
     return NextResponse.json({ error: "Lot is not open for bidding" }, { status: 400 });
   }
-  if (demo.status !== "live") {
-    demo.status = "live";
+  const demoEnd = parseLotEndMs(demo.endsAt);
+  if (!Number.isFinite(demoEnd) || demoEnd <= Date.now()) {
+    demo.endsAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
   }
+  demo.status = "live";
 
   if (body.mode === "buy_now") {
     const amount = Number(body.amount);
@@ -218,15 +221,22 @@ async function persistSupabase(
   if (lotError || !lot) {
     return NextResponse.json({ error: lotError?.message || "Lot not found" }, { status: 404 });
   }
-  if (lot.status === "removed" || new Date(lot.ends_at).getTime() <= Date.now()) {
+  const end = parseLotEndMs(lot.ends_at as string);
+  const sold = lot.status === "ended" && Boolean(lot.high_bidder || lot.high_bidder_id);
+  if (lot.status === "removed" || (sold && Number.isFinite(end) && end <= Date.now())) {
     return NextResponse.json({ error: "Lot is not open for bidding" }, { status: 400 });
   }
-  if (lot.status !== "live") {
-    const { error: openError } = await supabase.from("lots").update({ status: "live" }).eq("id", lotId);
+  const patch: Record<string, unknown> = {};
+  if (lot.status !== "live") patch.status = "live";
+  if (!Number.isFinite(end) || end <= Date.now()) {
+    patch.ends_at = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+  }
+  if (Object.keys(patch).length) {
+    const { error: openError } = await supabase.from("lots").update(patch).eq("id", lotId);
     if (openError) {
       return NextResponse.json({ error: openError.message }, { status: 400 });
     }
-    lot.status = "live";
+    Object.assign(lot, patch);
   }
 
   const { data: absenteeRows } = await supabase

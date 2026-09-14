@@ -10,6 +10,8 @@ import { buyNowPriceOf, canBuyNow } from "@/lib/buyNow";
 import { recordInterest } from "@/lib/interest";
 import {
   formatCurrency,
+  isLotOpen,
+  parseLotEndMs,
   type AuctionLot,
 } from "@/lib/utils";
 
@@ -24,11 +26,7 @@ export function AuctionRoom({ lot }: { lot: AuctionLot }) {
   const [currentBid, setCurrentBid] = useState(lot.currentBid);
   const [endsAt, setEndsAt] = useState(lot.endsAt);
   const [highBidder, setHighBidder] = useState(lot.highBidder ?? null);
-  const [status, setStatus] = useState(
-    lot.status !== "removed" && new Date(lot.endsAt).getTime() > Date.now()
-      ? "live"
-      : (lot.status ?? "live"),
-  );
+  const [status, setStatus] = useState(lot.status === "removed" ? "removed" : "live");
   const [extended, setExtended] = useState(false);
   const [mode, setMode] = useState<"live" | "absentee">("live");
   const [maxAmount, setMaxAmount] = useState("");
@@ -47,7 +45,7 @@ export function AuctionRoom({ lot }: { lot: AuctionLot }) {
     [currentBid, lot.minIncrement],
   );
   const buyNow = buyNowPriceOf(lot);
-  const open = status !== "removed" && new Date(endsAt).getTime() > now;
+  const open = isLotOpen({ endsAt, status }, now);
   const showBuyNow = open && canBuyNow(currentBid, buyNow);
 
   useEffect(() => {
@@ -60,6 +58,22 @@ export function AuctionRoom({ lot }: { lot: AuctionLot }) {
       .then((res) => res.json())
       .then((json) => {
         if (Array.isArray(json.bids)) setFeed(json.bids);
+      })
+      .catch(() => undefined);
+  }, [lot.id]);
+
+  useEffect(() => {
+    void fetch("/api/live-clock", { cache: "no-store" })
+      .then((res) => res.json())
+      .then((json) => {
+        const row = Array.isArray(json.lots)
+          ? json.lots.find((item: { id?: string }) => item.id === lot.id)
+          : null;
+        if (!row) return;
+        if (row.currentBid != null) setCurrentBid(Number(row.currentBid));
+        if (row.endsAt) setEndsAt(String(row.endsAt));
+        if (row.highBidder !== undefined) setHighBidder(row.highBidder);
+        if (row.status && row.status !== "removed") setStatus("live");
       })
       .catch(() => undefined);
   }, [lot.id]);
@@ -115,18 +129,21 @@ export function AuctionRoom({ lot }: { lot: AuctionLot }) {
           };
           if (next.current_bid != null) setCurrentBid(Number(next.current_bid));
           if (next.ends_at) {
+            const nextEnd = parseLotEndMs(next.ends_at);
             setEndsAt((prev) => {
-              if (new Date(next.ends_at!).getTime() > new Date(prev).getTime()) {
+              const prevEnd = parseLotEndMs(prev);
+              if (Number.isFinite(nextEnd) && Number.isFinite(prevEnd) && nextEnd > prevEnd) {
                 setExtended(true);
+              }
+              if (Number.isFinite(prevEnd) && prevEnd > Date.now() && Number.isFinite(nextEnd) && nextEnd <= Date.now()) {
+                return prev;
               }
               return next.ends_at!;
             });
           }
           if (next.high_bidder !== undefined) setHighBidder(next.high_bidder);
-          if (next.status && next.status !== "ended") setStatus(next.status);
-          if (next.status === "ended" && next.ends_at && new Date(next.ends_at).getTime() <= Date.now()) {
-            setStatus("ended");
-          }
+          if (next.status === "removed") setStatus("removed");
+          else if (next.status && next.status !== "ended") setStatus(next.status);
         },
       )
       .subscribe();

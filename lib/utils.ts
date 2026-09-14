@@ -337,8 +337,24 @@ export function searchLots(lots: AuctionLot[], query: string) {
   });
 }
 
+export function parseLotEndMs(endsAt: string | null | undefined, now = Date.now()) {
+  if (endsAt == null || endsAt === "") return NaN;
+  const raw = String(endsAt).trim();
+  const asNumber = Number(raw);
+  if (Number.isFinite(asNumber) && asNumber > 0) {
+    return asNumber < 1e12 ? asNumber * 1000 : asNumber;
+  }
+  const normalized = raw.includes("T") ? raw : raw.replace(" ", "T");
+  const ms = Date.parse(normalized);
+  if (Number.isFinite(ms)) return ms;
+  const fallback = Date.parse(raw);
+  return Number.isFinite(fallback) ? fallback : NaN;
+}
+
 export function formatCountdown(endsAt: string, now = Date.now()) {
-  const remaining = new Date(endsAt).getTime() - now;
+  const end = parseLotEndMs(endsAt, now);
+  if (!Number.isFinite(end)) return "ENDED";
+  const remaining = end - now;
   if (remaining <= 0) return "ENDED";
 
   const totalSeconds = Math.floor(remaining / 1000);
@@ -354,7 +370,9 @@ export function formatCountdown(endsAt: string, now = Date.now()) {
 
 export function isLotOpen(lot: Pick<AuctionLot, "endsAt" | "status">, now = Date.now()) {
   if (lot.status === "removed") return false;
-  return new Date(lot.endsAt).getTime() > now;
+  const end = parseLotEndMs(lot.endsAt, now);
+  if (!Number.isFinite(end)) return true;
+  return end > now;
 }
 
 export const DEFAULT_COMMISSION_RATE = 0.2;
