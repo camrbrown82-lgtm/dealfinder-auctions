@@ -26,17 +26,26 @@ export async function GET(request: NextRequest) {
 
   const supabase = getSupabaseAdmin();
   if (isSupabaseConfigured && supabase && isUuid(lotId)) {
-    const { data, error } = await supabase
+    const primary = await supabase
       .from("bids")
       .select("bidder_name, amount, kind, created_at")
       .eq("lot_id", lotId)
       .order("created_at", { ascending: false })
       .limit(12);
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 400 });
+    const fallback =
+      primary.error && /kind/i.test(primary.error.message)
+        ? await supabase
+            .from("bids")
+            .select("bidder_name, amount, created_at")
+            .eq("lot_id", lotId)
+            .order("created_at", { ascending: false })
+            .limit(12)
+        : primary;
+    if (fallback.error) {
+      return NextResponse.json({ error: fallback.error.message }, { status: 400 });
     }
     return NextResponse.json({
-      bids: (data ?? []).map((row) => ({
+      bids: (fallback.data ?? []).map((row: { bidder_name?: string; amount?: number; kind?: string }) => ({
         bidder: row.bidder_name,
         amount: Number(row.amount),
         kind: row.kind === "absentee" ? "absentee" : "live",
@@ -96,8 +105,11 @@ async function persistDemo(
   if (!demo) {
     return NextResponse.json({ error: "Lot not found" }, { status: 404 });
   }
-  if (demo.status !== "live" || new Date(demo.endsAt).getTime() <= Date.now()) {
+  if ((demo.status === "ended" || demo.status === "removed") || new Date(demo.endsAt).getTime() <= Date.now()) {
     return NextResponse.json({ error: "Lot is not open for bidding" }, { status: 400 });
+  }
+  if (demo.status === "paused" || demo.status === "draft") {
+    demo.status = "live";
   }
 
   if (body.mode === "buy_now") {
@@ -206,6 +218,16 @@ async function persistSupabase(
   if (lotError || !lot) {
     return NextResponse.json({ error: lotError?.message || "Lot not found" }, { status: 404 });
   }
+  if (lot.status === "ended" || lot.status === "removed" || new Date(lot.ends_at).getTime() <= Date.now()) {
+    return NextResponse.json({ error: "Lot is not open for bidding" }, { status: 400 });
+  }
+  if (lot.status !== "live") {
+    const { error: openError } = await supabase.from("lots").update({ status: "live" }).eq("id", lotId);
+    if (openError) {
+      return NextResponse.json({ error: openError.message }, { status: 400 });
+    }
+    lot.status = "live";
+  }
 
   const { data: absenteeRows } = await supabase
     .from("absentee_bids")
@@ -291,7 +313,7 @@ async function persistSupabase(
     }
 
     for (const event of result.events) {
-      const { error } = await supabase.from("bids").insert({
+      let { error } = await supabase.from("bids").insert({
         lot_id: lotId,
         bidder_name: event.bidder,
         bidder_id: event.bidder === bidder ? bidderId : null,
@@ -299,6 +321,13 @@ async function persistSupabase(
         amount: event.amount,
         kind: event.kind,
       });
+      if (error && /kind|bidder_id|bidder_email/i.test(error.message)) {
+        ({ error } = await supabase.from("bids").insert({
+          lot_id: lotId,
+          bidder_name: event.bidder,
+          amount: event.amount,
+        }));
+      }
       if (error) {
         return NextResponse.json({ error: error.message }, { status: 400 });
       }

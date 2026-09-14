@@ -342,16 +342,19 @@ export function formatCountdown(endsAt: string, now = Date.now()) {
   if (remaining <= 0) return "ENDED";
 
   const totalSeconds = Math.floor(remaining / 1000);
-  const hours = Math.floor(totalSeconds / 3600);
+  const days = Math.floor(totalSeconds / 86400);
+  const hours = Math.floor((totalSeconds % 86400) / 3600);
   const minutes = Math.floor((totalSeconds % 3600) / 60);
   const seconds = totalSeconds % 60;
-
   const pad = (n: number) => String(n).padStart(2, "0");
-  return `${pad(hours)}:${pad(minutes)}:${pad(seconds)}`;
+
+  if (days > 0) return `${days}d ${pad(hours)}h ${pad(minutes)}m`;
+  return `${pad(hours)}h ${pad(minutes)}m ${pad(seconds)}s`;
 }
 
 export function isLotOpen(lot: Pick<AuctionLot, "endsAt" | "status">, now = Date.now()) {
-  return lot.status !== "paused" && lot.status !== "ended" && new Date(lot.endsAt).getTime() > now;
+  if (lot.status === "ended" || lot.status === "removed" || lot.status === "draft") return false;
+  return new Date(lot.endsAt).getTime() > now;
 }
 
 export const DEFAULT_COMMISSION_RATE = 0.2;

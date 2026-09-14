@@ -53,7 +53,7 @@ export function AuctionRoom({ lot }: { lot: AuctionLot }) {
   }, []);
 
   useEffect(() => {
-    void fetch(`/api/bids?lotId=${encodeURIComponent(lot.id)}`)
+    void fetch(`/api/bids?lotId=${encodeURIComponent(lot.id)}`, { credentials: "include" })
       .then((res) => res.json())
       .then((json) => {
         if (Array.isArray(json.bids)) setFeed(json.bids);
@@ -131,7 +131,10 @@ export function AuctionRoom({ lot }: { lot: AuctionLot }) {
   }, [lot.id]);
 
   async function placeBid() {
-    if (!open) return;
+    if (!open) {
+      setMessage("This lot is not open for bidding yet.");
+      return;
+    }
     const intent = pendingBid.current ?? {
       mode,
       amount: nextBid,
@@ -143,6 +146,7 @@ export function AuctionRoom({ lot }: { lot: AuctionLot }) {
     try {
       const response = await fetch("/api/bids", {
         method: "POST",
+        credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           lotId: lot.id,

@@ -31,7 +31,7 @@ export function LotTimer({
       <div
         suppressHydrationWarning
         className={`border-4 border-black font-display ${
-          compact ? "px-1.5 py-0.5 text-sm sm:text-base" : "px-4 py-2 text-3xl"
+          compact ? "whitespace-nowrap px-1 py-0.5 text-[10px] sm:text-xs" : "px-3 py-2 text-2xl sm:text-3xl"
         } ${ended ? "bg-black text-white" : "bg-[#FFF7D1] text-[#FF0000]"}`}
       >
         {label}

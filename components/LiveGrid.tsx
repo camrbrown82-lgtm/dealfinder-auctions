@@ -18,11 +18,18 @@ import { defaultSaleId, lotsForSale, type SaleWindowItem } from "@/lib/liveSales
 const VIEW_OPTIONS = [1, 4, 6, 9] as const;
 type ViewCount = (typeof VIEW_OPTIONS)[number];
 const VIEW_STORAGE_KEY = "dealfinder-live-view";
-const GRID_CLASS: Record<ViewCount, string> = {
-  1: "lg:grid-cols-1",
-  4: "lg:grid-cols-4",
-  6: "lg:grid-cols-6",
-  9: "lg:grid-cols-9",
+const CARD_WIDTH: Record<ViewCount, string> = {
+  1: "w-full max-w-lg lg:max-w-lg",
+  4: "w-full lg:max-w-[15rem]",
+  6: "w-full lg:max-w-[12rem]",
+  9: "w-full lg:max-w-[10rem]",
+};
+
+type LotClock = {
+  currentBid: number;
+  endsAt: string;
+  highBidder: string | null;
+  status: AuctionLot["status"];
 };
 
 function normalizeView(value: number): ViewCount {
@@ -43,6 +50,7 @@ export function LiveGrid({
   const [query, setQuery] = useState("");
   const [view, setView] = useState<ViewCount>(9);
   const [saleId, setSaleId] = useState(() => defaultSaleId(sales) ?? "");
+  const [clocks, setClocks] = useState<Record<string, LotClock>>({});
   const [interest, setInterest] = useState<InterestProfile>({
     categories: [],
     consignors: [],
@@ -77,6 +85,35 @@ export function LiveGrid({
     }
   }, [view]);
 
+  useEffect(() => {
+    let cancelled = false;
+    async function pullClocks() {
+      try {
+        const response = await fetch("/api/live-clock", { cache: "no-store" });
+        const json = await response.json();
+        if (cancelled || !Array.isArray(json.lots)) return;
+        const next: Record<string, LotClock> = {};
+        for (const row of json.lots as Array<LotClock & { id: string }>) {
+          next[row.id] = {
+            currentBid: row.currentBid,
+            endsAt: row.endsAt,
+            highBidder: row.highBidder,
+            status: row.status,
+          };
+        }
+        setClocks(next);
+      } catch {
+        /* keep last clocks */
+      }
+    }
+    void pullClocks();
+    const id = window.setInterval(() => void pullClocks(), 4000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+    };
+  }, []);
+
   const visible = useMemo(() => {
     const pool = lotsForSale(lots, selected);
     const q = query.trim().toLowerCase();
@@ -96,8 +133,18 @@ export function LiveGrid({
           return haystack.includes(q);
         })
       : pool;
-    return rankLotsByInterest(filtered, interest);
-  }, [lots, selected, query, interest]);
+    return rankLotsByInterest(filtered, interest).map((lot) => {
+      const clock = clocks[lot.id];
+      if (!clock) return lot;
+      return {
+        ...lot,
+        currentBid: clock.currentBid,
+        endsAt: clock.endsAt,
+        highBidder: clock.highBidder,
+        status: clock.status ?? lot.status,
+      };
+    });
+  }, [lots, selected, query, interest, clocks]);
 
   return (
     <div className="min-w-0 max-w-full space-y-4 overflow-x-clip">
@@ -178,7 +225,7 @@ export function LiveGrid({
           No lots in this sale yet.
         </p>
       ) : (
-        <section className={`grid grid-cols-1 items-stretch gap-4 lg:gap-3 ${GRID_CLASS[view]}`}>
+        <section className="flex w-full flex-col items-center gap-4 lg:flex-row lg:flex-wrap lg:justify-center lg:gap-3">
           {visible.map((lot) => (
             <LotCard
               key={lot.id}
@@ -209,15 +256,11 @@ function LotCard({
   const compact = view >= 6;
   const sizes =
     view === 1
-      ? "(max-width: 1023px) 100vw, 25vw"
+      ? "(max-width: 1023px) 100vw, 32rem"
       : `(max-width: 1023px) 100vw, ${Math.round(100 / view)}vw`;
 
   return (
-    <article
-      className={`comic-panel flex min-w-0 max-w-full flex-col overflow-hidden ${
-        view === 1 ? "lg:max-w-[calc((100%-2.25rem)/4)] lg:justify-self-start" : ""
-      }`}
-    >
+    <article className={`comic-panel flex min-w-0 flex-col overflow-hidden ${CARD_WIDTH[view]}`}>
       <Link href={href} className="block shrink-0">
         <div className="relative aspect-square w-full overflow-hidden border-b-4 border-brand-ink bg-brand-cream">
           <LotGallery
