@@ -84,6 +84,10 @@ export async function recordSoldLotSettlement(
             ? existing.data.shipping_status
             : "pending";
         row.notes = String(existing.data.notes ?? "");
+        row.fulfillment =
+          existing.data.fulfillment === "ship" || existing.data.fulfillment === "pickup"
+            ? existing.data.fulfillment
+            : "unset";
       }
       await upsertSettlementInvoice(supabase, row);
     } catch (error) {

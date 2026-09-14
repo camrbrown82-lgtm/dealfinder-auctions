@@ -38,6 +38,7 @@ export type AuctionLot = {
   commissionRate?: number | null;
   listingGrade?: ListingGrade;
   itemDetails?: string | null;
+  fulfillment?: "unset" | "ship" | "pickup";
 };
 
 export type AuctionEvent = {
@@ -102,6 +103,11 @@ export function uniqueImageUrls(urls: Array<string | null | undefined>): string[
 
 export function lotImages(lot: Pick<AuctionLot, "image" | "images">): string[] {
   return uniqueImageUrls([lot.image, ...(lot.images ?? [])]);
+}
+
+export function extraLotImages(lot: Pick<AuctionLot, "image" | "images">): string[] {
+  const cover = lot.image?.trim() ?? "";
+  return uniqueImageUrls(lot.images ?? []).filter((url) => url !== cover);
 }
 
 export const CATEGORIES: AuctionCategory[] = [

@@ -14,6 +14,7 @@ import { uniqueImageUrls } from "@/lib/utils";
 import { startingBidFromBuyNow } from "@/lib/buyNow";
 import { patchLotRow } from "@/lib/openFloor";
 import { recordSoldLotSettlement } from "@/lib/recordSale";
+import { attachLotToSale, ensureWeeklySales, isWeeklySale, nextWeeklySale } from "@/lib/weeklySales";
 import {
   allocateLotNumber,
   normalizeHouseSettings,
@@ -219,12 +220,38 @@ function auctionLabel(event?: AuctionEvent | null, lot?: AuctionLot) {
   return "DealFinder warehouse (schedule a sale)";
 }
 
+async function resolveSaleEvent(
+  supabase: NonNullable<ReturnType<typeof getSupabaseAdmin>> | null,
+  demo: ReturnType<typeof getAdminDemo>,
+  eventId?: string,
+) {
+  if (isSupabaseConfigured && supabase) {
+    const events = await ensureWeeklySales(supabase);
+    if (eventId) {
+      const match = events.find((row) => row.id === eventId || row.auctionNumber === eventId);
+      if (match) return match;
+    }
+    return nextWeeklySale(events.filter((row) => isWeeklySale(row))) ?? nextWeeklySale(events);
+  }
+  if (eventId) {
+    const match = demo.events.find((row) => row.id === eventId);
+    if (match) return match;
+  }
+  return nextWeeklySale(demo.events);
+}
+
 export async function GET() {
   if (!isAdminSession()) return unauthorized();
 
   const supabase = getSupabaseAdmin();
   if (!isSupabaseConfigured || !supabase) {
     return NextResponse.json(payloadFromDemo());
+  }
+
+  if (isSupabaseConfigured && supabase) {
+    await ensureWeeklySales(supabase).catch((error) => {
+      console.error("ensureWeeklySales", error instanceof Error ? error.message : error);
+    });
   }
 
   const [queueRes, lotsRes, eventsRes] = await Promise.all([
@@ -376,11 +403,9 @@ export async function POST(request: NextRequest) {
     const listingGrade = parseListingGrade(body.listingGrade);
     const itemDetails = String(body.itemDetails ?? "").trim();
     const description = withListedGrade(body.description ?? "", listingGrade);
-    const event = body.eventId
-      ? demo.events.find((row) => row.id === body.eventId)
-      : undefined;
+    const sale = await resolveSaleEvent(supabase, demo, body.eventId);
     const status: LotStatus = "live";
-    const endsAt = event?.endsAt ?? new Date(Date.now() + 1000 * 60 * 60 * 24).toISOString();
+    const endsAt = sale?.endsAt ?? new Date(Date.now() + 1000 * 60 * 60 * 24).toISOString();
 
     if (isSupabaseConfigured && supabase) {
       const claimed = await allocateFromHouse(supabase, demo, body.lotNumber);
@@ -400,16 +425,8 @@ export async function POST(request: NextRequest) {
         );
       }
       const { image, images } = lotPhotos(photos);
-      const eventId = asEventUuid(body.eventId);
-      let eventEnds = endsAt;
-      if (eventId) {
-        const { data: dbEvent } = await supabase
-          .from("auction_events")
-          .select("*")
-          .eq("id", eventId)
-          .maybeSingle();
-        if (dbEvent?.ends_at) eventEnds = dbEvent.ends_at;
-      }
+      const eventId = sale ? asEventUuid(sale.id) ?? sale.id : null;
+      const eventEnds = sale?.endsAt ?? endsAt;
       const insertRow: Record<string, unknown> = {
           slug: lotNumber.toLowerCase().replace(/[^a-z0-9-]+/g, "-"),
           title,
@@ -441,7 +458,22 @@ export async function POST(request: NextRequest) {
         lotNumber,
         claimed.existing,
       );
-      return NextResponse.json(withHouseSettings({ ok: true, lot: mapLot(data as LotRow) }, demo, houseSettings));
+      const lot = mapLot(data as LotRow);
+      if (sale) attachLotToSale(lot, sale);
+      return NextResponse.json(
+        withHouseSettings(
+          {
+            ok: true,
+            lot,
+            href: "/live",
+            auctionLabel: auctionLabel(sale, lot),
+            saleStartsAt: sale?.startsAt ?? null,
+            postedLive: true,
+          },
+          demo,
+          houseSettings,
+        ),
+      );
     }
 
     const claimed = await allocateFromHouse(null, demo, body.lotNumber);
@@ -461,19 +493,32 @@ export async function POST(request: NextRequest) {
       consignor: body.consignorName?.trim() || "House stock",
       description,
       status,
-      eventId: body.eventId || null,
+      eventId: sale?.id || null,
       lotNumber,
-      auctionNumber: event?.auctionNumber ?? null,
+      auctionNumber: sale?.auctionNumber ?? null,
       startingBid: starting,
       reservePrice: buyNow || null,
       buyNowPrice: buyNow || null,
       listingGrade,
       itemDetails: itemDetails || null,
     };
-    if (event && body.postLive) applyEventToLot(lot, event, true);
+    if (sale) attachLotToSale(lot, sale);
     addDemoLot(lot);
     const houseSettings = await commitHouseLot(null, demo, claimed.settings, lotNumber, claimed.existing);
-    return NextResponse.json(withHouseSettings({ ok: true, lot }, demo, houseSettings));
+    return NextResponse.json(
+      withHouseSettings(
+        {
+          ok: true,
+          lot,
+          href: "/live",
+          auctionLabel: auctionLabel(sale, lot),
+          saleStartsAt: sale?.startsAt ?? null,
+          postedLive: true,
+        },
+        demo,
+        houseSettings,
+      ),
+    );
   }
 
   return NextResponse.json({ error: "Unknown action" }, { status: 400 });
@@ -543,9 +588,7 @@ export async function PATCH(request: NextRequest) {
       if (body.status === "approved") {
         const claimed = await allocateFromHouse(null, demo);
         const lotNumber = claimed.lotNumber;
-        const event = body.eventId
-          ? demo.events.find((row) => row.id === body.eventId)
-          : undefined;
+        const event = await resolveSaleEvent(null, demo, body.eventId);
         const { image, images } = lotPhotos(item.imageUrls);
         const lot: AuctionLot = {
           id: `lot-${item.id}`,
@@ -626,14 +669,7 @@ export async function PATCH(request: NextRequest) {
           photos = row.image_urls ?? [];
         }
         const { image, images } = lotPhotos(photos);
-        const { data: eventRows } = await supabase
-          .from("auction_events")
-          .select("*")
-          .order("starts_at", { ascending: true });
-        const mappedEvents = (eventRows ?? []).map(mapEvent);
-        const event = body.eventId
-          ? mappedEvents.find((row) => row.id === body.eventId)
-          : undefined;
+        const event = await resolveSaleEvent(supabase, demo, body.eventId);
         const eventId = event ? asEventUuid(event.id) ?? event.id : null;
         const eventEnds =
           event?.endsAt ?? new Date(Date.now() + 1000 * 60 * 60 * 24).toISOString();
@@ -657,6 +693,8 @@ export async function PATCH(request: NextRequest) {
             starting_bid: starting || Number(existing.starting_bid),
           };
           if (eventId) reopen.event_id = eventId;
+          reopen.image_url = image;
+          reopen.image_urls = images;
           await supabase.from("lots").update(reopen).eq("id", existing.id);
           const lot = mapLot({ ...existing, ...reopen } as LotRow);
           lot.auctionNumber = event?.auctionNumber ?? lot.auctionNumber;
@@ -819,20 +857,10 @@ export async function PATCH(request: NextRequest) {
       if (body.listingGrade) updates.listing_grade = parseListingGrade(body.listingGrade);
       if (body.itemDetails != null) updates.item_details = body.itemDetails;
       if (body.eventId) {
-        const eventId = asEventUuid(body.eventId) ?? body.eventId;
+        const sale = await resolveSaleEvent(supabase, demo, body.eventId);
+        const eventId = sale ? asEventUuid(sale.id) ?? sale.id : asEventUuid(body.eventId) ?? body.eventId;
         updates.event_id = eventId;
-        const { data: event } = await supabase
-          .from("auction_events")
-          .select("*")
-          .eq("id", eventId)
-          .maybeSingle();
-        const weekFromNow = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
-        if (event) {
-          const eventEnd = new Date(event.ends_at).getTime();
-          updates.ends_at = Number.isFinite(eventEnd) && eventEnd > Date.now() ? event.ends_at : weekFromNow;
-        } else {
-          updates.ends_at = weekFromNow;
-        }
+        updates.ends_at = sale?.endsAt ?? new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
         updates.status = "live";
       }
       if (body.relist) {
@@ -846,34 +874,21 @@ export async function PATCH(request: NextRequest) {
         }
       }
       if (Object.keys(updates).length) {
-        let { data: updated, error } = await supabase
-          .from("lots")
-          .update(updates)
-          .eq("id", body.id)
-          .select("id")
-          .maybeSingle();
-        if (isMissingColumn(error, "buy_now_price")) {
-          const { buy_now_price: _buyNow, ...rest } = updates;
-          ({ data: updated, error } = await supabase
-            .from("lots")
-            .update(rest)
-            .eq("id", body.id)
-            .select("id")
-            .maybeSingle());
+        const lotId = String(body.id ?? "");
+        let patched = await patchLotRow(lotId, updates);
+        if ((!patched.ok || !patched.data?.length) && lotId) {
+          const bySlug = await supabase.from("lots").select("id").eq("slug", lotId).maybeSingle();
+          const byNumber = bySlug.data?.id
+            ? null
+            : await supabase.from("lots").select("id").eq("lot_number", lotId).maybeSingle();
+          const resolved = bySlug.data?.id ?? byNumber?.data?.id;
+          if (resolved && resolved !== lotId) patched = await patchLotRow(String(resolved), updates);
         }
-        if (!updated && !error && body.id) {
-          ({ data: updated, error } = await supabase
-            .from("lots")
-            .update(updates)
-            .eq("slug", body.id)
-            .select("id")
-            .maybeSingle());
-        }
-        if (error) {
-          return NextResponse.json({ error: error.message }, { status: 400 });
-        }
-        if (!updated) {
-          return NextResponse.json({ error: "Could not file that lot into the sale." }, { status: 400 });
+        if (!patched.ok || !patched.data?.length) {
+          return NextResponse.json(
+            { error: patched.body || "Could not file that lot into the sale." },
+            { status: 400 },
+          );
         }
       }
     }

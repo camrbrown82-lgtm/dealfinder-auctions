@@ -1,14 +1,18 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { getBidderSession } from "@/lib/bidderAuth";
 import { getDemoLot } from "@/lib/demoAuctionStore";
 import { mapLot, type LotRow } from "@/lib/mappers";
 import {
   invoiceNumber,
+  isFulfillmentChoice,
   paymentInstructions,
   paymentMethodLabel,
+  type FulfillmentChoice,
 } from "@/lib/payments";
+import { profileAddress } from "@/lib/profileTypes";
 import { getSupabaseAdmin, isSupabaseConfigured } from "@/lib/supabaseClient";
 import { MOCK_LOTS, type AuctionLot } from "@/lib/utils";
+import { saveWinFulfillment } from "@/lib/winFulfillment";
 import type { WinInvoice } from "@/lib/winTypes";
 
 export const dynamic = "force-dynamic";
@@ -50,12 +54,14 @@ export async function GET() {
         highBidder: demo.highBidder,
         highBidderId: demo.highBidderId,
         status: (demo.status as AuctionLot["status"]) ?? lot.status,
+        fulfillment: demo.fulfillment ?? lot.fulfillment ?? "unset",
       };
     }).filter(
       (lot) => lot.highBidderId === session.id || lot.highBidder === session.fullName,
     );
   }
 
+  const address = profileAddress(session);
   const wins: WinInvoice[] = lots.map((lot) => {
     const invoice = invoiceNumber(lot.id, session.id);
     return {
@@ -69,8 +75,62 @@ export async function GET() {
       paymentMethod: paymentMethodLabel(session.paymentMethod),
       instructions: paymentInstructions(session.paymentMethod, invoice),
       winning: lot.status === "ended",
+      fulfillment: lot.fulfillment ?? "unset",
+      address,
     };
   });
 
   return NextResponse.json({ wins, profile: session });
+}
+
+export async function PATCH(request: NextRequest) {
+  const session = await getBidderSession();
+  if (!session) {
+    return NextResponse.json({ error: "Log in to choose shipping." }, { status: 401 });
+  }
+  const body = (await request.json()) as { lotId?: string; fulfillment?: FulfillmentChoice };
+  if (!body.lotId || !isFulfillmentChoice(body.fulfillment) || body.fulfillment === "unset") {
+    return NextResponse.json({ error: "Pick ship or pick up for a won lot." }, { status: 400 });
+  }
+
+  let lot: AuctionLot | null = null;
+  if (isSupabaseConfigured) {
+    const supabase = getSupabaseAdmin();
+    if (supabase) {
+      const { data } = await supabase.from("lots").select("*").eq("id", body.lotId).maybeSingle();
+      lot = data ? mapLot(data as LotRow) : null;
+    }
+  } else {
+    const demo = getDemoLot(body.lotId);
+    const mock = MOCK_LOTS.find((row) => row.id === body.lotId);
+    if (mock) {
+      lot = {
+        ...mock,
+        highBidder: demo?.highBidder ?? mock.highBidder ?? null,
+        highBidderId: demo?.highBidderId ?? mock.highBidderId ?? null,
+        status: (demo?.status as AuctionLot["status"]) ?? mock.status,
+        fulfillment: demo?.fulfillment,
+      };
+    }
+  }
+
+  if (!lot) return NextResponse.json({ error: "Lot not found." }, { status: 404 });
+  const owns =
+    lot.highBidderId === session.id ||
+    lot.highBidder === session.fullName ||
+    lot.highBidder === session.email;
+  if (!owns) {
+    return NextResponse.json({ error: "Only the winner can choose ship or pick up." }, { status: 403 });
+  }
+  if (lot.status !== "ended") {
+    return NextResponse.json({ error: "Choose shipping after the hammer." }, { status: 400 });
+  }
+
+  try {
+    await saveWinFulfillment(body.lotId, body.fulfillment, session);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Could not save delivery choice.";
+    return NextResponse.json({ error: message }, { status: 400 });
+  }
+  return NextResponse.json({ ok: true, fulfillment: body.fulfillment });
 }

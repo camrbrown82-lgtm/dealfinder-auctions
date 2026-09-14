@@ -9,4 +9,6 @@ export type WinInvoice = {
   paymentMethodKey: "interac_etransfer" | "pay_on_arrival";
   instructions: string;
   winning: boolean;
+  fulfillment: "unset" | "ship" | "pickup";
+  address: string;
 };

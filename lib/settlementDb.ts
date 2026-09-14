@@ -44,6 +44,8 @@ export function mapInvoiceRow(row: Record<string, unknown>): SettlementInvoiceRe
     payment: asPayment(row.payment_status),
     shipping: asShipping(row.shipping_status),
     notes: String(row.notes ?? ""),
+    fulfillment:
+      row.fulfillment === "ship" || row.fulfillment === "pickup" ? row.fulfillment : "unset",
   };
 }
 
@@ -101,10 +103,19 @@ export async function upsertSettlementInvoice(
     notes: row.notes ?? "",
     total: row.total,
     lots: row.lots,
+    fulfillment: row.fulfillment ?? "unset",
   };
   const { error } = await supabase.from("settlement_invoices").upsert(payload, {
     onConflict: "invoice_number",
   });
+  if (error && /fulfillment/i.test(error.message)) {
+    const { fulfillment: _f, ...rest } = payload;
+    const retry = await supabase.from("settlement_invoices").upsert(rest, {
+      onConflict: "invoice_number",
+    });
+    if (retry.error) throw retry.error;
+    return;
+  }
   if (error) throw error;
 }
 

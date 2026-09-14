@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { formatCurrency, type PayoutRow } from "@/lib/utils";
-import { paymentMethodLabel } from "@/lib/payments";
+import { paymentMethodLabel, fulfillmentLabel } from "@/lib/payments";
 import { mergePersistedInvoices, type AuctionSettlement, type BuyerSettlement } from "@/lib/settlements";
 import type { PaymentMethod } from "@/lib/profileTypes";
 import type { PayoutItem } from "@/lib/payouts";
@@ -335,6 +335,10 @@ function InvoiceCard({
           <dt className="font-bold">Payment method</dt>
           <dd>{methodLabel(invoice.paymentMethod)}</dd>
         </div>
+        <div>
+          <dt className="font-bold">Winner chose</dt>
+          <dd>{fulfillmentLabel(mark.fulfillment ?? "unset")}</dd>
+        </div>
       </dl>
       <table className="mt-3 w-full border-collapse border-4 border-black bg-white font-comic text-sm">
         <thead>
@@ -368,7 +372,7 @@ function InvoiceCard({
           </select>
         </label>
         <label className="block font-comic text-sm font-bold">
-          Shipping / pickup
+          House packing status
           <select
             value={mark.shipping}
             onChange={(e) => onMark({ ...mark, shipping: e.target.value as ShippingMark })}
@@ -390,7 +394,8 @@ function InvoiceCard({
         </label>
       </div>
       <p className="mt-2 hidden font-comic text-sm print:block">
-        Payment: {mark.payment} · Fulfillment: {mark.shipping.replace("_", " ")}
+        Payment: {mark.payment} · Winner: {fulfillmentLabel(mark.fulfillment ?? "unset")} · Desk:{" "}
+        {mark.shipping.replace("_", " ")}
         {mark.notes ? ` · ${mark.notes}` : ""}
       </p>
     </article>

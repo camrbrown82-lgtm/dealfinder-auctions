@@ -29,6 +29,7 @@ export type LotRow = {
   buy_now_price?: number | string | null;
   listing_grade?: string | null;
   item_details?: string | null;
+  fulfillment?: string | null;
 };
 
 export type ConsignmentRow = {
@@ -87,6 +88,8 @@ export function mapLot(row: LotRow): AuctionLot {
     lotNumber: row.lot_number ?? null,
     listingGrade: listingGradeFromSources(row.listing_grade, row.description),
     itemDetails: row.item_details ?? null,
+    fulfillment:
+      row.fulfillment === "ship" || row.fulfillment === "pickup" ? row.fulfillment : "unset",
   };
 }
 

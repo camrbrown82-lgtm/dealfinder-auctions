@@ -44,3 +44,13 @@ export function isProfileComplete(profile: Pick<BidderProfile, keyof ProfileInpu
 export function isPaymentMethod(value: unknown): value is PaymentMethod {
   return value === "interac_etransfer" || value === "pay_on_arrival";
 }
+
+export function profileAddress(
+  profile: Pick<BidderProfile, "street" | "city" | "province" | "postalCode"> | null | undefined,
+) {
+  if (!profile) return "";
+  return [profile.street, profile.city, profile.province, profile.postalCode]
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .join(", ");
+}

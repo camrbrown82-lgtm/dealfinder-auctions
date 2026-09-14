@@ -1,5 +1,6 @@
 import { lotWasSold } from "@/lib/settlements";
 import type { AuctionEvent, AuctionLot } from "@/lib/utils";
+import { isWeeklySale } from "@/lib/weeklySales";
 
 export type SaleKind = "past" | "live" | "upcoming";
 
@@ -18,9 +19,10 @@ export function saleKind(event: AuctionEvent, now = Date.now()): SaleKind {
 
 /** Current sale plus up to two previous and two upcoming. */
 export function pickSaleWindow(events: AuctionEvent[], now = Date.now()): SaleWindowItem[] {
-  const sorted = [...events]
-    .filter((event) => !event.archivedAt)
-    .sort((a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime());
+  const weekly = events.filter((event) => !event.archivedAt && isWeeklySale(event));
+  const sorted = (weekly.length ? weekly : events.filter((event) => !event.archivedAt)).sort(
+    (a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime(),
+  );
   if (!sorted.length) return [];
 
   let idx = sorted.findIndex((event) => saleKind(event, now) === "live");

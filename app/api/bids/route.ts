@@ -37,6 +37,11 @@ async function writeLot(
     attempts.push(lotId.toLowerCase());
     if (!lotId.toUpperCase().startsWith("LOT-")) attempts.push(`LOT-${lotId}`);
   }
+  if (isUuid(lotId)) {
+    const rest = await patchLotRow(lotId, patch);
+    if (rest.data?.[0]) return null;
+    if (!rest.ok) return { message: rest.body || `HTTP ${rest.status}` };
+  }
   let lastError: { message?: string; details?: string; hint?: string } | null = null;
   for (const key of attempts) {
     for (const column of ["id", "slug", "lot_number"] as const) {
@@ -63,12 +68,34 @@ async function forceLotOpen(
   supabase: NonNullable<ReturnType<typeof getSupabaseAdmin>>,
   lotId: string,
 ) {
+  const { data: row } = await supabase
+    .from("lots")
+    .select("id, event_id, ends_at")
+    .eq("id", lotId)
+    .maybeSingle();
+  let endsAt = weekFromNow();
+  if (row?.event_id) {
+    const { data: event } = await supabase
+      .from("auction_events")
+      .select("ends_at")
+      .eq("id", row.event_id)
+      .maybeSingle();
+    if (event?.ends_at && new Date(event.ends_at).getTime() > Date.now()) {
+      endsAt = String(event.ends_at);
+    }
+  } else if (row?.ends_at && new Date(String(row.ends_at)).getTime() > Date.now()) {
+    endsAt = String(row.ends_at);
+  }
   const patch: Record<string, unknown> = {
     status: "live",
-    ends_at: weekFromNow(),
+    ends_at: endsAt,
   };
-  const error = await writeLot(supabase, lotId, patch);
-  return { patch, error: pgMessage(error) || null };
+  const rest = await patchLotRow(lotId, patch);
+  if (!rest.ok || !rest.data?.length) {
+    const error = await writeLot(supabase, lotId, patch);
+    return { patch, error: pgMessage(error) || rest.body || null };
+  }
+  return { patch, error: null };
 }
 
 async function recordTape(
@@ -215,6 +242,7 @@ async function persistDemo(
       currentBid: demo.currentBid,
       endsAt: demo.endsAt,
       highBidder: demo.highBidder,
+      highBidderId: demo.highBidderId,
       events: [stamped],
       extended: false,
       boughtNow: true,
@@ -261,6 +289,7 @@ async function persistDemo(
       currentBid: demo.currentBid,
       endsAt: demo.endsAt,
       highBidder: demo.highBidder,
+      highBidderId: demo.highBidderId,
       events: stamped,
       extended: result.extended,
     });
@@ -382,6 +411,7 @@ async function persistSupabase(
         currentBid: buyNow,
         endsAt: endedAt,
         highBidder: bidder,
+        highBidderId: bidderId,
         events: [{ bidder, amount: buyNow, kind: "live" }],
         extended: false,
         boughtNow: true,
@@ -436,6 +466,7 @@ async function persistSupabase(
       currentBid: result.state.currentBid,
       endsAt: result.state.endsAt,
       highBidder: result.state.highBidder,
+      highBidderId: result.state.highBidder === bidder ? bidderId : null,
       events: result.events,
       extended: result.extended,
       floor: "always-open",

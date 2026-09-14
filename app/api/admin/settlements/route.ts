@@ -78,10 +78,16 @@ export async function PATCH(request: NextRequest) {
     payment: body.payment ?? "unpaid",
     shipping: body.shipping ?? "pending",
     notes: body.notes ?? "",
+    fulfillment: body.fulfillment ?? "unset",
   };
   const supabase = getSupabaseAdmin();
   if (isSupabaseConfigured && supabase) {
     try {
+      const existing = await listSettlementInvoices(supabase);
+      const current = existing.find((item) => item.invoice === row.invoice);
+      if (current && (row.fulfillment === "unset" || !row.fulfillment)) {
+        row.fulfillment = current.fulfillment ?? "unset";
+      }
       await upsertSettlementInvoice(supabase, row);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Could not save invoice.";
@@ -125,6 +131,7 @@ export async function POST(request: NextRequest) {
             payment: current?.payment ?? "unpaid",
             shipping: current?.shipping ?? "pending",
             notes: current?.notes ?? "",
+            fulfillment: current?.fulfillment ?? "unset",
           }),
         );
       }
@@ -151,6 +158,7 @@ export async function POST(request: NextRequest) {
           payment: existing?.payment ?? "unpaid",
           shipping: existing?.shipping ?? "pending",
           notes: existing?.notes ?? "",
+          fulfillment: existing?.fulfillment ?? "unset",
         }),
       );
     }

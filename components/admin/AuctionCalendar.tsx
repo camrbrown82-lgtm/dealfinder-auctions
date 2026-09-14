@@ -130,10 +130,10 @@ export function AuctionCalendarModal({
         <h2 id="sale-calendar-title" className="font-display text-2xl">
           Pick the sale week
         </h2>
-        <p className="mt-1 font-comic text-sm">
-          File <strong>{lotLabel}</strong> onto a weekly auction (up to {AUCTION_PLAN_MONTHS} months
-          ahead). Tap a sale, or tap an empty day to add that week.
-        </p>
+          <p className="font-comic text-sm">
+            File <strong>{lotLabel}</strong> onto Sep 20, Sep 27, or Oct 4. New posts already go
+            onto the next week; tap another sale only if you want to move it.
+          </p>
         <div className="mt-3">
           <CalendarGrid
             events={events}

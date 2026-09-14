@@ -3,8 +3,8 @@ import { openRows } from "@/lib/openFloor";
 import { mapLot, type LotRow } from "@/lib/mappers";
 import { getDemoLot } from "@/lib/demoAuctionStore";
 import { getAdminDemo, stampAuctionNumbers } from "@/lib/demoAdminStore";
-import { MOCK_LOTS, getLotById, filterLots, lotImages, type AuctionLot } from "@/lib/utils";
-import type { AuctionEvent } from "@/lib/utils";
+import { MOCK_LOTS, getLotById, filterLots, lotImages, uniqueImageUrls, type AuctionEvent, type AuctionLot } from "@/lib/utils";
+import { ensureWeeklySales } from "@/lib/weeklySales";
 
 function withGallery(lot: AuctionLot): AuctionLot {
   if (lotImages(lot).length > 1) return lot;
@@ -58,6 +58,10 @@ export async function fetchLiveCatalog(): Promise<{
   if (!supabase) {
     return { lots: [], events: [] };
   }
+
+  await ensureWeeklySales(supabase).catch((error) => {
+    console.error("ensureWeeklySales", error instanceof Error ? error.message : error);
+  });
 
   const [{ data, error }, eventsRes] = await Promise.all([
     supabase.from("lots").select("*").order("ends_at", { ascending: true }),
@@ -116,6 +120,18 @@ export async function fetchLot(id: string): Promise<AuctionLot | undefined> {
       }
       if (data) {
         lot = withGallery(mapLot(data as unknown as LotRow));
+        const consignmentId = String(data.consignment_id ?? "");
+        if (consignmentId) {
+          const consignment = await supabase
+            .from("consignments")
+            .select("image_urls")
+            .eq("id", consignmentId)
+            .maybeSingle();
+          const extra = Array.isArray(consignment.data?.image_urls)
+            ? (consignment.data.image_urls as string[])
+            : [];
+          lot.images = uniqueImageUrls([...(lot.images ?? []), ...extra, lot.image]);
+        }
         if (lot.eventId) {
           const { data: event } = await supabase
             .from("auction_events")

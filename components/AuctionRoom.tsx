@@ -7,11 +7,15 @@ import { useBidder } from "@/components/BidderProvider";
 import { LotTimer } from "@/components/LotTimer";
 import { nextLiveAmount } from "@/lib/bidding";
 import { isProfileComplete } from "@/lib/profileTypes";
-import { INTERAC_EMAIL, PICKUP_INSTRUCTIONS } from "@/lib/payments";
+import { INTERAC_EMAIL, fulfillmentInstructions } from "@/lib/payments";
+import type { FulfillmentChoice } from "@/lib/payments";
+import { profileAddress } from "@/lib/profileTypes";
 import { getSupabaseClient, isSupabaseConfigured } from "@/lib/supabaseClient";
 import { buyNowPriceOf, canBuyNow } from "@/lib/buyNow";
 import { recordInterest } from "@/lib/interest";
+import { LotImage } from "@/components/LotImage";
 import {
+  extraLotImages,
   formatCurrency,
   parseLotEndMs,
   type AuctionLot,
@@ -29,6 +33,7 @@ export function AuctionRoom({ lot }: { lot: AuctionLot }) {
   const [currentBid, setCurrentBid] = useState(lot.currentBid);
   const [endsAt, setEndsAt] = useState(lot.endsAt);
   const [highBidder, setHighBidder] = useState(lot.highBidder ?? null);
+  const [highBidderId, setHighBidderId] = useState(lot.highBidderId ?? null);
   const [status, setStatus] = useState<AuctionLot["status"]>(lot.status ?? "live");
   const [extended, setExtended] = useState(false);
   const [mode, setMode] = useState<"live" | "absentee">("live");
@@ -37,6 +42,7 @@ export function AuctionRoom({ lot }: { lot: AuctionLot }) {
   const [busy, setBusy] = useState(false);
   const [now, setNow] = useState(() => Date.now());
   const [feed, setFeed] = useState<BidRow[]>([]);
+  const [fulfillment, setFulfillment] = useState<FulfillmentChoice>(lot.fulfillment ?? "unset");
   const pendingBid = useRef<{
     mode: "live" | "absentee" | "buy_now";
     amount: number;
@@ -50,11 +56,19 @@ export function AuctionRoom({ lot }: { lot: AuctionLot }) {
     [currentBid, lot.minIncrement],
   );
   const buyNow = buyNowPriceOf(lot);
-  const open = status !== "removed" && status !== "ended";
+  const extras = extraLotImages(lot);
+  const hasWinner = Boolean(highBidder || highBidderId);
+  const soldClosed = status === "ended" && hasWinner;
+  const open = status !== "removed" && !soldClosed;
   openRef.current = open;
   const youWon =
-    status === "ended" &&
-    Boolean(user && highBidder && (highBidder === user.fullName || highBidder === user.email));
+    soldClosed &&
+    Boolean(
+      user &&
+        (highBidderId === user.id ||
+          highBidder === user.fullName ||
+          highBidder === user.email),
+    );
   const showBuyNow = open && canBuyNow(currentBid, buyNow);
 
   useEffect(() => {
@@ -150,10 +164,16 @@ export function AuctionRoom({ lot }: { lot: AuctionLot }) {
             current_bid?: number | string;
             ends_at?: string;
             high_bidder?: string | null;
+            high_bidder_id?: string | null;
             status?: AuctionLot["status"];
+            fulfillment?: FulfillmentChoice;
           };
           if (next.current_bid != null) setCurrentBid(Number(next.current_bid));
           if (next.high_bidder !== undefined) setHighBidder(next.high_bidder);
+          if (next.high_bidder_id !== undefined) setHighBidderId(next.high_bidder_id);
+          if (next.fulfillment === "ship" || next.fulfillment === "pickup" || next.fulfillment === "unset") {
+            setFulfillment(next.fulfillment);
+          }
           if (next.status === "removed" || next.status === "ended") setStatus(next.status);
           else if (next.status) setStatus(next.status);
           if (next.ends_at) {
@@ -217,6 +237,7 @@ export function AuctionRoom({ lot }: { lot: AuctionLot }) {
       setCurrentBid(json.currentBid);
       setEndsAt(json.endsAt);
       setHighBidder(json.highBidder);
+      if (json.highBidderId) setHighBidderId(json.highBidderId);
       setExtended(Boolean(json.extended));
       if (Array.isArray(json.events)) {
         setFeed((current) => [...json.events.slice().reverse(), ...current].slice(0, 12));
@@ -224,7 +245,7 @@ export function AuctionRoom({ lot }: { lot: AuctionLot }) {
       if (json.status) setStatus(json.status);
       if (json.boughtNow) {
         setStatus("ended");
-        setMessage(`You won this lot for ${formatCurrency(json.currentBid)}. Settle payment and shipping on checkout.`);
+        setMessage(`You won this lot for ${formatCurrency(json.currentBid)}. Choose ship or pick up below, then settle payment.`);
         router.push("/checkout");
         return;
       }
@@ -255,6 +276,29 @@ export function AuctionRoom({ lot }: { lot: AuctionLot }) {
     await placeBid();
   }
 
+  async function chooseFulfillment(next: FulfillmentChoice) {
+    setBusy(true);
+    setMessage(null);
+    try {
+      const response = await fetch("/api/wins", {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ lotId: lot.id, fulfillment: next }),
+      });
+      const json = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(typeof json.error === "string" ? json.error : "Could not save delivery.");
+      }
+      setFulfillment(next);
+      setMessage(next === "ship" ? "We will ship this lot." : "Marked for pickup.");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Could not save delivery.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <div className="space-y-4">
       <div className="flex flex-col items-start justify-between gap-3 comic-panel p-4 sm:flex-row sm:items-center">
@@ -274,11 +318,31 @@ export function AuctionRoom({ lot }: { lot: AuctionLot }) {
             <p className="font-display text-3xl">Hammer {formatCurrency(currentBid)}</p>
             <p className="font-comic text-sm">
               Pay by Interac e-Transfer to <strong>{INTERAC_EMAIL}</strong> or pay on arrival.
-              Checkout has shipping and pickup instructions.
+              Choose ship or pick up here — that choice is made after the win.
             </p>
-            <p className="border-4 border-black bg-white px-3 py-2 font-comic text-sm">{PICKUP_INSTRUCTIONS}</p>
+            <div className="grid gap-2 sm:grid-cols-2">
+              <button
+                type="button"
+                disabled={busy}
+                className={fulfillment === "ship" ? "comic-btn" : "comic-btn-invert"}
+                onClick={() => void chooseFulfillment("ship")}
+              >
+                Ship it
+              </button>
+              <button
+                type="button"
+                disabled={busy}
+                className={fulfillment === "pickup" ? "comic-btn" : "comic-btn-invert"}
+                onClick={() => void chooseFulfillment("pickup")}
+              >
+                Pick up
+              </button>
+            </div>
+            <p className="border-4 border-black bg-white px-3 py-2 font-comic text-sm">
+              {fulfillmentInstructions(fulfillment, user ? profileAddress(user) : "")}
+            </p>
             <Link href="/checkout" className="comic-btn inline-block">
-              Settle payment & shipping
+              Settle payment
             </Link>
             {message ? <p className="font-display text-xl">{message}</p> : null}
           </div>
@@ -292,7 +356,7 @@ export function AuctionRoom({ lot }: { lot: AuctionLot }) {
               Back to live lots
             </Link>
           </div>
-        ) : status === "ended" ? (
+        ) : soldClosed ? (
           <div className="comic-panel space-y-3 p-5">
             <p className="font-display text-sm tracking-[0.25em] text-brand-red">SOLD</p>
             <p className="font-display text-3xl">Hammer {formatCurrency(currentBid)}</p>
@@ -417,6 +481,20 @@ export function AuctionRoom({ lot }: { lot: AuctionLot }) {
           </ul>
         )}
       </div>
+
+      {extras.length > 0 ? (
+        <div className="comic-panel p-4">
+          <p className="font-display text-2xl">Submitted photos</p>
+          <p className="font-comic text-sm">Warehouse shots from intake, after the listing photo.</p>
+          <div className="mt-3 grid grid-cols-2 gap-2">
+            {extras.map((src) => (
+              <div key={src} className="relative aspect-square overflow-hidden border-4 border-black bg-white">
+                <LotImage src={src} alt={`${lot.title} submitted photo`} fill className="object-cover" sizes="40vw" />
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

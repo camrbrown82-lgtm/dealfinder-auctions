@@ -5,6 +5,8 @@ import Link from "next/link";
 import { useBidder } from "@/components/BidderProvider";
 import { InvoicePanel } from "@/components/InvoicePanel";
 import { INTERAC_EMAIL, PICKUP_INSTRUCTIONS, paymentMethodLabel } from "@/lib/payments";
+import type { FulfillmentChoice } from "@/lib/payments";
+import { profileAddress } from "@/lib/profileTypes";
 import type { PaymentMethod } from "@/lib/profileTypes";
 import type { WinInvoice } from "@/lib/winTypes";
 
@@ -13,6 +15,7 @@ export default function CheckoutPage() {
   const [wins, setWins] = useState<WinInvoice[]>([]);
   const [method, setMethod] = useState<PaymentMethod>("interac_etransfer");
   const [notice, setNotice] = useState<string | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
 
   async function load() {
     const response = await fetch("/api/wins", { credentials: "include" });
@@ -48,6 +51,24 @@ export default function CheckoutPage() {
     }
   }
 
+  async function chooseFulfillment(lotId: string, fulfillment: FulfillmentChoice) {
+    setBusy(lotId);
+    setNotice(null);
+    const response = await fetch("/api/wins", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ lotId, fulfillment }),
+    });
+    const json = await response.json().catch(() => ({}));
+    setBusy(null);
+    if (!response.ok) {
+      setNotice(typeof json.error === "string" ? json.error : "Could not save ship or pickup.");
+      return;
+    }
+    await load();
+    setNotice(fulfillment === "ship" ? "We will ship this lot." : "This lot is marked for pickup.");
+  }
+
   if (!ready) return <p className="font-comic">Loading invoices…</p>;
 
   if (!user) {
@@ -71,8 +92,8 @@ export default function CheckoutPage() {
       <div className="comic-panel p-4">
         <h1 className="font-display text-5xl text-brand-red">Winning checkout</h1>
         <p className="font-comic text-sm">
-          No Stripe. After a buy now or hammer, this page lists your invoices, Interac
-          details, and pickup/shipping notes.
+          Payment is Interac or pay on arrival. After each hammer, pick ship or pick up on that
+          invoice — it is not set at signup.
         </p>
       </div>
 
@@ -100,6 +121,15 @@ export default function CheckoutPage() {
           <p className="border-4 border-black bg-white px-3 py-2">
             Interac recipient email: <strong>{INTERAC_EMAIL}</strong>
           </p>
+          {user && profileAddress(user) ? (
+            <p className="border-4 border-black bg-white px-3 py-2">
+              Address on your paddle: <strong>{profileAddress(user)}</strong>
+            </p>
+          ) : (
+            <p className="border-4 border-black bg-white px-3 py-2">
+              Add a street address on your bidder card if you want a lot shipped.
+            </p>
+          )}
           <p className="border-4 border-black bg-white px-3 py-2">{PICKUP_INSTRUCTIONS}</p>
         </div>
         {notice && <p className="mt-3 font-display text-xl">{notice}</p>}
@@ -116,7 +146,12 @@ export default function CheckoutPage() {
       ) : (
         <div className="space-y-4">
           {wins.map((win) => (
-            <InvoicePanel key={win.lotId} win={win} />
+            <InvoicePanel
+              key={win.lotId}
+              win={win}
+              busy={busy === win.lotId}
+              onFulfillment={(lotId, fulfillment) => void chooseFulfillment(lotId, fulfillment)}
+            />
           ))}
         </div>
       )}

@@ -188,8 +188,8 @@ export function AdminAiIntake({
       setListingGrade("Used");
       await onPosted(
         postLive
-          ? `Posted ${lotNumber} live. Pick the auction inventory.`
-          : `Saved ${lotNumber}. Pick the auction inventory.`,
+          ? `Posted ${lotNumber} live onto ${json.auctionLabel ?? "the next weekly sale"}.`
+          : `Saved ${lotNumber} onto ${json.auctionLabel ?? "the next weekly sale"}.`,
         json.lot,
       );
     } catch (err) {

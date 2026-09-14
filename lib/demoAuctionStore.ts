@@ -12,6 +12,7 @@ export type DemoLotState = {
   highBidder: string | null;
   highBidderId: string | null;
   status: string;
+  fulfillment?: "unset" | "ship" | "pickup";
   absentees: AbsenteeMax[];
   bids: AdminBid[];
 };
@@ -45,6 +46,7 @@ function put(target: Map<string, DemoLotState>, lot: AuctionLot) {
     highBidder: lot.highBidder ?? null,
     highBidderId: lot.highBidderId ?? null,
     status: lot.status ?? "live",
+    fulfillment: lot.fulfillment ?? "unset",
     absentees: [],
     bids: [],
   };
@@ -55,6 +57,7 @@ function put(target: Map<string, DemoLotState>, lot: AuctionLot) {
     row.highBidder = existing.highBidder;
     row.highBidderId = existing.highBidderId;
     row.currentBid = existing.currentBid;
+    row.fulfillment = existing.fulfillment ?? row.fulfillment;
   }
   target.set(lot.id, row);
   if (lot.slug) target.set(lot.slug, row);

@@ -7,6 +7,7 @@ export type InvoiceMark = {
   payment: PaymentMark;
   shipping: ShippingMark;
   notes: string;
+  fulfillment?: "unset" | "ship" | "pickup";
 };
 
 export type SettlementInvoiceRecord = InvoiceMark & {
@@ -20,6 +21,7 @@ export type SettlementInvoiceRecord = InvoiceMark & {
   paymentMethod: string;
   lots: SettlementLot[];
   total: number;
+  fulfillment?: "unset" | "ship" | "pickup";
 };
 
 export type SettlementArchiveRecord = {
@@ -31,7 +33,7 @@ export type SettlementArchiveRecord = {
 };
 
 export function emptyMark(): InvoiceMark {
-  return { payment: "unpaid", shipping: "pending", notes: "" };
+  return { payment: "unpaid", shipping: "pending", notes: "", fulfillment: "unset" };
 }
 
 export function marksFromInvoices(rows: SettlementInvoiceRecord[]): Record<string, InvoiceMark> {
@@ -41,6 +43,7 @@ export function marksFromInvoices(rows: SettlementInvoiceRecord[]): Record<strin
       payment: row.payment,
       shipping: row.shipping,
       notes: row.notes,
+      fulfillment: row.fulfillment ?? "unset",
     };
   }
   return marks;

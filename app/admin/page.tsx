@@ -127,7 +127,9 @@ export default function AdminPage() {
         <div className="space-y-10">
           <section className="space-y-4">
             <h2 className="font-display text-3xl">Auction details</h2>
-            <p className="font-comic text-sm">Fine-tune start/end times after you drop a week on the calendar.</p>
+            <p className="font-comic text-sm">
+              Weekly sales are Sep 20, Sep 27, and Oct 4. Start/end times follow those weeks.
+            </p>
             <ul className="space-y-2">
               {visibleEvents.map((event) => {
                 const edit = eventEdits[event.id] ?? {

@@ -5,7 +5,6 @@ import { InterestBeacon } from "@/components/InterestBeacon";
 import { AuctionRoom } from "@/components/AuctionRoom";
 import { fetchLot } from "@/lib/lots";
 import { listingGradeOf } from "@/lib/listingGrade";
-import { lotImages } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
@@ -40,7 +39,7 @@ export default async function AuctionLotPage({ params }: PageProps) {
       <div className="grid gap-8 lg:grid-cols-2">
         <div className="overflow-hidden comic-panel">
           <LotGallery
-            images={lotImages(lot)}
+            images={[lot.image].filter(Boolean)}
             alt={lot.title}
             variant="room"
             sizes="(max-width: 1024px) 100vw, 50vw"

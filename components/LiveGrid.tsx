@@ -166,7 +166,8 @@ export function LiveGrid({
         <div className="comic-panel p-4">
           <p className="font-display text-lg">Auctions</p>
           <p className="font-comic text-sm">
-            This week&apos;s sale is on Live. Open another auction to see only that sale&apos;s lots.
+            Live now through <strong>Sep 20</strong>. Next hammers: <strong>Sep 27</strong>, then{" "}
+            <strong>Oct 4</strong>. Bid on the selected week until that hammer.
           </p>
           <div className="mt-3 flex flex-wrap gap-2">
             {sales.map((item) => {
@@ -290,7 +291,7 @@ function LotCard({
       >
         <Link href={href} className="absolute inset-0 z-0" aria-label={lot.title} />
         <LotGallery
-          images={lotImages(lot)}
+          images={lot.image ? [lot.image] : lotImages(lot)}
           alt={lot.title}
           variant={compact || single ? "compact" : "card"}
           sizes={sizes}
