@@ -2,7 +2,7 @@
 
 import { LotImage } from "@/components/LotImage";
 import { sortLotsByNumber } from "@/lib/catalogNumbers";
-import { lotNeedsRelist, lotWasSold } from "@/lib/settlements";
+import { lotWasSold } from "@/lib/settlements";
 import { formatCurrency, type AuctionEvent, type AuctionLot } from "@/lib/utils";
 
 export function AuctionInventories({
@@ -73,7 +73,6 @@ function AuctionLotGroup({
       ) : (
         <ul className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
           {lots.map((lot) => {
-            const canMove = lotNeedsRelist(lot);
             const sold = lotWasSold(lot);
             return (
               <li
@@ -86,14 +85,14 @@ function AuctionLotGroup({
                 <div className="min-w-0 flex-1">
                   <p className="font-display text-sm text-brand-red">
                     {lot.lotNumber ?? "No lot #"} · {(lot.status ?? "paused").toUpperCase()}
-                    {sold ? " · SOLD" : canMove && lot.status === "ended" ? " · DID NOT SELL" : ""}
+                    {sold ? " · SOLD" : lot.status === "ended" || lot.status === "removed" ? " · DID NOT SELL" : ""}
                   </p>
                   <h4 className="truncate font-display text-xl leading-tight">{lot.title}</h4>
                   <p className="font-comic text-xs">{lot.consignor}</p>
                   <p className="mt-1 line-clamp-2 font-comic text-sm">{lot.description}</p>
                   <p className="mt-1 font-comic text-sm font-bold">{formatCurrency(lot.currentBid)}</p>
                   <div className="mt-2 flex flex-wrap gap-1">
-                    {canMove ? (
+                    {sold ? null : (
                       <button
                         type="button"
                         className="comic-btn-invert !px-2 !py-1 !text-sm"
@@ -101,7 +100,7 @@ function AuctionLotGroup({
                       >
                         Move to sale
                       </button>
-                    ) : null}
+                    )}
                     <button type="button" className="comic-btn !px-2 !py-1 !text-sm" onClick={() => onRemove(lot)}>
                       Remove
                     </button>

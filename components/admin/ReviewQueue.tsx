@@ -135,7 +135,7 @@ function ReviewCard({
         </label>
         <div className="flex flex-wrap gap-2">
           <button type="button" className="comic-btn !text-base" onClick={onApprove}>
-            Approve into inventory
+            Approve into a sale
           </button>
           <button type="button" className="comic-btn-invert !text-base" onClick={onHold}>
             Hold

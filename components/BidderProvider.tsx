@@ -35,7 +35,7 @@ export function BidderProvider({ children }: { children: ReactNode }) {
 
   const refresh = useCallback(async () => {
     try {
-      const response = await fetch("/api/auth");
+      const response = await fetch("/api/auth", { credentials: "include" });
       const json = await response.json();
       const next = (json.user as BidderProfile | null) ?? null;
       setUser(next);
@@ -69,7 +69,10 @@ export function BidderProvider({ children }: { children: ReactNode }) {
     setModalOpen(false);
     const action = pendingRef.current;
     pendingRef.current = null;
-    if (action) await action();
+    if (action) {
+      await new Promise((resolve) => window.setTimeout(resolve, 50));
+      await action();
+    }
   }
 
   const value = useMemo(

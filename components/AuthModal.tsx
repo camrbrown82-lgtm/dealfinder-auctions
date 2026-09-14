@@ -70,12 +70,13 @@ export function AuthModal({
       if (mode === "login") {
         const response = await fetch("/api/auth", {
           method: "POST",
+          credentials: "include",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ email, password }),
         });
         const json = await response.json();
         if (!response.ok) throw new Error(json.error || "Could not log in.");
-        const me = await fetch("/api/auth").then((r) => r.json());
+        const me = await fetch("/api/auth", { credentials: "include" }).then((r) => r.json());
         if (!me.user) throw new Error("Session missing after login.");
         if (!isProfileComplete(me.user)) {
           setProfile({
@@ -98,12 +99,13 @@ export function AuthModal({
 
       const response = await fetch("/api/auth", {
         method: "PUT",
+        credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password, ...profile }),
       });
       const json = await response.json();
       if (!response.ok) throw new Error(json.error || "Could not sign up.");
-      const me = await fetch("/api/auth").then((r) => r.json());
+      const me = await fetch("/api/auth", { credentials: "include" }).then((r) => r.json());
       if (!me.user) throw new Error("Session missing after signup.");
       await onAuthenticated(me.user);
     } catch (err) {

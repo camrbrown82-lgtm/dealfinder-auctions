@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { formatCurrency, type PayoutRow } from "@/lib/utils";
 import { paymentMethodLabel } from "@/lib/payments";
-import type { AuctionSettlement, BuyerSettlement } from "@/lib/settlements";
+import { mergePersistedInvoices, type AuctionSettlement, type BuyerSettlement } from "@/lib/settlements";
 import type { PaymentMethod } from "@/lib/profileTypes";
 import type { PayoutItem } from "@/lib/payouts";
 import {
@@ -36,6 +36,7 @@ export function SettlementBook({
   onArchived?: () => Promise<void> | void;
 }) {
   const [marks, setMarks] = useState<Record<string, InvoiceMark>>({});
+  const [savedInvoices, setSavedInvoices] = useState<SettlementInvoiceRecord[]>([]);
   const [archives, setArchives] = useState<SettlementArchiveRecord[]>([]);
   const [printId, setPrintId] = useState<string | "all" | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
@@ -46,7 +47,9 @@ export function SettlementBook({
     const response = await fetch("/api/admin/settlements", { credentials: "include", cache: "no-store" });
     const json = await response.json().catch(() => ({}));
     if (Array.isArray(json.invoices)) {
-      setMarks(marksFromInvoices(json.invoices as SettlementInvoiceRecord[]));
+      const rows = json.invoices as SettlementInvoiceRecord[];
+      setSavedInvoices(rows);
+      setMarks(marksFromInvoices(rows));
     }
     if (Array.isArray(json.archives)) {
       setArchives(json.archives as SettlementArchiveRecord[]);
@@ -113,9 +116,10 @@ export function SettlementBook({
   }
 
   const visible = useMemo(() => {
-    if (!printId || printId === "all") return sales;
-    return sales.filter((sale) => sale.eventId === printId);
-  }, [printId, sales]);
+    const merged = mergePersistedInvoices(sales, savedInvoices);
+    if (!printId || printId === "all") return merged;
+    return merged.filter((sale) => sale.eventId === printId);
+  }, [printId, sales, savedInvoices]);
 
   return (
     <div className="space-y-10">
@@ -138,7 +142,8 @@ export function SettlementBook({
 
       {visible.length === 0 ? (
         <p className="comic-panel p-4 font-comic">
-          No sold lots yet. When a sale ends with winners, invoices group here by buyer.
+          No sold or unsold lots yet. Buy now copies the invoice here immediately. Pulling a lot off
+          live files it under unsold or settlements.
         </p>
       ) : (
         visible.map((sale) => (

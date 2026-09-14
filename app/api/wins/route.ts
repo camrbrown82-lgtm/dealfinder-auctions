@@ -22,11 +22,22 @@ export async function GET() {
   if (isSupabaseConfigured) {
     const supabase = getSupabaseAdmin();
     if (supabase) {
-      const { data } = await supabase
+      const { data: byId } = await supabase
         .from("lots")
         .select("*")
         .eq("high_bidder_id", session.id);
-      lots = ((data ?? []) as LotRow[]).map(mapLot);
+      let rows = (byId ?? []) as LotRow[];
+      if (session.fullName) {
+        const { data: byName } = await supabase
+          .from("lots")
+          .select("*")
+          .eq("high_bidder", session.fullName);
+        const seen = new Set(rows.map((row) => row.id));
+        for (const row of (byName ?? []) as LotRow[]) {
+          if (!seen.has(row.id)) rows.push(row);
+        }
+      }
+      lots = rows.map(mapLot);
     }
   } else {
     lots = MOCK_LOTS.map((lot) => {
@@ -57,7 +68,7 @@ export async function GET() {
       paymentMethodKey: session.paymentMethod,
       paymentMethod: paymentMethodLabel(session.paymentMethod),
       instructions: paymentInstructions(session.paymentMethod, invoice),
-      winning: lot.status !== "ended" && lot.status !== "removed",
+      winning: lot.status === "ended",
     };
   });
 

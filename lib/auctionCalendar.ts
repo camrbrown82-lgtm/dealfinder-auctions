@@ -25,8 +25,17 @@ export function monthCells(year: number, month: number) {
 }
 
 export function eventsOnDay(events: AuctionEvent[], day: Date) {
-  const key = dayKey(day);
-  return events.filter((event) => dayKey(new Date(event.startsAt)) === key);
+  const start = new Date(day.getFullYear(), day.getMonth(), day.getDate()).getTime();
+  const end = start + 24 * 60 * 60 * 1000;
+  return events.filter((event) => {
+    const from = new Date(event.startsAt).getTime();
+    const to = new Date(event.endsAt).getTime();
+    return Number.isFinite(from) && Number.isFinite(to) && from < end && to > start;
+  });
+}
+
+export function openAuctionEvents(events: AuctionEvent[], now = Date.now()) {
+  return events.filter((event) => !event.archivedAt && new Date(event.endsAt).getTime() > now);
 }
 
 export function canPlanDate(day: Date, now = new Date()) {

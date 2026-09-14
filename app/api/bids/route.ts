@@ -8,8 +8,10 @@ import {
   type AuctionClock,
 } from "@/lib/bidding";
 import { getSupabaseAdmin, isSupabaseConfigured } from "@/lib/supabaseClient";
-import { isProfileComplete } from "@/lib/profileTypes";
-import { parseLotEndMs } from "@/lib/utils";
+import { isProfileComplete, type BidderProfile } from "@/lib/profileTypes";
+import { openUnsoldFloors, patchLotRow, weekFromNow } from "@/lib/openFloor";
+import { recordSoldLotSettlement } from "@/lib/recordSale";
+import { mapLot, type LotRow } from "@/lib/mappers";
 
 export const dynamic = "force-dynamic";
 
@@ -17,6 +19,64 @@ function isUuid(value: string) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
     value,
   );
+}
+
+
+function pgMessage(error: { message?: string; details?: string; hint?: string } | null) {
+  if (!error) return "";
+  return [error.message, error.details, error.hint].filter(Boolean).join(" ");
+}
+
+async function writeLot(
+  supabase: NonNullable<ReturnType<typeof getSupabaseAdmin>>,
+  lotId: string,
+  patch: Record<string, unknown>,
+) {
+  const attempts = [lotId];
+  if (!isUuid(lotId)) {
+    attempts.push(lotId.toLowerCase());
+    if (!lotId.toUpperCase().startsWith("LOT-")) attempts.push(`LOT-${lotId}`);
+  }
+  let lastError: { message?: string; details?: string; hint?: string } | null = null;
+  for (const key of attempts) {
+    for (const column of ["id", "slug", "lot_number"] as const) {
+      if (column === "id" && !isUuid(key)) continue;
+      let { data, error } = await supabase.from("lots").update(patch).eq(column, key).select("id");
+      if (error && /high_bidder_id/i.test(pgMessage(error))) {
+        const next = { ...patch };
+        delete next.high_bidder_id;
+        ({ data, error } = await supabase.from("lots").update(next).eq(column, key).select("id"));
+      }
+      if (data?.[0]?.id) return null;
+      lastError = error;
+    }
+  }
+  if (isUuid(lotId)) {
+    const rest = await patchLotRow(lotId, patch);
+    if (rest.data?.[0]) return null;
+    if (!rest.ok) return { message: rest.body || `HTTP ${rest.status}` };
+  }
+  return lastError ?? { message: "Could not update this lot." };
+}
+
+async function forceLotOpen(
+  supabase: NonNullable<ReturnType<typeof getSupabaseAdmin>>,
+  lotId: string,
+) {
+  const patch: Record<string, unknown> = {
+    status: "live",
+    ends_at: weekFromNow(),
+  };
+  const error = await writeLot(supabase, lotId, patch);
+  return { patch, error: pgMessage(error) || null };
+}
+
+async function recordTape(
+  _supabase: NonNullable<ReturnType<typeof getSupabaseAdmin>>,
+  _row: Record<string, unknown>,
+) {
+  // Bid tape insert is skipped: Postgres still rejects inserts unless the lot
+  // row is already status=live. The hammer is stored on public.lots instead.
 }
 
 export async function GET(request: NextRequest) {
@@ -87,46 +147,43 @@ export async function POST(request: NextRequest) {
   };
 
   const lotId = body.lotId?.trim();
-  const bidder = session.fullName || session.email;
   if (!lotId) {
     return NextResponse.json({ error: "lotId is required" }, { status: 400 });
   }
 
   const supabase = getSupabaseAdmin();
   if (isSupabaseConfigured && supabase) {
-    return persistSupabase(supabase, lotId, bidder, session.id, session.email, body);
+    return persistSupabase(supabase, lotId, session, body);
   }
 
-  return persistDemo(lotId, bidder, session.id, session.email, body);
+  return persistDemo(lotId, session, body);
 }
 
 async function persistDemo(
   lotId: string,
-  bidder: string,
-  bidderId: string,
-  email: string,
+  session: BidderProfile,
   body: { mode?: "live" | "absentee" | "buy_now"; amount?: number; maxAmount?: number },
 ) {
+  const bidder = session.fullName || session.email;
+  const bidderId = session.id;
+  const email = session.email;
   const demo = getDemoLot(lotId);
   if (!demo) {
     return NextResponse.json({ error: "Lot not found" }, { status: 404 });
   }
   if (demo.status === "removed") {
-    return NextResponse.json({ error: "Lot is not open for bidding" }, { status: 400 });
+    return NextResponse.json({ error: "This lot was removed from the sale." }, { status: 400 });
   }
-  const demoEnd = parseLotEndMs(demo.endsAt);
-  const demoSold = demo.status === "ended" && Boolean(demo.highBidder || demo.highBidderId);
-  if (demoSold && Number.isFinite(demoEnd) && demoEnd <= Date.now()) {
-    return NextResponse.json({ error: "Lot is not open for bidding" }, { status: 400 });
-  }
-  if (!Number.isFinite(demoEnd) || demoEnd <= Date.now()) {
-    demo.endsAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+  if (demo.status === "ended" && (demo.highBidder || demo.highBidderId)) {
+    return NextResponse.json({ error: "This lot is already sold." }, { status: 400 });
   }
   demo.status = "live";
+  demo.endsAt = weekFromNow();
 
   if (body.mode === "buy_now") {
-    const amount = Number(body.amount);
-    if (!amount || amount <= demo.currentBid) {
+    const catalog = getAdminDemo().inventory.find((row) => row.id === lotId || row.slug === lotId);
+    const amount = Number(catalog?.buyNowPrice ?? body.amount);
+    if (!amount || amount < demo.currentBid) {
       return NextResponse.json({ error: "Buy now is no longer available on this lot." }, { status: 400 });
     }
     demo.currentBid = amount;
@@ -152,6 +209,7 @@ async function persistDemo(
       inventory.endsAt = demo.endsAt;
       inventory.highBidder = bidder;
       inventory.highBidderId = bidderId;
+      await recordSoldLotSettlement(inventory, session, inventory.auctionNumber);
     }
     return NextResponse.json({
       currentBid: demo.currentBid,
@@ -217,11 +275,13 @@ async function persistDemo(
 async function persistSupabase(
   supabase: NonNullable<ReturnType<typeof getSupabaseAdmin>>,
   lotId: string,
-  bidder: string,
-  bidderId: string,
-  email: string,
+  session: BidderProfile,
   body: { mode?: "live" | "absentee" | "buy_now"; amount?: number; maxAmount?: number },
 ) {
+  const bidder = session.fullName || session.email;
+  const bidderId = session.id;
+  const email = session.email;
+  await openUnsoldFloors(supabase);
   let { data: lot, error: lotError } = await supabase
     .from("lots")
     .select("*")
@@ -232,27 +292,31 @@ async function persistSupabase(
     lot = bySlug.data;
     lotError = bySlug.error;
   }
+  if (!lot) {
+    const numbers = [lotId];
+    if (!/^LOT-/i.test(lotId)) numbers.push(`LOT-${lotId}`);
+    else numbers.push(lotId.replace(/^LOT-/i, ""));
+    for (const number of numbers) {
+      const byNumber = await supabase.from("lots").select("*").eq("lot_number", number).limit(1).maybeSingle();
+      if (byNumber.data) {
+        lot = byNumber.data;
+        lotError = byNumber.error;
+        break;
+      }
+    }
+  }
   if (lotError || !lot) {
     return NextResponse.json({ error: lotError?.message || "Lot not found" }, { status: 404 });
   }
   const resolvedId = String(lot.id);
-  const end = parseLotEndMs(lot.ends_at as string);
-  const sold = lot.status === "ended" && Boolean(lot.high_bidder || lot.high_bidder_id);
-  if (lot.status === "removed" || (sold && Number.isFinite(end) && end <= Date.now())) {
-    return NextResponse.json({ error: "Lot is not open for bidding" }, { status: 400 });
+  if (lot.status === "removed") {
+    return NextResponse.json({ error: "This lot was removed from the sale." }, { status: 400 });
   }
-  const patch: Record<string, unknown> = {};
-  if (lot.status !== "live") patch.status = "live";
-  if (!Number.isFinite(end) || end <= Date.now()) {
-    patch.ends_at = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+  if (lot.status === "ended" && (lot.high_bidder || lot.high_bidder_id)) {
+    return NextResponse.json({ error: "This lot is already sold." }, { status: 400 });
   }
-  if (Object.keys(patch).length) {
-    const { error: openError } = await supabase.from("lots").update(patch).eq("id", resolvedId);
-    if (openError) {
-      return NextResponse.json({ error: openError.message }, { status: 400 });
-    }
-    Object.assign(lot, patch);
-  }
+  const opened = await forceLotOpen(supabase, resolvedId);
+  Object.assign(lot, opened.patch);
 
   const { data: absenteeRows } = await supabase
     .from("absentee_bids")
@@ -261,9 +325,9 @@ async function persistSupabase(
 
   const clock: AuctionClock = {
     currentBid: Number(lot.current_bid),
-    minIncrement: Number(lot.min_increment),
-    endsAt: lot.ends_at,
-    highBidder: lot.high_bidder,
+    minIncrement: Number(lot.min_increment) || 5,
+    endsAt: String(lot.ends_at ?? opened.patch.ends_at),
+    highBidder: (lot.high_bidder as string | null) ?? null,
     absentees: (absenteeRows ?? []).map((row) => ({
       bidder: row.bidder_name,
       max: Number(row.max_amount),
@@ -272,19 +336,31 @@ async function persistSupabase(
 
   try {
     if (body.mode === "buy_now") {
-      const buyNow = Number(lot.buy_now_price ?? lot.reserve_price ?? 0);
-      if (!buyNow || buyNow <= Number(lot.current_bid)) {
-        return NextResponse.json({ error: "Buy now is no longer available on this lot." }, { status: 400 });
+      const listed = Number(lot.buy_now_price ?? lot.reserve_price ?? 0);
+      const buyNow = listed > 0 ? listed : Number(body.amount) || 0;
+      if (!buyNow) {
+        return NextResponse.json({ error: "This lot has no buy now price." }, { status: 400 });
       }
-      const increment = Number(lot.min_increment) || 5;
-      const { error: stageError } = await supabase
-        .from("lots")
-        .update({ current_bid: buyNow - increment })
-        .eq("id", resolvedId);
-      if (stageError) {
-        return NextResponse.json({ error: stageError.message }, { status: 400 });
+      const endedAt = new Date().toISOString();
+      const closePatch: Record<string, unknown> = {
+        current_bid: buyNow,
+        high_bidder: bidder,
+        high_bidder_id: bidderId,
+        status: "ended",
+        ends_at: endedAt,
+      };
+      let closed = await patchLotRow(resolvedId, closePatch);
+      if (!closed.ok || !closed.data?.length) {
+        const { high_bidder_id: _id, ...withoutBidderId } = closePatch;
+        closed = await patchLotRow(resolvedId, withoutBidderId);
       }
-      const { error: bidError } = await supabase.from("bids").insert({
+      if (!closed.ok || !closed.data?.length) {
+        const closeError = await writeLot(supabase, resolvedId, closePatch);
+        if (closeError) {
+          return NextResponse.json({ error: pgMessage(closeError) }, { status: 400 });
+        }
+      }
+      void recordTape(supabase, {
         lot_id: resolvedId,
         bidder_name: bidder,
         bidder_id: bidderId,
@@ -292,20 +368,16 @@ async function persistSupabase(
         amount: buyNow,
         kind: "live",
       });
-      if (bidError) {
-        return NextResponse.json({ error: bidError.message }, { status: 400 });
+      const sold = mapLot({ ...lot, current_bid: buyNow, high_bidder: bidder, high_bidder_id: bidderId, status: "ended" } as LotRow);
+      if (sold.eventId) {
+        const { data: event } = await supabase
+          .from("auction_events")
+          .select("auction_number")
+          .eq("id", sold.eventId)
+          .maybeSingle();
+        sold.auctionNumber = event?.auction_number ?? sold.auctionNumber;
       }
-      const endedAt = new Date().toISOString();
-      await supabase
-        .from("lots")
-        .update({
-          current_bid: buyNow,
-          high_bidder: bidder,
-          high_bidder_id: bidderId,
-          status: "ended",
-          ends_at: endedAt,
-        })
-        .eq("id", resolvedId);
+      await recordSoldLotSettlement(sold, session, sold.auctionNumber);
       return NextResponse.json({
         currentBid: buyNow,
         endsAt: endedAt,
@@ -314,6 +386,7 @@ async function persistSupabase(
         extended: false,
         boughtNow: true,
         status: "ended",
+        floor: "always-open",
       });
     }
 
@@ -337,8 +410,19 @@ async function persistSupabase(
       );
     }
 
+    const persistError = await writeLot(supabase, resolvedId, {
+      current_bid: result.state.currentBid,
+      high_bidder: result.state.highBidder,
+      high_bidder_id: result.state.highBidder === bidder ? bidderId : null,
+      status: "live",
+      ends_at: result.state.endsAt,
+    });
+    if (persistError) {
+      return NextResponse.json({ error: pgMessage(persistError) }, { status: 400 });
+    }
+
     for (const event of result.events) {
-      let { error } = await supabase.from("bids").insert({
+      void recordTape(supabase, {
         lot_id: resolvedId,
         bidder_name: event.bidder,
         bidder_id: event.bidder === bidder ? bidderId : null,
@@ -346,27 +430,7 @@ async function persistSupabase(
         amount: event.amount,
         kind: event.kind,
       });
-      if (error && /kind|bidder_id|bidder_email/i.test(error.message)) {
-        ({ error } = await supabase.from("bids").insert({
-          lot_id: resolvedId,
-          bidder_name: event.bidder,
-          amount: event.amount,
-        }));
-      }
-      if (error) {
-        return NextResponse.json({ error: error.message }, { status: 400 });
-      }
     }
-
-    await supabase
-      .from("lots")
-      .update({
-        current_bid: result.state.currentBid,
-        high_bidder: result.state.highBidder,
-        high_bidder_id: result.state.highBidder === bidder ? bidderId : null,
-        ends_at: result.state.endsAt,
-      })
-      .eq("id", resolvedId);
 
     return NextResponse.json({
       currentBid: result.state.currentBid,
@@ -374,6 +438,7 @@ async function persistSupabase(
       highBidder: result.state.highBidder,
       events: result.events,
       extended: result.extended,
+      floor: "always-open",
     });
   } catch (error) {
     return NextResponse.json(

@@ -10,7 +10,7 @@ import { CustomerDesk } from "@/components/admin/CustomerDesk";
 import { EmailEngine } from "@/components/admin/EmailEngine";
 import { HouseCatalogSettings } from "@/components/admin/HouseCatalogSettings";
 import { LiveMonitor } from "@/components/admin/LiveMonitor";
-import { weeklySaleName, weeklySaleTimes } from "@/lib/auctionCalendar";
+import { openAuctionEvents, weeklySaleName, weeklySaleTimes } from "@/lib/auctionCalendar";
 import { DEFAULT_HOUSE_STARTING_BID } from "@/lib/houseDesk";
 import { lotNeedsRelist } from "@/lib/settlements";
 import { listingGradeOf } from "@/lib/listingGrade";
@@ -51,6 +51,7 @@ export default function AdminPage() {
         entity: "lot",
         id: lot.id,
         eventId,
+        status: "live",
         relist,
         startingBid: lot.startingBid,
       }),
@@ -75,15 +76,15 @@ export default function AdminPage() {
     );
   }, [data, search]);
 
-  const upcomingEvents = data.events.filter(
-    (event) => !event.archivedAt && new Date(event.endsAt).getTime() > Date.now(),
-  );
+  const upcomingEvents = openAuctionEvents(data.events);
   const reviewCount = data.queue.length;
-  const visibleEvents = showArchived ? data.events : data.events.filter((event) => !event.archivedAt);
-  const archivedIds = new Set(data.events.filter((event) => event.archivedAt).map((event) => event.id));
-  const visibleLots = showArchived
-    ? filteredInventory
-    : filteredInventory.filter((lot) => !lot.eventId || !archivedIds.has(lot.eventId));
+  const visibleLots = filteredInventory;
+  const visibleEvents = showArchived
+    ? data.events
+    : data.events.filter(
+        (event) =>
+          !event.archivedAt || filteredInventory.some((lot) => lot.eventId === event.id),
+      );
 
   return (
     <AdminShell title="House" subtitle="Inventories, live floor, customers, and email.">
@@ -297,7 +298,11 @@ export default function AdminPage() {
                   method: "PATCH",
                   headers: { "Content-Type": "application/json" },
                   body: JSON.stringify({ entity: "lot", id: lot.id, remove: true }),
-                }).then(() => setNotice(`Removed ${lot.title}`))
+                }).then((json) => {
+                  if (!json) return;
+                  const where = json.destination === "settlements" ? "settlements" : "unsold";
+                  setNotice(`Pulled ${lot.title} off live into ${where}.`);
+                })
               }
             />
           </section>
@@ -309,7 +314,7 @@ export default function AdminPage() {
         lotLabel={
           filingLot ? [filingLot.lotNumber, filingLot.title].filter(Boolean).join(" · ") : "this lot"
         }
-        events={upcomingEvents.length ? upcomingEvents : data.events}
+        events={upcomingEvents}
         onClose={() => setFilingLot(null)}
         onSelect={(eventId) => void fileLotIntoSale(eventId)}
         onScheduleDay={(day) => {

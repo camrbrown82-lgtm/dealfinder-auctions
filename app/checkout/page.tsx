@@ -15,7 +15,7 @@ export default function CheckoutPage() {
   const [notice, setNotice] = useState<string | null>(null);
 
   async function load() {
-    const response = await fetch("/api/wins");
+    const response = await fetch("/api/wins", { credentials: "include" });
     const json = await response.json();
     setWins(json.wins ?? []);
   }
@@ -71,7 +71,8 @@ export default function CheckoutPage() {
       <div className="comic-panel p-4">
         <h1 className="font-display text-5xl text-brand-red">Winning checkout</h1>
         <p className="font-comic text-sm">
-          No Stripe. Settle by Interac e-Transfer or pay on arrival.
+          No Stripe. After a buy now or hammer, this page lists your invoices, Interac
+          details, and pickup/shipping notes.
         </p>
       </div>
 

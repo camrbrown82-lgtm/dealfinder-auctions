@@ -1,18 +1,19 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useAdminDesk } from "@/components/admin/AdminDesk";
 import { AdminShell } from "@/components/admin/AdminShell";
 import { AuctionCalendarModal } from "@/components/admin/AuctionCalendar";
 import { ReviewQueue, type ReviewDraft } from "@/components/admin/ReviewQueue";
-import { weeklySaleName, weeklySaleTimes } from "@/lib/auctionCalendar";
+import { openAuctionEvents, weeklySaleName, weeklySaleTimes } from "@/lib/auctionCalendar";
+import type { Consignment } from "@/lib/utils";
 
 export default function AdminReviewPage() {
-  const { data, setNotice, mutate } = useAdminDesk();
+  const { data, setNotice, setError, mutate } = useAdminDesk();
   const [drafts, setDrafts] = useState<Record<string, ReviewDraft>>({});
-  const [filingLot, setFilingLot] = useState<{ id: string; title: string; lotNumber?: string | null } | null>(
-    null,
-  );
+  const [picking, setPicking] = useState<{ item: Consignment; draft: ReviewDraft } | null>(null);
+  const pickingRef = useRef(picking);
+  pickingRef.current = picking;
 
   useEffect(() => {
     const next: Record<string, ReviewDraft> = {};
@@ -28,51 +29,44 @@ export default function AdminReviewPage() {
     setDrafts(next);
   }, [data.queue]);
 
-  async function fileLotIntoSale(eventId: string) {
-    if (!filingLot) return;
-    const lot = filingLot;
+  async function approveIntoSale(eventId: string) {
+    const pending = pickingRef.current;
+    if (!pending) return;
+    const { item, draft } = pending;
     const json = await mutate("/api/admin", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ entity: "lot", id: lot.id, eventId }),
+      body: JSON.stringify({
+        entity: "consignment",
+        id: item.id,
+        status: "approved",
+        title: draft.title,
+        description: draft.description,
+        startingBid: Number(draft.startingBid) || 0,
+        buyNowPrice: Number(draft.buyNowPrice) || 0,
+        consignorName: draft.consignorName,
+        eventId,
+      }),
     });
     if (!json) return;
-    setFilingLot(null);
-    setNotice(`Filed ${lot.title} into the selected auction.`);
+    setPicking(null);
+    const lotNo = json.lot?.lotNumber ? `Lot ${json.lot.lotNumber}` : draft.title;
+    setNotice(`Approved ${lotNo} into ${json.auctionLabel ?? "the selected sale"}.`);
   }
+
+  const openEvents = openAuctionEvents(data.events);
 
   return (
     <AdminShell
       title="Consignment review"
-      subtitle="Pending and held items only. Approve them into inventory, then pick the sale."
+      subtitle="Approve into an upcoming sale. August and other ended weeks are hidden here."
     >
       <ReviewQueue
         queue={data.queue}
         drafts={drafts}
         consignors={data.consignors ?? []}
         onDraft={(id, draft) => setDrafts((current) => ({ ...current, [id]: draft }))}
-        onApprove={(item, draft) =>
-          void mutate("/api/admin", {
-            method: "PATCH",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              entity: "consignment",
-              id: item.id,
-              status: "approved",
-              title: draft.title,
-              description: draft.description,
-              startingBid: Number(draft.startingBid) || 0,
-              buyNowPrice: Number(draft.buyNowPrice) || 0,
-              consignorName: draft.consignorName,
-            }),
-          }).then((json) => {
-            if (!json) return;
-            const lot = json.lot as { id: string; title: string; lotNumber?: string | null } | undefined;
-            const lotNo = lot?.lotNumber ? `Lot ${lot.lotNumber}` : "warehouse lot";
-            setNotice(`Approved ${lotNo}. Pick the sale.`);
-            if (lot?.id) setFilingLot(lot);
-          })
-        }
+        onApprove={(item, draft) => setPicking({ item, draft })}
         onHold={(item, draft) =>
           void mutate("/api/admin", {
             method: "PATCH",
@@ -108,13 +102,11 @@ export default function AdminReviewPage() {
       />
 
       <AuctionCalendarModal
-        open={Boolean(filingLot)}
-        lotLabel={
-          filingLot ? [filingLot.lotNumber, filingLot.title].filter(Boolean).join(" · ") : "this lot"
-        }
-        events={data.events}
-        onClose={() => setFilingLot(null)}
-        onSelect={(eventId) => void fileLotIntoSale(eventId)}
+        open={Boolean(picking)}
+        lotLabel={picking ? picking.draft.title : "this lot"}
+        events={openEvents}
+        onClose={() => setPicking(null)}
+        onSelect={(eventId) => void approveIntoSale(eventId)}
         onScheduleDay={(day) => {
           const times = weeklySaleTimes(day);
           void mutate("/api/admin", {
@@ -129,7 +121,11 @@ export default function AdminReviewPage() {
             }),
           }).then((json) => {
             const createdId = json?.event?.id as string | undefined;
-            if (createdId) void fileLotIntoSale(createdId);
+            if (createdId) {
+              void approveIntoSale(createdId);
+              return;
+            }
+            setError("Could not create that sale week. Try another day.");
           });
         }}
       />

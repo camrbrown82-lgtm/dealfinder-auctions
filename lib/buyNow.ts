@@ -11,7 +11,7 @@ export function startingBidFromBuyNow(buyNow: number) {
 }
 
 export function canBuyNow(currentBid: number, buyNow: number | null | undefined) {
-  return Boolean(buyNow && buyNow > currentBid);
+  return Boolean(buyNow && buyNow >= currentBid);
 }
 
 export function buyNowColumns(price: number | null | undefined) {

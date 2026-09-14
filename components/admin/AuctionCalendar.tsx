@@ -123,11 +123,9 @@ export function AuctionCalendarModal({
       role="dialog"
       aria-modal="true"
       aria-labelledby="sale-calendar-title"
-      onClick={onClose}
     >
       <div
         className="max-h-[90dvh] w-full max-w-md overflow-y-auto comic-panel p-4"
-        onClick={(event) => event.stopPropagation()}
       >
         <h2 id="sale-calendar-title" className="font-display text-2xl">
           Pick the sale week

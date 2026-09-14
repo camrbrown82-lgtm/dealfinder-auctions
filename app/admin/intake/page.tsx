@@ -1,11 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { AdminAiIntake } from "@/components/AdminAiIntake";
 import { useAdminDesk } from "@/components/admin/AdminDesk";
 import { AdminShell } from "@/components/admin/AdminShell";
 import { AuctionCalendarModal } from "@/components/admin/AuctionCalendar";
-import { weeklySaleName, weeklySaleTimes } from "@/lib/auctionCalendar";
+import { openAuctionEvents, weeklySaleName, weeklySaleTimes } from "@/lib/auctionCalendar";
 import { DEFAULT_HOUSE_STARTING_BID } from "@/lib/houseDesk";
 import { HouseCatalogSettings } from "@/components/admin/HouseCatalogSettings";
 
@@ -14,14 +14,16 @@ export default function AdminIntakePage() {
   const [filingLot, setFilingLot] = useState<{ id: string; title: string; lotNumber?: string | null } | null>(
     null,
   );
+  const filingLotRef = useRef(filingLot);
+  filingLotRef.current = filingLot;
 
   async function fileLotIntoSale(eventId: string) {
-    if (!filingLot) return;
-    const lot = filingLot;
+    const lot = filingLotRef.current;
+    if (!lot) return;
     const json = await mutate("/api/admin", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ entity: "lot", id: lot.id, eventId }),
+      body: JSON.stringify({ entity: "lot", id: lot.id, eventId, status: "live" }),
     });
     if (!json) return;
     setFilingLot(null);
@@ -69,7 +71,7 @@ export default function AdminIntakePage() {
         lotLabel={
           filingLot ? [filingLot.lotNumber, filingLot.title].filter(Boolean).join(" · ") : "this lot"
         }
-        events={data.events}
+        events={openAuctionEvents(data.events)}
         onClose={() => setFilingLot(null)}
         onSelect={(eventId) => void fileLotIntoSale(eventId)}
         onScheduleDay={(day) => {

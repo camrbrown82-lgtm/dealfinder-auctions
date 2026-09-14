@@ -12,17 +12,18 @@ import {
   type InterestProfile,
 } from "@/lib/interest";
 import { listingGradeOf } from "@/lib/listingGrade";
+import { lotWasSold } from "@/lib/settlements";
 import { formatCurrency, isLotOpen, lotImages, type AuctionLot } from "@/lib/utils";
 import { defaultSaleId, lotsForSale, type SaleWindowItem } from "@/lib/liveSales";
 
 const VIEW_OPTIONS = [1, 4, 6, 9] as const;
 type ViewCount = (typeof VIEW_OPTIONS)[number];
 const VIEW_STORAGE_KEY = "dealfinder-live-view";
-const CARD_WIDTH: Record<ViewCount, string> = {
-  1: "w-full max-w-lg lg:max-w-lg",
-  4: "w-full lg:max-w-[15rem]",
-  6: "w-full lg:max-w-[12rem]",
-  9: "w-full lg:max-w-[10rem]",
+const GRID_CLASS: Record<ViewCount, string> = {
+  1: "grid grid-cols-1 gap-4",
+  4: "grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4",
+  6: "grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6",
+  9: "grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-9",
 };
 
 type LotClock = {
@@ -50,7 +51,7 @@ export function LiveGrid({
   const [query, setQuery] = useState("");
   const [view, setView] = useState<ViewCount>(9);
   const [saleId, setSaleId] = useState(() => defaultSaleId(sales) ?? "");
-  const [clocks, setClocks] = useState<Record<string, LotClock>>({});
+  const [clocks, setClocks] = useState<Record<string, LotClock> | null>(null);
   const [interest, setInterest] = useState<InterestProfile>({
     categories: [],
     consignors: [],
@@ -115,7 +116,30 @@ export function LiveGrid({
   }, []);
 
   const visible = useMemo(() => {
-    const pool = lotsForSale(lots, selected);
+    const clockMap = clocks ?? {};
+    const clockReady = clocks !== null;
+    const merged = lots
+      .map((lot) => {
+        const clock = clockMap[lot.id];
+        if (!clock) return lot;
+        return {
+          ...lot,
+          currentBid: clock.currentBid,
+          endsAt: clock.endsAt,
+          highBidder: clock.highBidder,
+          status: clock.status ?? lot.status,
+        };
+      })
+      .filter((lot) => {
+        if (lot.status === "removed" || lot.status === "draft" || lot.status === "ended") return false;
+        if (lotWasSold(lot)) return false;
+        if (clockReady && clockMap[lot.id] && (clockMap[lot.id].status === "ended" || clockMap[lot.id].status === "removed")) {
+          return false;
+        }
+        if (clockReady && !clockMap[lot.id]) return false;
+        return true;
+      });
+    const pool = lotsForSale(merged, selected);
     const q = query.trim().toLowerCase();
     const filtered = q
       ? pool.filter((lot) => {
@@ -133,17 +157,7 @@ export function LiveGrid({
           return haystack.includes(q);
         })
       : pool;
-    return rankLotsByInterest(filtered, interest).map((lot) => {
-      const clock = clocks[lot.id];
-      if (!clock) return lot;
-      return {
-        ...lot,
-        currentBid: clock.currentBid,
-        endsAt: clock.endsAt,
-        highBidder: clock.highBidder,
-        status: clock.status ?? lot.status,
-      };
-    });
+    return rankLotsByInterest(filtered, interest);
   }, [lots, selected, query, interest, clocks]);
 
   return (
@@ -152,7 +166,7 @@ export function LiveGrid({
         <div className="comic-panel p-4">
           <p className="font-display text-lg">Auctions</p>
           <p className="font-comic text-sm">
-            Two previous sales, the current sale, and two upcoming — bid live or leave an early bid.
+            This week&apos;s sale is on Live. Open another auction to see only that sale&apos;s lots.
           </p>
           <div className="mt-3 flex flex-wrap gap-2">
             {sales.map((item) => {
@@ -190,7 +204,7 @@ export function LiveGrid({
               autoComplete="off"
             />
           </label>
-          <fieldset className="hidden min-w-0 shrink-0 lg:block">
+          <fieldset className="min-w-0 shrink-0">
             <legend className="font-display text-lg">Lots per row</legend>
             <div className="mt-1 flex flex-wrap gap-1" role="radiogroup" aria-label="Lots per row">
               {VIEW_OPTIONS.map((count) => {
@@ -216,7 +230,7 @@ export function LiveGrid({
           {selected?.kind === "past" ? " from this past sale" : ""}
           {selected?.kind === "upcoming" ? " you can bid on early" : ""}
           {query.trim() ? ` matching "${query.trim()}"` : ""}
-          <span className="hidden lg:inline"> · {view} per row</span>
+          <span className="lg:inline"> · {view} per row</span>
         </p>
       </div>
 
@@ -225,7 +239,7 @@ export function LiveGrid({
           No lots in this sale yet.
         </p>
       ) : (
-        <section className="flex w-full flex-col items-center gap-4 lg:flex-row lg:flex-wrap lg:justify-center lg:gap-3">
+        <section className={GRID_CLASS[view]}>
           {visible.map((lot) => (
             <LotCard
               key={lot.id}
@@ -254,33 +268,44 @@ function LotCard({
   const bidLabel = open ? "Bid now" : "View lot";
   const catalogLine = [lot.auctionNumber, lot.lotNumber].filter(Boolean).join(" · ");
   const compact = view >= 6;
-  const sizes =
-    view === 1
-      ? "(max-width: 1023px) 100vw, 32rem"
-      : `(max-width: 1023px) 100vw, ${Math.round(100 / view)}vw`;
+  const single = view === 1;
+  const sizes = single
+    ? "176px"
+    : `(max-width: 1023px) 100vw, ${Math.round(100 / view)}vw`;
 
   return (
-    <article className={`comic-panel flex min-w-0 flex-col overflow-hidden ${CARD_WIDTH[view]}`}>
-      <Link href={href} className="block shrink-0">
-        <div className="relative aspect-square w-full overflow-hidden border-b-4 border-brand-ink bg-brand-cream">
-          <LotGallery
-            images={lotImages(lot)}
-            alt={lot.title}
-            variant={compact ? "compact" : "card"}
-            sizes={sizes}
-            fit="cover"
-          />
-          <span className="absolute left-2 top-2 z-20 border-4 border-brand-ink bg-brand-red px-2 py-0.5 font-display text-xs text-brand-paper">
-            {listingGradeOf(lot)}
+    <article
+      className={
+        single
+          ? "comic-panel flex min-w-0 w-full flex-col overflow-hidden sm:flex-row"
+          : "comic-panel flex min-w-0 w-full flex-col overflow-hidden"
+      }
+    >
+      <div
+        className={
+          single
+            ? "relative h-48 w-full shrink-0 overflow-hidden border-b-4 border-brand-ink bg-brand-cream sm:h-44 sm:w-44 sm:border-b-0 sm:border-r-4"
+            : "relative aspect-square w-full overflow-hidden border-b-4 border-brand-ink bg-brand-cream"
+        }
+      >
+        <Link href={href} className="absolute inset-0 z-0" aria-label={lot.title} />
+        <LotGallery
+          images={lotImages(lot)}
+          alt={lot.title}
+          variant={compact || single ? "compact" : "card"}
+          sizes={sizes}
+          fit="cover"
+        />
+        <span className="pointer-events-none absolute left-2 top-2 z-20 border-4 border-brand-ink bg-brand-red px-2 py-0.5 font-display text-xs text-brand-paper">
+          {listingGradeOf(lot)}
+        </span>
+        {forYou && (
+          <span className="pointer-events-none absolute right-2 top-2 z-20 border-4 border-brand-ink bg-white px-2 py-0.5 font-display text-[10px] text-brand-ink shadow-comic-red-sm">
+            For you
           </span>
-          {forYou && (
-            <span className="absolute right-2 top-2 z-20 border-4 border-brand-ink bg-white px-2 py-0.5 font-display text-[10px] text-brand-ink shadow-comic-red-sm">
-              For you
-            </span>
-          )}
-        </div>
-      </Link>
-      <div className="flex flex-col p-2 lg:p-1.5">
+        )}
+      </div>
+      <div className="flex min-w-0 flex-1 flex-col p-2 lg:p-1.5">
         <p className="h-4 truncate font-comic text-[10px] font-bold leading-4">
           {catalogLine || "\u00a0"}
         </p>

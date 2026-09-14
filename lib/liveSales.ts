@@ -1,3 +1,4 @@
+import { lotWasSold } from "@/lib/settlements";
 import type { AuctionEvent, AuctionLot } from "@/lib/utils";
 
 export type SaleKind = "past" | "live" | "upcoming";
@@ -17,9 +18,9 @@ export function saleKind(event: AuctionEvent, now = Date.now()): SaleKind {
 
 /** Current sale plus up to two previous and two upcoming. */
 export function pickSaleWindow(events: AuctionEvent[], now = Date.now()): SaleWindowItem[] {
-  const sorted = [...events].sort(
-    (a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime(),
-  );
+  const sorted = [...events]
+    .filter((event) => !event.archivedAt)
+    .sort((a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime());
   if (!sorted.length) return [];
 
   let idx = sorted.findIndex((event) => saleKind(event, now) === "live");
@@ -42,10 +43,10 @@ export function defaultSaleId(window: SaleWindowItem[]) {
 
 export function lotsForSale(lots: AuctionLot[], sale: SaleWindowItem | undefined) {
   if (!sale) return [];
-  const pool = lots.filter((lot) => lot.status !== "removed" && lot.status !== "draft");
-  const inSale = pool.filter((lot) => lot.eventId === sale.event.id);
-  if (sale.kind === "past") {
-    return inSale.filter((lot) => lot.status === "ended");
-  }
-  return inSale.filter((lot) => lot.status !== "ended" && lot.status !== "removed");
+  return lots.filter((lot) => {
+    if (lot.eventId !== sale.event.id) return false;
+    if (lot.status === "removed" || lot.status === "draft" || lot.status === "ended") return false;
+    if (lotWasSold(lot)) return false;
+    return true;
+  });
 }

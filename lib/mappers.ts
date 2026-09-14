@@ -50,8 +50,21 @@ export type ConsignmentRow = {
   status: Consignment["status"];
 };
 
+function asUrlList(value: unknown): string[] {
+  if (Array.isArray(value)) return value.map((item) => String(item ?? "").trim()).filter(Boolean);
+  if (typeof value === "string" && value.trim()) {
+    try {
+      const parsed = JSON.parse(value) as unknown;
+      if (Array.isArray(parsed)) return asUrlList(parsed);
+    } catch {
+      return [value.trim()];
+    }
+  }
+  return [];
+}
+
 export function mapLot(row: LotRow): AuctionLot {
-  const images = uniqueImageUrls([...(row.image_urls ?? []), row.image_url]);
+  const images = uniqueImageUrls([...asUrlList(row.image_urls), row.image_url]);
   return {
     id: row.id,
     slug: row.slug,

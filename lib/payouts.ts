@@ -1,4 +1,5 @@
 import { moneySplit } from "@/lib/commission";
+import { lotWasSold } from "@/lib/settlements";
 import { DEFAULT_COMMISSION_RATE, type AuctionLot, type PayoutRow } from "@/lib/utils";
 
 export type PayoutItem = {
@@ -13,7 +14,7 @@ export type PayoutItem = {
 
 export function buildPayoutItems(lots: AuctionLot[]): PayoutItem[] {
   return lots
-    .filter((lot) => lot.status !== "removed")
+    .filter(lotWasSold)
     .map((lot) => {
       const rate = lot.commissionRate ?? DEFAULT_COMMISSION_RATE;
       const split = moneySplit(lot.currentBid, rate);

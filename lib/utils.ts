@@ -304,11 +304,7 @@ export function getLotById(id: string) {
 
 export function filterLots(lots: AuctionLot[], category: AuctionCategory) {
   const live = lots.filter(
-    (lot) =>
-      lot.status !== "paused" &&
-      lot.status !== "draft" &&
-      lot.status !== "ended" &&
-      lot.status !== "removed",
+    (lot) => lot.status !== "draft" && lot.status !== "ended" && lot.status !== "removed",
   );
   if (category === "All") return live;
   return live.filter((lot) => lot.category === category);
@@ -370,11 +366,9 @@ export function formatCountdown(endsAt: string, now = Date.now()) {
   return `${pad(hours)}h ${pad(minutes)}m ${pad(seconds)}s`;
 }
 
-export function isLotOpen(lot: Pick<AuctionLot, "endsAt" | "status">, now = Date.now()) {
-  if (lot.status === "removed") return false;
-  const end = parseLotEndMs(lot.endsAt, now);
-  if (!Number.isFinite(end)) return true;
-  return end > now;
+export function isLotOpen(lot: Pick<AuctionLot, "endsAt" | "status">) {
+  if (lot.status === "removed" || lot.status === "ended") return false;
+  return true;
 }
 
 export const DEFAULT_COMMISSION_RATE = 0.2;

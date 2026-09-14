@@ -62,7 +62,7 @@ export function LotGallery({
       : "h-9 w-9 text-lg sm:h-10 sm:w-10";
 
   return (
-    <div className={variant === "room" ? "space-y-3" : "absolute inset-0"}>
+    <div className={variant === "room" ? "space-y-3" : "pointer-events-none absolute inset-0"}>
       <div
         className={
           variant === "room"
@@ -86,7 +86,7 @@ export function LotGallery({
             <button
               type="button"
               aria-label="Previous photo"
-              className={`absolute left-1 top-1/2 z-10 flex -translate-y-1/2 items-center justify-center border-4 border-brand-ink bg-brand-paper font-display shadow-comic-sm ${chevron}`}
+              className={`absolute left-1 top-1/2 z-30 flex -translate-y-1/2 items-center justify-center border-4 border-brand-ink bg-brand-paper font-display shadow-comic-sm pointer-events-auto ${chevron}`}
               onClick={(event) => go(-1, event)}
             >
               ‹
@@ -94,13 +94,13 @@ export function LotGallery({
             <button
               type="button"
               aria-label="Next photo"
-              className={`absolute right-1 top-1/2 z-10 flex -translate-y-1/2 items-center justify-center border-4 border-brand-ink bg-brand-paper font-display shadow-comic-sm ${chevron}`}
+              className={`absolute right-1 top-1/2 z-30 flex -translate-y-1/2 items-center justify-center border-4 border-brand-ink bg-brand-paper font-display shadow-comic-sm pointer-events-auto ${chevron}`}
               onClick={(event) => go(1, event)}
             >
               ›
             </button>
             <span
-              className={`absolute bottom-2 right-2 z-10 border-4 border-brand-ink bg-brand-red font-display text-brand-paper ${
+              className={`pointer-events-auto absolute bottom-2 right-2 z-30 border-4 border-brand-ink bg-brand-red font-display text-brand-paper ${
                 compact ? "px-1 py-0 text-[10px]" : "px-2 py-0.5 text-sm"
               }`}
             >
@@ -121,7 +121,7 @@ export function LotGallery({
                 aria-label={`Photo ${photoIndex + 1}`}
                 aria-current={active ? true : undefined}
                 onClick={() => setIndex(photoIndex)}
-                className={`relative h-16 w-16 overflow-hidden border-4 ${
+                className={`relative h-16 w-16 overflow-hidden border-4 pointer-events-auto ${
                   active ? "border-brand-red" : "border-brand-ink"
                 }`}
               >

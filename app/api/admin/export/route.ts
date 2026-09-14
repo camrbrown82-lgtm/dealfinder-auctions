@@ -53,7 +53,7 @@ export async function GET() {
     queue = ((consignments.data ?? []) as ConsignmentRow[]).map(mapConsignment);
     inventory = ((lots.data ?? []) as LotRow[])
       .map(mapLot)
-      .filter((lot) => lot.status !== "removed");
+      .filter((lot) => lot.status !== "draft");
     events = (eventRows.data ?? []).map((row) => mapEvent(row as Parameters<typeof mapEvent>[0]));
     const eventNumbers = new Map(events.map((event) => [event.id, event.auctionNumber ?? null]));
     for (const lot of inventory) {
@@ -91,7 +91,7 @@ export async function GET() {
   } else {
     const demo = getAdminDemo();
     stampAuctionNumbers(demo);
-    inventory = demo.inventory.filter((lot) => lot.status !== "removed");
+    inventory = demo.inventory.filter((lot) => lot.status !== "draft");
     events = demo.events;
     queue = demo.queue;
   }

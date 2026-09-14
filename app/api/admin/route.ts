@@ -12,6 +12,8 @@ import { persistPublicImageUrls } from "@/lib/consignmentStorage";
 import { uniqueConsignorNames } from "@/lib/consignors";
 import { uniqueImageUrls } from "@/lib/utils";
 import { startingBidFromBuyNow } from "@/lib/buyNow";
+import { patchLotRow } from "@/lib/openFloor";
+import { recordSoldLotSettlement } from "@/lib/recordSale";
 import {
   allocateLotNumber,
   normalizeHouseSettings,
@@ -176,7 +178,7 @@ function payloadFromDemo() {
   return {
     source: "demo" as const,
     queue: reviewQueue(demo.queue),
-    inventory: sortLotsByNumber(demo.inventory.filter((lot) => lot.status !== "removed")),
+    inventory: sortLotsByNumber(demo.inventory.filter((lot) => lot.status !== "draft")),
     events: demo.events,
     suggestedLotNumber: demo.houseSettings.nextLotNumber,
     houseSettings: demo.houseSettings,
@@ -242,7 +244,7 @@ export async function GET() {
   const numbers = new Map(events.map((event) => [event.id, event.auctionNumber ?? null]));
   const inventory = (lotsRes.data as LotRow[])
     .map(mapLot)
-    .filter((lot) => lot.status !== "removed")
+    .filter((lot) => lot.status !== "draft")
     .map((lot) => ({
       ...lot,
       auctionNumber: lot.eventId ? numbers.get(lot.eventId) ?? lot.auctionNumber : lot.auctionNumber,
@@ -299,11 +301,10 @@ function applyEventToLot(lot: AuctionLot, event: AuctionEvent, forceLive?: boole
   lot.eventId = event.id;
   lot.auctionNumber = event.auctionNumber ?? lot.auctionNumber;
   lot.endsAt = event.endsAt;
-  if (forceLive) {
-    lot.status = "live";
-    return;
+  lot.status = "live";
+  if (!forceLive && new Date(event.endsAt).getTime() <= Date.now()) {
+    lot.endsAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
   }
-  lot.status = new Date(event.startsAt).getTime() > Date.now() ? "paused" : "live";
 }
 
 export async function POST(request: NextRequest) {
@@ -346,9 +347,13 @@ export async function POST(request: NextRequest) {
         })
         .select("*")
         .single();
-      if (!error && data) {
-        return NextResponse.json({ ok: true, event: mapEvent(data) });
+      if (error || !data) {
+        return NextResponse.json(
+          { error: error?.message || "Could not create that sale week." },
+          { status: 400 },
+        );
       }
+      return NextResponse.json({ ok: true, event: mapEvent(data) });
     }
     const event: AuctionEvent = {
       id: crypto.randomUUID(),
@@ -554,7 +559,7 @@ export async function PATCH(request: NextRequest) {
           endsAt: event?.endsAt ?? new Date(Date.now() + 1000 * 60 * 60 * 24).toISOString(),
           consignor: item.consignor,
           description: item.description ?? "",
-          status: "paused",
+          status: "live",
           lotNumber,
           startingBid: item.startingBid ?? 0,
           reservePrice: item.buyNowPrice ?? item.reservePrice ?? null,
@@ -617,16 +622,8 @@ export async function PATCH(request: NextRequest) {
         let photos = row.image_urls ?? [];
         try {
           photos = await persistPublicImageUrls(supabase, photos);
-        } catch (err) {
-          return NextResponse.json(
-            {
-              error:
-                err instanceof Error
-                  ? `Approved the consignment, but photos failed: ${err.message}`
-                  : "Could not save consignment photos.",
-            },
-            { status: 400 },
-          );
+        } catch {
+          photos = row.image_urls ?? [];
         }
         const { image, images } = lotPhotos(photos);
         const { data: eventRows } = await supabase
@@ -650,15 +647,28 @@ export async function PATCH(request: NextRequest) {
           return NextResponse.json({ error: existingError.message }, { status: 400 });
         }
         if (existingRows?.length) {
-          const lot = mapLot(existingRows[0] as LotRow);
+          const existing = existingRows[0] as LotRow;
+          const reopen: Record<string, unknown> = {
+            status: "live",
+            ends_at: eventEnds,
+            title: row.title,
+            description: row.description ?? existing.description,
+            current_bid: starting || Number(existing.current_bid),
+            starting_bid: starting || Number(existing.starting_bid),
+          };
+          if (eventId) reopen.event_id = eventId;
+          await supabase.from("lots").update(reopen).eq("id", existing.id);
+          const lot = mapLot({ ...existing, ...reopen } as LotRow);
           lot.auctionNumber = event?.auctionNumber ?? lot.auctionNumber;
+          lot.eventId = eventId ?? lot.eventId;
+          lot.status = "live";
           return NextResponse.json({
             ok: true,
             lot,
             href: "/live",
             auctionLabel: auctionLabel(event, lot),
             saleStartsAt: event?.startsAt ?? null,
-            postedLive: lot.status === "live",
+            postedLive: true,
           });
         }
         const claimed = await allocateFromHouse(supabase, demo);
@@ -711,7 +721,16 @@ export async function PATCH(request: NextRequest) {
 
   const lot = demo.inventory.find((row) => row.id === body.id);
   if (lot) {
-    if (body.remove) lot.status = "removed";
+    if (body.remove) {
+      lot.status = "removed";
+      lot.endsAt = new Date().toISOString();
+      if (lot.highBidder || lot.highBidderId) {
+        void recordSoldLotSettlement(lot, {
+          id: lot.highBidderId,
+          fullName: lot.highBidder,
+        }, lot.auctionNumber);
+      }
+    }
     if (body.status) lot.status = body.status as LotStatus;
     if (body.title != null) lot.title = body.title;
     if (body.description != null) lot.description = body.description;
@@ -747,10 +766,42 @@ export async function PATCH(request: NextRequest) {
 
   if (isSupabaseConfigured && supabase) {
     if (body.remove) {
-      const { error } = await supabase.from("lots").update({ status: "removed" }).eq("id", body.id);
-      if (error) {
-        await supabase.from("lots").delete().eq("id", body.id);
+      const id = body.id ?? "";
+      let { data: current } = await supabase.from("lots").select("*").eq("id", id).maybeSingle();
+      if (!current && id) {
+        const byNumber = await supabase.from("lots").select("*").eq("lot_number", id).limit(1).maybeSingle();
+        current = byNumber.data;
       }
+      if (!current && id) {
+        const bySlug = await supabase.from("lots").select("*").eq("slug", id).limit(1).maybeSingle();
+        current = bySlug.data;
+      }
+      if (!current) {
+        return NextResponse.json({ error: "Could not pull that lot from the sale." }, { status: 400 });
+      }
+      const mapped = mapLot(current as LotRow);
+      const event = mapped.eventId
+        ? (await supabase.from("auction_events").select("auction_number").eq("id", mapped.eventId).maybeSingle()).data
+        : null;
+      mapped.auctionNumber = event?.auction_number ?? mapped.auctionNumber;
+      const closed = await patchLotRow(String(current.id), {
+        status: "removed",
+        ends_at: new Date().toISOString(),
+      });
+      if (!closed.ok || !closed.data?.length) {
+        return NextResponse.json({ error: closed.body || "Could not pull that lot from the sale." }, { status: 400 });
+      }
+      const sold = Boolean(mapped.highBidder || mapped.highBidderId);
+      if (sold) {
+        await recordSoldLotSettlement(mapped, {
+          id: mapped.highBidderId,
+          fullName: mapped.highBidder,
+        }, mapped.auctionNumber);
+      }
+      return NextResponse.json({
+        ok: true,
+        destination: sold ? "settlements" : "unsold",
+      });
     } else {
       const updates: Record<string, unknown> = {};
       if (body.status) updates.status = body.status;
@@ -768,18 +819,21 @@ export async function PATCH(request: NextRequest) {
       if (body.listingGrade) updates.listing_grade = parseListingGrade(body.listingGrade);
       if (body.itemDetails != null) updates.item_details = body.itemDetails;
       if (body.eventId) {
-        updates.event_id = body.eventId;
+        const eventId = asEventUuid(body.eventId) ?? body.eventId;
+        updates.event_id = eventId;
         const { data: event } = await supabase
           .from("auction_events")
           .select("*")
-          .eq("id", body.eventId)
+          .eq("id", eventId)
           .maybeSingle();
+        const weekFromNow = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
         if (event) {
-          updates.ends_at = event.ends_at;
-          if (body.status !== "live") {
-            updates.status = new Date(event.starts_at).getTime() > Date.now() ? "paused" : "live";
-          }
+          const eventEnd = new Date(event.ends_at).getTime();
+          updates.ends_at = Number.isFinite(eventEnd) && eventEnd > Date.now() ? event.ends_at : weekFromNow;
+        } else {
+          updates.ends_at = weekFromNow;
         }
+        updates.status = "live";
       }
       if (body.relist) {
         updates.high_bidder = null;
@@ -792,13 +846,44 @@ export async function PATCH(request: NextRequest) {
         }
       }
       if (Object.keys(updates).length) {
-        let { error } = await supabase.from("lots").update(updates).eq("id", body.id);
+        let { data: updated, error } = await supabase
+          .from("lots")
+          .update(updates)
+          .eq("id", body.id)
+          .select("id")
+          .maybeSingle();
         if (isMissingColumn(error, "buy_now_price")) {
           const { buy_now_price: _buyNow, ...rest } = updates;
-          ({ error } = await supabase.from("lots").update(rest).eq("id", body.id));
+          ({ data: updated, error } = await supabase
+            .from("lots")
+            .update(rest)
+            .eq("id", body.id)
+            .select("id")
+            .maybeSingle());
+        }
+        if (!updated && !error && body.id) {
+          ({ data: updated, error } = await supabase
+            .from("lots")
+            .update(updates)
+            .eq("slug", body.id)
+            .select("id")
+            .maybeSingle());
+        }
+        if (error) {
+          return NextResponse.json({ error: error.message }, { status: 400 });
+        }
+        if (!updated) {
+          return NextResponse.json({ error: "Could not file that lot into the sale." }, { status: 400 });
         }
       }
     }
+  }
+
+  if (body.remove && lot) {
+    return NextResponse.json({
+      ok: true,
+      destination: lot.highBidder || lot.highBidderId ? "settlements" : "unsold",
+    });
   }
 
   return NextResponse.json({ ok: true });

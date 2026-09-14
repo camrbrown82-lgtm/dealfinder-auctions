@@ -1,16 +1,18 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useBidder } from "@/components/BidderProvider";
 import { LotTimer } from "@/components/LotTimer";
 import { nextLiveAmount } from "@/lib/bidding";
 import { isProfileComplete } from "@/lib/profileTypes";
+import { INTERAC_EMAIL, PICKUP_INSTRUCTIONS } from "@/lib/payments";
 import { getSupabaseClient, isSupabaseConfigured } from "@/lib/supabaseClient";
 import { buyNowPriceOf, canBuyNow } from "@/lib/buyNow";
 import { recordInterest } from "@/lib/interest";
 import {
   formatCurrency,
-  isLotOpen,
   parseLotEndMs,
   type AuctionLot,
 } from "@/lib/utils";
@@ -22,13 +24,12 @@ type BidRow = {
 };
 
 export function AuctionRoom({ lot }: { lot: AuctionLot }) {
+  const router = useRouter();
   const { user, requestAuth } = useBidder();
   const [currentBid, setCurrentBid] = useState(lot.currentBid);
   const [endsAt, setEndsAt] = useState(lot.endsAt);
   const [highBidder, setHighBidder] = useState(lot.highBidder ?? null);
-  const [status, setStatus] = useState<AuctionLot["status"]>(
-    lot.status === "removed" ? "removed" : "live",
-  );
+  const [status, setStatus] = useState<AuctionLot["status"]>(lot.status ?? "live");
   const [extended, setExtended] = useState(false);
   const [mode, setMode] = useState<"live" | "absentee">("live");
   const [maxAmount, setMaxAmount] = useState("");
@@ -41,13 +42,19 @@ export function AuctionRoom({ lot }: { lot: AuctionLot }) {
     amount: number;
     maxAmount: number;
   } | null>(null);
+  const openRef = useRef(false);
+  const placeBidRef = useRef<() => Promise<void>>(async () => undefined);
 
   const nextBid = useMemo(
     () => nextLiveAmount(currentBid, lot.minIncrement),
     [currentBid, lot.minIncrement],
   );
   const buyNow = buyNowPriceOf(lot);
-  const open = isLotOpen({ endsAt, status }, now);
+  const open = status !== "removed" && status !== "ended";
+  openRef.current = open;
+  const youWon =
+    status === "ended" &&
+    Boolean(user && highBidder && (highBidder === user.fullName || highBidder === user.email));
   const showBuyNow = open && canBuyNow(currentBid, buyNow);
 
   useEffect(() => {
@@ -73,9 +80,13 @@ export function AuctionRoom({ lot }: { lot: AuctionLot }) {
           : null;
         if (!row) return;
         if (row.currentBid != null) setCurrentBid(Number(row.currentBid));
+        if (row.highBidder !== undefined) setHighBidder(row.highBidder);
+        if (row.status === "removed") setStatus("removed");
+        else setStatus("live");
         if (row.endsAt) {
-          const nextEnd = parseLotEndMs(String(row.endsAt));
           setEndsAt((prev) => {
+            if (row.status === "ended" || row.status === "removed") return String(row.endsAt);
+            const nextEnd = parseLotEndMs(String(row.endsAt));
             const prevEnd = parseLotEndMs(prev);
             if (
               Number.isFinite(prevEnd) &&
@@ -88,9 +99,6 @@ export function AuctionRoom({ lot }: { lot: AuctionLot }) {
             return String(row.endsAt);
           });
         }
-        if (row.highBidder !== undefined) setHighBidder(row.highBidder);
-        if (row.status === "removed") setStatus("removed");
-        else if (row.status) setStatus("live");
       })
       .catch(() => undefined);
   }, [lot.id]);
@@ -145,9 +153,13 @@ export function AuctionRoom({ lot }: { lot: AuctionLot }) {
             status?: AuctionLot["status"];
           };
           if (next.current_bid != null) setCurrentBid(Number(next.current_bid));
+          if (next.high_bidder !== undefined) setHighBidder(next.high_bidder);
+          if (next.status === "removed" || next.status === "ended") setStatus(next.status);
+          else if (next.status) setStatus(next.status);
           if (next.ends_at) {
-            const nextEnd = parseLotEndMs(next.ends_at);
             setEndsAt((prev) => {
+              if (next.status === "ended" || next.status === "removed") return next.ends_at!;
+              const nextEnd = parseLotEndMs(next.ends_at);
               const prevEnd = parseLotEndMs(prev);
               if (Number.isFinite(nextEnd) && Number.isFinite(prevEnd) && nextEnd > prevEnd) {
                 setExtended(true);
@@ -158,9 +170,6 @@ export function AuctionRoom({ lot }: { lot: AuctionLot }) {
               return next.ends_at!;
             });
           }
-          if (next.high_bidder !== undefined) setHighBidder(next.high_bidder);
-          if (next.status === "removed") setStatus("removed");
-          else if (next.status && next.status !== "ended") setStatus(next.status);
         },
       )
       .subscribe();
@@ -171,10 +180,6 @@ export function AuctionRoom({ lot }: { lot: AuctionLot }) {
   }, [lot.id]);
 
   async function placeBid() {
-    if (!open) {
-      setMessage("This lot is not open for bidding yet.");
-      return;
-    }
     const intent = pendingBid.current ?? {
       mode,
       amount: nextBid,
@@ -196,8 +201,18 @@ export function AuctionRoom({ lot }: { lot: AuctionLot }) {
         }),
       });
       const json = await response.json();
-      if (!response.ok) throw new Error(json.error || "Bid failed");
+      if (!response.ok) {
+        const err = json.error;
+        const text =
+          typeof err === "string"
+            ? err
+            : err && typeof err === "object" && "message" in err
+              ? String((err as { message: string }).message)
+              : "Bid failed";
+        throw new Error(text);
+      }
       recordInterest(lot);
+      pendingBid.current = null;
 
       setCurrentBid(json.currentBid);
       setEndsAt(json.endsAt);
@@ -207,12 +222,16 @@ export function AuctionRoom({ lot }: { lot: AuctionLot }) {
         setFeed((current) => [...json.events.slice().reverse(), ...current].slice(0, 12));
       }
       if (json.status) setStatus(json.status);
+      if (json.boughtNow) {
+        setStatus("ended");
+        setMessage(`You won this lot for ${formatCurrency(json.currentBid)}. Settle payment and shipping on checkout.`);
+        router.push("/checkout");
+        return;
+      }
       setMessage(
-        json.boughtNow
-          ? `Bought now for ${formatCurrency(json.currentBid)}. Lot is closed.`
-          : json.extended
-            ? `Bid in. Clock extended +2:00 (anti-snipe). High ${formatCurrency(json.currentBid)}`
-            : `High bid is now ${formatCurrency(json.currentBid)}`,
+        json.extended
+          ? `Bid in. Clock extended +2:00 (anti-snipe). High ${formatCurrency(json.currentBid)}`
+          : `High bid is now ${formatCurrency(json.currentBid)}`,
       );
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Bid failed.");
@@ -220,17 +239,17 @@ export function AuctionRoom({ lot }: { lot: AuctionLot }) {
       setBusy(false);
     }
   }
+  placeBidRef.current = placeBid;
 
   async function onSubmit(event: FormEvent) {
     event.preventDefault();
-    if (!open) return;
     pendingBid.current = {
       mode,
       amount: nextBid,
       maxAmount: Number(maxAmount),
     };
     if (!user || !isProfileComplete(user)) {
-      requestAuth(() => placeBid(), "signup");
+      requestAuth(() => placeBidRef.current(), "login");
       return;
     }
     await placeBid();
@@ -249,7 +268,43 @@ export function AuctionRoom({ lot }: { lot: AuctionLot }) {
         <LotTimer endsAt={endsAt} extended={extended} />
       </div>
 
-      <form
+        {youWon ? (
+          <div className="comic-panel space-y-3 p-5">
+            <p className="font-display text-sm tracking-[0.25em] text-brand-red">YOU WON THIS LOT</p>
+            <p className="font-display text-3xl">Hammer {formatCurrency(currentBid)}</p>
+            <p className="font-comic text-sm">
+              Pay by Interac e-Transfer to <strong>{INTERAC_EMAIL}</strong> or pay on arrival.
+              Checkout has shipping and pickup instructions.
+            </p>
+            <p className="border-4 border-black bg-white px-3 py-2 font-comic text-sm">{PICKUP_INSTRUCTIONS}</p>
+            <Link href="/checkout" className="comic-btn inline-block">
+              Settle payment & shipping
+            </Link>
+            {message ? <p className="font-display text-xl">{message}</p> : null}
+          </div>
+        ) : status === "removed" ? (
+          <div className="comic-panel space-y-3 p-5">
+            <p className="font-display text-sm tracking-[0.25em] text-brand-red">PULLED FROM THE SALE</p>
+            <p className="font-comic text-sm">
+              This lot is no longer on the live floor. House staff moved it to unsold or settlements.
+            </p>
+            <Link href="/live" className="comic-btn inline-block">
+              Back to live lots
+            </Link>
+          </div>
+        ) : status === "ended" ? (
+          <div className="comic-panel space-y-3 p-5">
+            <p className="font-display text-sm tracking-[0.25em] text-brand-red">SOLD</p>
+            <p className="font-display text-3xl">Hammer {formatCurrency(currentBid)}</p>
+            <p className="font-comic text-sm">
+              {highBidder ? `Won by ${highBidder}.` : "This lot is closed."} It is on the settlement desk.
+            </p>
+            <Link href="/live" className="comic-btn inline-block">
+              Back to live lots
+            </Link>
+          </div>
+        ) : (
+        <form
         onSubmit={onSubmit}
         className="comic-panel space-y-4 p-5"
       >
@@ -273,11 +328,11 @@ export function AuctionRoom({ lot }: { lot: AuctionLot }) {
           <button
             type="button"
             className="comic-btn w-full"
-            disabled={busy || !open}
+            disabled={busy}
             onClick={() => {
               pendingBid.current = { mode: "buy_now", amount: buyNow, maxAmount: buyNow };
               if (!user || !isProfileComplete(user)) {
-                requestAuth(() => placeBid(), "signup");
+                requestAuth(() => placeBidRef.current(), "login");
                 return;
               }
               void placeBid();
@@ -327,11 +382,11 @@ export function AuctionRoom({ lot }: { lot: AuctionLot }) {
           </label>
         )}
 
-        <button type="submit" className="comic-btn w-full" disabled={busy || !open}>
-          {!open
-            ? "Bidding closed"
-            : busy
-              ? "Placing…"
+        <button type="submit" className="comic-btn w-full" disabled={busy}>
+          {busy
+            ? "Placing…"
+            : !open
+              ? `Place Bid ${formatCurrency(nextBid)}`
               : mode === "live"
                 ? `Place Bid ${formatCurrency(nextBid)}`
                 : "Set Absentee Bid"}
@@ -345,6 +400,7 @@ export function AuctionRoom({ lot }: { lot: AuctionLot }) {
         )}
         {message && <p className="font-display text-xl">{message}</p>}
       </form>
+        )}
 
       <div className="comic-panel p-4">
         <p className="font-display text-2xl">Bid tape</p>
