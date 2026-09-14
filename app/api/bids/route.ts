@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getBidderSession, bidderUnauthorized } from "@/lib/bidderAuth";
 import { getDemoLot } from "@/lib/demoAuctionStore";
+import { getAdminDemo } from "@/lib/demoAdminStore";
 import {
   placeAbsenteeMax,
   placeLiveBid,
@@ -65,7 +66,7 @@ export async function POST(request: NextRequest) {
 
   const body = (await request.json()) as {
     lotId?: string;
-    mode?: "live" | "absentee";
+    mode?: "live" | "absentee" | "buy_now";
     amount?: number;
     maxAmount?: number;
   };
@@ -89,7 +90,7 @@ async function persistDemo(
   bidder: string,
   bidderId: string,
   email: string,
-  body: { mode?: "live" | "absentee"; amount?: number; maxAmount?: number },
+  body: { mode?: "live" | "absentee" | "buy_now"; amount?: number; maxAmount?: number },
 ) {
   const demo = getDemoLot(lotId);
   if (!demo) {
@@ -97,6 +98,46 @@ async function persistDemo(
   }
   if (demo.status !== "live" || new Date(demo.endsAt).getTime() <= Date.now()) {
     return NextResponse.json({ error: "Lot is not open for bidding" }, { status: 400 });
+  }
+
+  if (body.mode === "buy_now") {
+    const amount = Number(body.amount);
+    if (!amount || amount <= demo.currentBid) {
+      return NextResponse.json({ error: "Buy now is no longer available on this lot." }, { status: 400 });
+    }
+    demo.currentBid = amount;
+    demo.highBidder = bidder;
+    demo.highBidderId = bidderId;
+    demo.status = "ended";
+    demo.endsAt = new Date().toISOString();
+    const stamped = {
+      id: crypto.randomUUID(),
+      lotId,
+      bidder,
+      email,
+      amount,
+      kind: "live" as const,
+      createdAt: demo.endsAt,
+      bidderId,
+    };
+    demo.bids.push(stamped);
+    const inventory = getAdminDemo().inventory.find((row) => row.id === lotId);
+    if (inventory) {
+      inventory.currentBid = amount;
+      inventory.status = "ended";
+      inventory.endsAt = demo.endsAt;
+      inventory.highBidder = bidder;
+      inventory.highBidderId = bidderId;
+    }
+    return NextResponse.json({
+      currentBid: demo.currentBid,
+      endsAt: demo.endsAt,
+      highBidder: demo.highBidder,
+      events: [stamped],
+      extended: false,
+      boughtNow: true,
+      status: "ended",
+    });
   }
 
   const clock: AuctionClock = {
@@ -155,7 +196,7 @@ async function persistSupabase(
   bidder: string,
   bidderId: string,
   email: string,
-  body: { mode?: "live" | "absentee"; amount?: number; maxAmount?: number },
+  body: { mode?: "live" | "absentee" | "buy_now"; amount?: number; maxAmount?: number },
 ) {
   const { data: lot, error: lotError } = await supabase
     .from("lots")
@@ -183,6 +224,52 @@ async function persistSupabase(
   };
 
   try {
+    if (body.mode === "buy_now") {
+      const buyNow = Number(lot.buy_now_price ?? lot.reserve_price ?? 0);
+      if (!buyNow || buyNow <= Number(lot.current_bid)) {
+        return NextResponse.json({ error: "Buy now is no longer available on this lot." }, { status: 400 });
+      }
+      const increment = Number(lot.min_increment) || 5;
+      const { error: stageError } = await supabase
+        .from("lots")
+        .update({ current_bid: buyNow - increment })
+        .eq("id", lotId);
+      if (stageError) {
+        return NextResponse.json({ error: stageError.message }, { status: 400 });
+      }
+      const { error: bidError } = await supabase.from("bids").insert({
+        lot_id: lotId,
+        bidder_name: bidder,
+        bidder_id: bidderId,
+        bidder_email: email,
+        amount: buyNow,
+        kind: "live",
+      });
+      if (bidError) {
+        return NextResponse.json({ error: bidError.message }, { status: 400 });
+      }
+      const endedAt = new Date().toISOString();
+      await supabase
+        .from("lots")
+        .update({
+          current_bid: buyNow,
+          high_bidder: bidder,
+          high_bidder_id: bidderId,
+          status: "ended",
+          ends_at: endedAt,
+        })
+        .eq("id", lotId);
+      return NextResponse.json({
+        currentBid: buyNow,
+        endsAt: endedAt,
+        highBidder: bidder,
+        events: [{ bidder, amount: buyNow, kind: "live" }],
+        extended: false,
+        boughtNow: true,
+        status: "ended",
+      });
+    }
+
     const result =
       body.mode === "absentee"
         ? placeAbsenteeMax(clock, bidder, Number(body.maxAmount))

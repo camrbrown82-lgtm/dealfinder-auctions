@@ -1,13 +1,26 @@
 import { NextRequest, NextResponse } from "next/server";
-import { cookies } from "next/headers";
-import { ADMIN_COOKIE, adminPassword, adminSessionToken } from "@/lib/adminAuth";
+import { ADMIN_COOKIE, adminPassword, adminSessionToken, isAdminSession, unauthorized } from "@/lib/adminAuth";
 import { timingSafeEqual } from "crypto";
 
 export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
+
+export async function GET() {
+  if (!isAdminSession()) return unauthorized();
+  return NextResponse.json({ ok: true });
+}
+
+const cookieOptions = {
+  httpOnly: true,
+  sameSite: "lax" as const,
+  secure: process.env.NODE_ENV === "production",
+  path: "/",
+  maxAge: 60 * 60 * 12,
+};
 
 export async function POST(request: NextRequest) {
   const body = (await request.json()) as { password?: string };
-  const offered = Buffer.from(String(body.password ?? ""));
+  const offered = Buffer.from(String(body.password ?? "").trim());
   const expected = Buffer.from(adminPassword());
   const ok =
     offered.length === expected.length && timingSafeEqual(offered, expected);
@@ -16,17 +29,13 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Wrong password." }, { status: 401 });
   }
 
-  cookies().set(ADMIN_COOKIE, adminSessionToken(), {
-    httpOnly: true,
-    sameSite: "lax",
-    path: "/",
-    maxAge: 60 * 60 * 12,
-  });
-
-  return NextResponse.json({ ok: true });
+  const response = NextResponse.json({ ok: true });
+  response.cookies.set(ADMIN_COOKIE, adminSessionToken(), cookieOptions);
+  return response;
 }
 
 export async function DELETE() {
-  cookies().delete(ADMIN_COOKIE);
-  return NextResponse.json({ ok: true });
+  const response = NextResponse.json({ ok: true });
+  response.cookies.set(ADMIN_COOKIE, "", { ...cookieOptions, maxAge: 0 });
+  return response;
 }

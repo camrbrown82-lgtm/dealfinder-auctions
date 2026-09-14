@@ -63,8 +63,8 @@ export function CustomerDesk({ onNotice }: { onNotice: (message: string) => void
 
   return (
     <section className="space-y-4">
-      <div className="border-4 border-black bg-[#FF0000] p-4 text-white shadow-[6px_6px_0_0_#000]">
-        <h2 className="font-display text-4xl">Customer management</h2>
+      <div className="comic-panel p-4">
+        <h2 className="font-display text-2xl text-brand-red sm:text-4xl">Customer management</h2>
         <p className="font-comic text-sm">
           Suspended paddles are blocked on Place Bid. Reset queues a recovery alert.
         </p>
@@ -74,7 +74,7 @@ export function CustomerDesk({ onNotice }: { onNotice: (message: string) => void
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Search name, email, phone"
-          className="min-w-[220px] flex-1 border-4 border-black bg-white px-3 py-2 font-comic"
+          className="min-w-0 w-full flex-1 border-4 border-black bg-white px-3 py-2 font-comic sm:min-w-[220px]"
         />
         {(["all", "active", "suspended"] as const).map((item) => (
           <button
@@ -87,7 +87,7 @@ export function CustomerDesk({ onNotice }: { onNotice: (message: string) => void
           </button>
         ))}
       </div>
-      <div className="overflow-x-auto border-4 border-black shadow-[6px_6px_0_0_#000]">
+      <div className="comic-table-wrap">
         <table className="w-full min-w-[880px] border-collapse font-comic text-sm">
           <thead className="bg-[#FF0000] text-left text-white">
             <tr>

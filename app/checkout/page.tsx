@@ -52,7 +52,7 @@ export default function CheckoutPage() {
 
   if (!user) {
     return (
-      <div className="border-4 border-black bg-[#FFF7D1] p-6 shadow-[6px_6px_0_0_#000]">
+      <div className="comic-panel p-6">
         <h1 className="font-display text-5xl text-[#FF0000]">Checkout</h1>
         <p className="mt-2 font-comic">Log in to see invoices for lots you are winning.</p>
         <button
@@ -68,14 +68,14 @@ export default function CheckoutPage() {
 
   return (
     <div className="space-y-4">
-      <div className="border-4 border-black bg-[#FF0000] p-4 text-white shadow-[6px_6px_0_0_#000]">
-        <h1 className="font-display text-5xl">Winning checkout</h1>
+      <div className="comic-panel p-4">
+        <h1 className="font-display text-5xl text-brand-red">Winning checkout</h1>
         <p className="font-comic text-sm">
           No Stripe. Settle by Interac e-Transfer or pay on arrival.
         </p>
       </div>
 
-      <div className="border-4 border-black bg-[#FFF7D1] p-5 shadow-[6px_6px_0_0_#000]">
+      <div className="comic-panel p-5">
         <p className="font-display text-2xl">Preferred payment method</p>
         <div className="mt-3 grid gap-2 sm:grid-cols-2">
           <button

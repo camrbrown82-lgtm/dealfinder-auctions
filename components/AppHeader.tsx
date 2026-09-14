@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
+import { Logo } from "@/components/Logo";
 import { useBidder } from "@/components/BidderProvider";
 
 const navClass =
@@ -12,11 +13,17 @@ export function AppHeader() {
 
   return (
     <header className="relative w-full border-b-4 border-brand-ink bg-black">
-      <div className="relative h-36 w-full sm:h-44 md:h-52 lg:h-60">
+      <Link
+        href="/admin"
+        className="absolute left-2 top-2 z-30 flex items-center justify-center border-4 border-brand-cream bg-black p-1 shadow-comic-sm sm:left-4 sm:top-4"
+      >
+        <Logo />
+      </Link>
+      <div className="relative h-24 w-full sm:h-44 md:h-52 lg:h-60">
         <Link href="/" className="absolute inset-0 block" aria-label="DealFinder Auctions home">
           <Image
             src="/logo.webp"
-            alt=""
+            alt="DealFinder Auctions"
             fill
             className="object-fill"
             sizes="100vw"
@@ -24,7 +31,7 @@ export function AppHeader() {
           />
         </Link>
       </div>
-      <nav className="absolute right-3 top-3 z-10 flex max-w-[min(100%,28rem)] flex-wrap items-center justify-end gap-x-3 gap-y-1 sm:right-6 sm:top-4 sm:max-w-none sm:gap-x-5">
+      <nav className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1 border-t-4 border-brand-ink px-3 py-2 sm:absolute sm:right-6 sm:top-4 sm:z-10 sm:max-w-none sm:justify-end sm:border-t-0 sm:bg-transparent sm:p-0">
         <Link href="/live" className={navClass}>
           Live
         </Link>
@@ -48,9 +55,6 @@ export function AppHeader() {
             Log in
           </button>
         )}
-        <Link href="/admin" className={navClass}>
-          Admin
-        </Link>
       </nav>
     </header>
   );

@@ -1,12 +1,17 @@
+import { compsSearchQuery, identityMarkings } from "@/lib/lotIdentity";
+
 export type MarketPricing = {
   estimated_market_value: number;
   suggested_reserve: number;
   suggested_starting_bid: number;
   comps_note: string;
+  openaiIds: string[];
 };
 
 type CatalogFacts = {
   title: string;
+  maker?: string;
+  model?: string;
   objectType: string;
   visibleText: string[];
   condition: string;
@@ -30,15 +35,14 @@ function asInt(value: unknown, fallback = 0) {
 }
 
 function searchQuery(facts: CatalogFacts) {
-  const bits = [
-    facts.title,
-    facts.objectType,
-    ...facts.visibleText.slice(0, 3),
-  ]
-    .map((part) => part.trim())
-    .filter(Boolean);
-  const unique = Array.from(new Set(bits.map((part) => part.toLowerCase())));
-  return unique.join(" ").slice(0, 140);
+  return (
+    compsSearchQuery({
+      maker: facts.maker,
+      model: facts.model,
+      objectType: facts.objectType,
+      visibleText: facts.visibleText,
+    }) || facts.title.slice(0, 140)
+  );
 }
 
 function extractUsd(text: string): number[] {
@@ -124,9 +128,12 @@ async function openaiWebComps(apiKey: string, facts: CatalogFacts, query: string
   const prompt = `Find recent comparable prices for this auction lot from public listings.
 Prefer SOLD or completed prices over asking prices.
 Search eBay, LiveAuctioneers, Invaluable, Etsy, Reverb, Chairish, and similar public marketplaces.
-Do not use a rare/branded variant unless the photos confirmed it.
+Do not use a rare/branded variant unless that exact model string is in the visible markings.
+If model is unknown, price the maker + object type only — not a guessed SKU.
 
 Lot title: ${facts.title}
+Maker: ${facts.maker || "unknown"}
+Model (confirmed only): ${facts.model || "not printed / do not guess"}
 Object: ${facts.objectType}
 Visible markings: ${facts.visibleText.join("; ") || "none"}
 Condition: ${facts.condition || "unknown"}
@@ -145,6 +152,8 @@ Rules: estimated_market_value is a conservative typical retail/auction hammer fo
 
   const body = {
     model: "gpt-4o",
+    store: true,
+    metadata: { feature: "comps", product: "dealfinder-auctions" },
     tools: [
       {
         type: "web_search",
@@ -152,7 +161,7 @@ Rules: estimated_market_value is a conservative typical retail/auction hammer fo
       },
     ],
     tool_choice: { type: "web_search" },
-    temperature: 0.1,
+    temperature: 0,
     text: { format: { type: "json_object" } },
     input: prompt,
   };
@@ -175,14 +184,16 @@ Rules: estimated_market_value is a conservative typical retail/auction hammer fo
         authorization: `Bearer ${apiKey}`,
         "content-type": "application/json",
       },
-      body: JSON.stringify({
-        model: "gpt-4o",
-        tools: [{ type: "web_search" }],
+    body: JSON.stringify({
+    model: "gpt-4o",
+    store: true,
+    metadata: { feature: "comps", product: "dealfinder-auctions" },
+    tools: [{ type: "web_search" }],
         input: prompt,
       }),
     });
     const retryJson = (await retry.json()) as Record<string, unknown>;
-    if (!retry.ok) return { text: "", prices: [] as number[] };
+    if (!retry.ok) return { text: "", prices: [] as number[], id: "" };
     return parseOpenAiResponse(retryJson);
   }
   return parseOpenAiResponse(json);
@@ -197,7 +208,8 @@ function parseOpenAiResponse(data: Record<string, unknown>) {
     }
   }
   const text = chunks.join("\n");
-  return { text, prices: extractUsd(text) };
+  const id = typeof data.id === "string" ? data.id : "";
+  return { text, prices: extractUsd(text), id };
 }
 
 function parsePricingJson(raw: string): Partial<MarketPricing> & { notes?: string } {
@@ -231,7 +243,9 @@ async function priceFromSnippets(
     },
     body: JSON.stringify({
       model: "gpt-4o",
-      temperature: 0.1,
+      store: true,
+      metadata: { feature: "comps", product: "dealfinder-auctions" },
+      temperature: 0,
       response_format: { type: "json_object" },
       max_tokens: 600,
       messages: [
@@ -243,6 +257,8 @@ async function priceFromSnippets(
         {
           role: "user",
           content: `Lot: ${facts.title}
+Maker: ${facts.maker || "unknown"}
+Model (confirmed only): ${facts.model || "not printed / do not guess"}
 Object: ${facts.objectType}
 Markings: ${facts.visibleText.join("; ") || "none"}
 Condition: ${facts.condition || "unknown"}
@@ -259,25 +275,32 @@ Return JSON:
   "suggested_starting_bid": integer,
   "notes": string
 }
-Reserve = 70-85% of conservative market. Starting bid = 40-60%. If comps are weak, go low.`,
+Buy now (suggested_reserve) = 70-85% of conservative market. Starting bid = 40-60% of market. If comps are weak, go low.`,
         },
       ],
     }),
   });
   const json = (await openai.json()) as {
+    id?: string;
     choices?: Array<{ message?: { content?: string } }>;
   };
-  return parsePricingJson(json.choices?.[0]?.message?.content ?? "");
+  return {
+    parsed: parsePricingJson(json.choices?.[0]?.message?.content ?? ""),
+    id: json.id ?? "",
+  };
 }
 
 function finalize(
   parsed: Partial<MarketPricing> & { notes?: string },
   scrapedPrices: number[],
   extraNote?: string,
+  openaiIds: string[] = [],
 ): MarketPricing {
   const mid = median(scrapedPrices);
   let market = asInt(parsed.estimated_market_value, 0);
-  if (mid > 0) {
+  if (mid > 0 && scrapedPrices.length >= 2) {
+    market = mid;
+  } else if (mid > 0) {
     if (market <= 0) market = mid;
     if (market > mid * 2) market = Math.round(mid * 1.15);
     if (market < mid * 0.25) market = Math.round(mid * 0.7);
@@ -295,6 +318,7 @@ function finalize(
     suggested_reserve: reserve,
     suggested_starting_bid: start,
     comps_note: notes || "Conservative estimate from public comps.",
+    openaiIds: openaiIds.filter(Boolean),
   };
 }
 
@@ -302,12 +326,16 @@ export async function priceFromMarketComps(
   apiKey: string,
   facts: CatalogFacts,
 ): Promise<MarketPricing> {
-  const query = searchQuery(facts) || facts.objectType || "collectible";
+  const locked: CatalogFacts = {
+    ...facts,
+    visibleText: identityMarkings(facts.visibleText),
+  };
+  const query = searchQuery(locked) || locked.objectType || "collectible";
   const [rss, ddgEbay, ddgAuction, web] = await Promise.allSettled([
     ebayRss(query),
     duckDuckGo(`${query} sold ebay`),
     duckDuckGo(`${query} sold site:liveauctioneers.com OR site:invaluable.com`),
-    openaiWebComps(apiKey, facts, query),
+    openaiWebComps(apiKey, locked, query),
   ]);
 
   const snippets: string[] = [];
@@ -321,14 +349,16 @@ export async function priceFromMarketComps(
   }
 
   const fromWeb = web.status === "fulfilled" ? parsePricingJson(web.value.text) : {};
+  const webId = web.status === "fulfilled" ? web.value.id : "";
   if (fromWeb.estimated_market_value) {
-    return finalize(fromWeb, prices, "Referenced public marketplace listings.");
+    return finalize(fromWeb, prices, "Referenced public marketplace listings.", [webId]);
   }
 
-  const fromSnippets = await priceFromSnippets(apiKey, facts, snippets.join("\n\n"), prices);
+  const fromSnippets = await priceFromSnippets(apiKey, locked, snippets.join("\n\n"), prices);
   return finalize(
-    fromSnippets,
+    fromSnippets.parsed,
     prices,
     snippets.length ? "Priced from eBay/search listing references." : "Few public comps found; kept conservative.",
+    [webId, fromSnippets.id],
   );
 }

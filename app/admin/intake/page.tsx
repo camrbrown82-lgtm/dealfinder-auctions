@@ -2,21 +2,15 @@
 
 import { useState } from "react";
 import { AdminAiIntake } from "@/components/AdminAiIntake";
-import { AdminDesk, type AdminDeskApi } from "@/components/admin/AdminDesk";
-import { AdminSubnav } from "@/components/admin/AdminSubnav";
+import { useAdminDesk } from "@/components/admin/AdminDesk";
+import { AdminShell } from "@/components/admin/AdminShell";
 import { AuctionCalendarModal } from "@/components/admin/AuctionCalendar";
 import { weeklySaleName, weeklySaleTimes } from "@/lib/auctionCalendar";
+import { DEFAULT_HOUSE_STARTING_BID } from "@/lib/houseDesk";
+import { HouseCatalogSettings } from "@/components/admin/HouseCatalogSettings";
 
 export default function AdminIntakePage() {
-  return (
-    <AdminDesk>
-      {(desk) => <IntakeWorkspace desk={desk} />}
-    </AdminDesk>
-  );
-}
-
-function IntakeWorkspace({ desk }: { desk: AdminDeskApi }) {
-  const { data, error, notice, setNotice, load, mutate, logout } = desk;
+  const { data, setNotice, load, mutate } = useAdminDesk();
   const [filingLot, setFilingLot] = useState<{ id: string; title: string; lotNumber?: string | null } | null>(
     null,
   );
@@ -31,39 +25,37 @@ function IntakeWorkspace({ desk }: { desk: AdminDeskApi }) {
     });
     if (!json) return;
     setFilingLot(null);
-    setNotice(`Filed ${lot.title} into the selected week.`);
+    setNotice(`Filed ${lot.title} into the selected auction.`);
   }
 
   return (
-    <div className="space-y-8">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="font-display text-5xl">AI generator</h1>
-          <p className="font-comic text-sm">
-            Work one photo at a time. When you save or post live, this workspace clears and
-            you pick the auction inventory.
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <AdminSubnav />
-          <button type="button" className="comic-btn-invert" onClick={() => void logout()}>
-            Log out
-          </button>
-        </div>
-      </div>
-
-      {error && (
-        <p className="border-4 border-black bg-brand-red p-4 font-display text-xl text-white">
-          {error}
-        </p>
-      )}
-      {notice && (
-        <p className="border-4 border-black bg-[#FFF7D1] p-4 font-display text-xl">{notice}</p>
-      )}
-
+    <AdminShell
+      title="AI generator"
+      subtitle="Work one photo at a time. When you save or post live, this workspace clears and you pick the auction inventory."
+    >
+      <HouseCatalogSettings
+        settings={
+          data.houseSettings ?? {
+            defaultStartingBid: DEFAULT_HOUSE_STARTING_BID,
+            nextLotNumber: data.suggestedLotNumber ?? "LOT-0001",
+          }
+        }
+        onSave={(next) =>
+          void mutate("/api/admin", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              action: "saveHouseSettings",
+              defaultStartingBid: next.defaultStartingBid,
+              nextLotNumber: next.nextLotNumber,
+            }),
+          }).then(() => setNotice("Saved house starting bid and next lot #."))
+        }
+      />
       <AdminAiIntake
         workspace
-        suggestedLotNumber={data.suggestedLotNumber ?? "LOT-0001"}
+        suggestedLotNumber={data.houseSettings?.nextLotNumber ?? data.suggestedLotNumber ?? "LOT-0001"}
+        defaultStartingBid={data.houseSettings?.defaultStartingBid ?? DEFAULT_HOUSE_STARTING_BID}
         consignors={data.consignors ?? []}
         onPosted={async (message, lot) => {
           await load();
@@ -98,6 +90,6 @@ function IntakeWorkspace({ desk }: { desk: AdminDeskApi }) {
           });
         }}
       />
-    </div>
+    </AdminShell>
   );
 }

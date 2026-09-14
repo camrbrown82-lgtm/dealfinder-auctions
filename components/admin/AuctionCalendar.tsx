@@ -126,7 +126,7 @@ export function AuctionCalendarModal({
       onClick={onClose}
     >
       <div
-        className="w-full max-w-md border-4 border-black bg-white p-4 shadow-[8px_8px_0_0_#000]"
+        className="max-h-[90dvh] w-full max-w-md overflow-y-auto comic-panel p-4"
         onClick={(event) => event.stopPropagation()}
       >
         <h2 id="sale-calendar-title" className="font-display text-2xl">

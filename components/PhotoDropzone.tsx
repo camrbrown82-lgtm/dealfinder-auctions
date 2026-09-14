@@ -88,7 +88,7 @@ export function PhotoDropzone({
           setDragging(false);
           merge(event.dataTransfer.files);
         }}
-        className={`border-4 border-dashed border-black bg-brand-cream p-6 text-center ${
+        className={`border-4 border-dashed border-black bg-brand-cream p-6 text-center shadow-comic-red-sm ${
           dragging ? "bg-white" : ""
         }`}
       >

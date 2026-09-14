@@ -164,11 +164,11 @@ export function CameraCapture({
       onClick={onClose}
     >
       <div
-        className="flex max-h-[92vh] w-full max-w-lg flex-col overflow-hidden border-4 border-black bg-white shadow-[8px_8px_0_0_#000]"
+        className="flex max-h-[92vh] w-full max-w-lg flex-col overflow-hidden comic-panel"
         onClick={(event) => event.stopPropagation()}
       >
         <div className="p-4 pb-2">
-          <h2 id="camera-title" className="font-display text-3xl">
+          <h2 id="camera-title" className="font-display text-3xl text-brand-red">
             Live camera
           </h2>
           <p className="mt-1 font-comic text-sm">

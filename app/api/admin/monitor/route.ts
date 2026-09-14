@@ -31,7 +31,8 @@ export async function GET() {
         highBidder: lot.highBidder ?? null,
         currentBid: lot.currentBid,
         startingBid: lot.startingBid ?? lot.currentBid,
-        reservePrice: lot.reservePrice ?? 0,
+        reservePrice: lot.buyNowPrice ?? lot.reservePrice ?? 0,
+        buyNowPrice: lot.buyNowPrice ?? lot.reservePrice ?? 0,
         endsAt: lot.endsAt,
         bidCount: count.get(lot.id) ?? 0,
       };
@@ -55,7 +56,8 @@ export async function GET() {
         highBidder: clock?.highBidder ?? lot.highBidder ?? null,
         currentBid: clock?.currentBid ?? lot.currentBid,
         startingBid: lot.startingBid ?? lot.currentBid,
-        reservePrice: lot.reservePrice ?? 0,
+        reservePrice: lot.buyNowPrice ?? lot.reservePrice ?? 0,
+        buyNowPrice: lot.buyNowPrice ?? lot.reservePrice ?? 0,
         endsAt: clock?.endsAt ?? lot.endsAt,
         bidCount: clock?.bids.length ?? 0,
       };

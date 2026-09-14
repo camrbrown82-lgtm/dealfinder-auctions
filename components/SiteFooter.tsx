@@ -34,10 +34,9 @@ export function SiteFooter() {
             {SITE.email}
           </a>
         </div>
-        <div>
+        <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-2">
           <p className="font-display text-xl text-white">Follow us on social</p>
-          <p className="mt-1 font-comic text-xs font-bold">TikTok · Instagram · Facebook</p>
-          <SocialLinks className="mt-3" />
+          <SocialLinks />
         </div>
       </div>
     </footer>

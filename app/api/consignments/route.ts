@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { addDemoConsignment } from "@/lib/demoAdminStore";
-import { persistPublicImageUrls } from "@/lib/consignmentStorage";
+import { startingBidFromBuyNow } from "@/lib/buyNow";
 import { getSupabaseAdmin, isSupabaseConfigured } from "@/lib/supabaseClient";
+import { persistPublicImageUrls } from "@/lib/consignmentStorage";
 import {
   DEFAULT_COMMISSION_RATE,
   MOCK_CONSIGNMENTS,
@@ -20,7 +21,7 @@ function demoItems(): ConsignorItem[] {
     consignor: item.consignor,
     pipelineStatus: consignmentToPipeline(item.status),
     startingBid: 50,
-    reservePrice: 80,
+    buyNowPrice: 80,
     commissionRate: DEFAULT_COMMISSION_RATE,
   }));
 
@@ -30,7 +31,7 @@ function demoItems(): ConsignorItem[] {
     consignor: lot.consignor,
     pipelineStatus: lot.status === "ended" ? "sold" : "live",
     startingBid: lot.currentBid,
-    reservePrice: lot.currentBid,
+    buyNowPrice: lot.buyNowPrice ?? lot.reservePrice ?? lot.currentBid,
     commissionRate: DEFAULT_COMMISSION_RATE,
   }));
 
@@ -77,7 +78,7 @@ export async function GET(request: NextRequest) {
       consignor: row.consignor_name,
       pipelineStatus,
       startingBid: Number(row.starting_bid ?? lot?.starting_bid ?? 0),
-      reservePrice: Number(row.reserve_price ?? 0),
+      buyNowPrice: Number(row.buy_now_price ?? row.reserve_price ?? 0),
       commissionRate: Number(row.commission_rate ?? DEFAULT_COMMISSION_RATE),
     };
   });
@@ -96,10 +97,12 @@ export async function POST(request: NextRequest) {
     description?: string;
     category?: LotCategory;
     startingBid?: number;
+    buyNowPrice?: number;
     reservePrice?: number;
     commissionRate?: number;
     estimatedMarketValue?: number;
     imageUrls?: string[];
+    termsAccepted?: boolean;
   };
 
   const consignorName = body.consignorName?.trim();
@@ -107,6 +110,12 @@ export async function POST(request: NextRequest) {
   if (!consignorName || !title) {
     return NextResponse.json(
       { error: "Consignor name and title are required." },
+      { status: 400 },
+    );
+  }
+  if (body.termsAccepted !== true) {
+    return NextResponse.json(
+      { error: "You must accept the consignment agreement before submitting." },
       { status: 400 },
     );
   }
@@ -129,15 +138,22 @@ export async function POST(request: NextRequest) {
     }
   }
 
+  const buyNow = Number(body.buyNowPrice ?? body.reservePrice) || 0;
+  if (buyNow <= 0) {
+    return NextResponse.json({ error: "Buy now price is required." }, { status: 400 });
+  }
+  const starting = Number(body.startingBid) || startingBidFromBuyNow(buyNow);
+
   const payload = {
     consignor_name: consignorName,
     title,
     category: body.category ?? "Oddities",
     description: body.description ?? "",
     estimated_high: body.estimatedMarketValue ?? null,
-    estimated_low: body.startingBid ?? null,
-    starting_bid: Number(body.startingBid) || 0,
-    reserve_price: Number(body.reservePrice) || 0,
+    estimated_low: starting,
+    starting_bid: starting,
+    reserve_price: buyNow,
+    buy_now_price: buyNow,
     commission_rate: Number(body.commissionRate) || DEFAULT_COMMISSION_RATE,
     image_urls: imageUrls,
     status: "pending" as const,
@@ -148,8 +164,8 @@ export async function POST(request: NextRequest) {
     title,
     consignor: consignorName,
     pipelineStatus: "pending_approval",
-    startingBid: payload.starting_bid,
-    reservePrice: payload.reserve_price,
+    startingBid: starting,
+    buyNowPrice: buyNow,
     commissionRate: payload.commission_rate,
   };
 
@@ -162,8 +178,9 @@ export async function POST(request: NextRequest) {
       description: payload.description,
       estimatedLow: payload.estimated_low,
       estimatedHigh: payload.estimated_high,
-      reservePrice: payload.reserve_price,
-      startingBid: payload.starting_bid,
+      reservePrice: buyNow,
+      buyNowPrice: buyNow,
+      startingBid: starting,
       commissionRate: payload.commission_rate,
       imageUrls,
       status: "pending",
@@ -172,13 +189,12 @@ export async function POST(request: NextRequest) {
   }
 
   let { data, error } = await supabase.from("consignments").insert(payload).select("id").single();
+  if (error && /buy_now_price/i.test(error.message)) {
+    const { buy_now_price: _b, ...rest } = payload;
+    ({ data, error } = await supabase.from("consignments").insert(rest).select("id").single());
+  }
   if (error && /starting_bid|reserve_price|commission_rate/i.test(error.message)) {
-    const {
-      starting_bid: _s,
-      reserve_price: _r,
-      commission_rate: _c,
-      ...rest
-    } = payload;
+    const { starting_bid: _s, reserve_price: _r, commission_rate: _c, buy_now_price: _b, ...rest } = payload;
     ({ data, error } = await supabase.from("consignments").insert(rest).select("id").single());
   }
 

@@ -20,16 +20,16 @@ export function BidAuditModal({
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4">
       <div
         role="dialog"
-        className="max-h-[90vh] w-full max-w-3xl overflow-y-auto border-4 border-black bg-[#FFF7D1] shadow-[8px_8px_0_0_#000]"
+        className="max-h-[90vh] w-full max-w-3xl overflow-y-auto comic-panel"
       >
-        <div className="flex items-start justify-between gap-3 border-b-4 border-black bg-[#FF0000] px-4 py-3 text-white">
+        <div className="flex items-start justify-between gap-3 border-b-4 border-black bg-brand-cream px-4 py-3">
           <div>
-            <p className="font-display text-sm tracking-[0.2em]">BID HISTORY AUDIT</p>
-            <h2 className="font-display text-3xl leading-none">{title}</h2>
+            <p className="font-display text-sm tracking-[0.2em] text-brand-red">BID HISTORY AUDIT</p>
+            <h2 className="font-display text-3xl leading-none text-brand-red">{title}</h2>
           </div>
           <button
             type="button"
-            className="border-4 border-black bg-[#FFF7D1] px-3 py-1 font-display text-2xl text-black"
+            className="comic-btn-invert !px-3 !py-1 !text-2xl"
             onClick={onClose}
             aria-label="Close audit"
           >

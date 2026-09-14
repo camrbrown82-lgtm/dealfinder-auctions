@@ -189,15 +189,15 @@ export function EmailEngine({ onNotice }: { onNotice: (message: string) => void 
 
   return (
     <section className="space-y-4">
-      <div className="border-4 border-black bg-[#FF0000] p-4 text-white shadow-[6px_6px_0_0_#000]">
-        <h2 className="font-display text-4xl">Email template & marketing engine</h2>
+      <div className="comic-panel p-4">
+        <h2 className="font-display text-4xl text-brand-red">Email template & marketing engine</h2>
         <p className="font-comic text-sm">
           Variables: {TEMPLATE_VARIABLES.join(" ")}. Logo is inlined in every send. Paste HTML
           or import a file if you already have house templates.
         </p>
       </div>
 
-      <div className="grid gap-4 border-4 border-black bg-[#FFF7D1] p-4 shadow-[6px_6px_0_0_#000] sm:grid-cols-[160px_1fr]">
+      <div className="comic-panel grid gap-4 p-4 sm:grid-cols-[160px_1fr]">
         <div className="border-4 border-black bg-black p-2">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
@@ -249,7 +249,7 @@ export function EmailEngine({ onNotice }: { onNotice: (message: string) => void 
       {current && (
         <form
           onSubmit={saveTemplate}
-          className="space-y-3 border-4 border-black bg-[#FFF7D1] p-4 shadow-[6px_6px_0_0_#000]"
+          className="comic-panel space-y-3 p-4"
         >
           <label className="block font-comic font-bold">
             Template name
@@ -282,7 +282,7 @@ export function EmailEngine({ onNotice }: { onNotice: (message: string) => void 
         </form>
       )}
 
-      <div className="space-y-3 border-4 border-black bg-white p-4 shadow-[6px_6px_0_0_#000]">
+      <div className="comic-panel space-y-3 p-4">
         <p className="font-display text-2xl">Add / import a house template</p>
         <div className="grid gap-3 sm:grid-cols-2">
           <label className="block font-comic font-bold">
@@ -338,7 +338,7 @@ export function EmailEngine({ onNotice }: { onNotice: (message: string) => void 
         />
       </div>
 
-      <div className="border-4 border-black bg-[#FFF7D1] p-4 shadow-[6px_6px_0_0_#000]">
+      <div className="comic-panel p-4">
         <p className="font-display text-2xl">Preview</p>
         <p className="font-comic text-sm">Subject: {preview.subject}</p>
         <iframe
@@ -348,7 +348,7 @@ export function EmailEngine({ onNotice }: { onNotice: (message: string) => void 
         />
       </div>
 
-      <div className="grid gap-3 border-4 border-black bg-white p-4 shadow-[6px_6px_0_0_#000] sm:grid-cols-2">
+      <div className="comic-panel grid gap-3 p-4 sm:grid-cols-2">
         <label className="block font-comic font-bold sm:col-span-2">
           Recipients (comma-separated)
           <input

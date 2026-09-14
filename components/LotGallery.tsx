@@ -11,12 +11,14 @@ export function LotGallery({
   variant = "card",
   sizes,
   priority,
+  fit = "cover",
 }: {
   images: string[];
   alt: string;
   variant?: GalleryVariant;
   sizes?: string;
   priority?: boolean;
+  fit?: "cover" | "contain";
 }) {
   const photos = images.filter(Boolean);
   const [index, setIndex] = useState(0);
@@ -73,7 +75,7 @@ export function LotGallery({
             src={current}
             alt={alt}
             fill
-            className="object-cover"
+            className={fit === "contain" ? "object-contain" : "object-cover"}
             sizes={sizes}
             priority={priority}
           />

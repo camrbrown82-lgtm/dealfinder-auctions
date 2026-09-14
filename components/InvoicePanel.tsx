@@ -7,7 +7,7 @@ import type { WinInvoice } from "@/lib/winTypes";
 
 export function InvoicePanel({ win }: { win: WinInvoice }) {
   return (
-    <article className="border-4 border-black bg-[#FFF7D1] p-4 shadow-[6px_6px_0_0_#000]">
+    <article className="comic-panel p-4">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
           <p className="font-display text-sm tracking-[0.2em] text-[#FF0000]">

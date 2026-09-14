@@ -7,11 +7,14 @@ import {
   type LotCategory,
 } from "@/lib/utils";
 import { registerDemoLot, seedDemoBidTape } from "@/lib/demoAuctionStore";
+import { suggestLotNumber } from "@/lib/catalogNumbers";
+import { DEFAULT_HOUSE_STARTING_BID, type HouseDeskSettings } from "@/lib/houseDesk";
 
 export type AdminDemoState = {
   queue: Consignment[];
   inventory: AuctionLot[];
   events: AuctionEvent[];
+  houseSettings: HouseDeskSettings;
 };
 
 declare global {
@@ -42,10 +45,24 @@ export function getAdminDemo(): AdminDemoState {
         auctionNumber: "AU-2026-001",
       })),
       events,
+      houseSettings: {
+        defaultStartingBid: DEFAULT_HOUSE_STARTING_BID,
+        nextLotNumber: suggestLotNumber(MOCK_LOTS),
+      },
     };
     seedDemoBidTape();
   }
-  return globalThis.__dealfinderAdminDemo;
+  const state = globalThis.__dealfinderAdminDemo;
+  if (!state) {
+    throw new Error("Admin demo store failed to initialize.");
+  }
+  if (!state.houseSettings) {
+    state.houseSettings = {
+      defaultStartingBid: DEFAULT_HOUSE_STARTING_BID,
+      nextLotNumber: suggestLotNumber(state.inventory),
+    };
+  }
+  return state;
 }
 
 export function stampAuctionNumbers(state: AdminDemoState) {

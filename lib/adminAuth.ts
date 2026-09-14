@@ -5,7 +5,8 @@ import { createHmac, timingSafeEqual } from "crypto";
 export const ADMIN_COOKIE = "df_admin";
 
 export function adminPassword() {
-  return process.env.ADMIN_PASSWORD || "hammer";
+  const value = process.env.ADMIN_PASSWORD?.trim();
+  return value || "hammer";
 }
 
 export function adminSessionToken() {

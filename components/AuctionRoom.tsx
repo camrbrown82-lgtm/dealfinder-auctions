@@ -6,6 +6,8 @@ import { LotTimer } from "@/components/LotTimer";
 import { nextLiveAmount } from "@/lib/bidding";
 import { isProfileComplete } from "@/lib/profileTypes";
 import { getSupabaseClient, isSupabaseConfigured } from "@/lib/supabaseClient";
+import { buyNowPriceOf, canBuyNow } from "@/lib/buyNow";
+import { recordInterest } from "@/lib/interest";
 import {
   formatCurrency,
   isLotOpen,
@@ -32,7 +34,7 @@ export function AuctionRoom({ lot }: { lot: AuctionLot }) {
   const [now, setNow] = useState(() => Date.now());
   const [feed, setFeed] = useState<BidRow[]>([]);
   const pendingBid = useRef<{
-    mode: "live" | "absentee";
+    mode: "live" | "absentee" | "buy_now";
     amount: number;
     maxAmount: number;
   } | null>(null);
@@ -41,7 +43,9 @@ export function AuctionRoom({ lot }: { lot: AuctionLot }) {
     () => nextLiveAmount(currentBid, lot.minIncrement),
     [currentBid, lot.minIncrement],
   );
+  const buyNow = buyNowPriceOf(lot);
   const open = isLotOpen({ endsAt, status }, now);
+  const showBuyNow = open && canBuyNow(currentBid, buyNow);
 
   useEffect(() => {
     const id = window.setInterval(() => setNow(Date.now()), 1000);
@@ -149,6 +153,7 @@ export function AuctionRoom({ lot }: { lot: AuctionLot }) {
       });
       const json = await response.json();
       if (!response.ok) throw new Error(json.error || "Bid failed");
+      recordInterest(lot);
 
       setCurrentBid(json.currentBid);
       setEndsAt(json.endsAt);
@@ -157,10 +162,13 @@ export function AuctionRoom({ lot }: { lot: AuctionLot }) {
       if (Array.isArray(json.events)) {
         setFeed((current) => [...json.events.slice().reverse(), ...current].slice(0, 12));
       }
+      if (json.status) setStatus(json.status);
       setMessage(
-        json.extended
-          ? `Bid in. Clock extended +2:00 (anti-snipe). High ${formatCurrency(json.currentBid)}`
-          : `High bid is now ${formatCurrency(json.currentBid)}`,
+        json.boughtNow
+          ? `Bought now for ${formatCurrency(json.currentBid)}. Lot is closed.`
+          : json.extended
+            ? `Bid in. Clock extended +2:00 (anti-snipe). High ${formatCurrency(json.currentBid)}`
+            : `High bid is now ${formatCurrency(json.currentBid)}`,
       );
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Bid failed.");
@@ -186,10 +194,10 @@ export function AuctionRoom({ lot }: { lot: AuctionLot }) {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-col items-start justify-between gap-3 border-4 border-black bg-[#FF0000] p-4 text-white sm:flex-row sm:items-center">
+      <div className="flex flex-col items-start justify-between gap-3 comic-panel p-4 sm:flex-row sm:items-center">
         <div>
-          <p className="font-display text-sm tracking-[0.25em]">LIVE HAMMER</p>
-          <p className="font-display text-4xl">{formatCurrency(currentBid)}</p>
+          <p className="font-display text-sm tracking-[0.25em] text-brand-red">LIVE HAMMER</p>
+          <p className="font-display text-4xl text-brand-red">{formatCurrency(currentBid)}</p>
           <p className="font-comic text-sm">
             {highBidder ? `High bidder: ${highBidder}` : "No bids yet — open the floor"}
           </p>
@@ -199,7 +207,7 @@ export function AuctionRoom({ lot }: { lot: AuctionLot }) {
 
       <form
         onSubmit={onSubmit}
-        className="space-y-4 border-4 border-black bg-[#FFF7D1] p-5 shadow-[6px_6px_0_0_#000]"
+        className="comic-panel space-y-4 p-5"
       >
         <div className="flex gap-2">
           <button
@@ -217,6 +225,23 @@ export function AuctionRoom({ lot }: { lot: AuctionLot }) {
             Absentee max
           </button>
         </div>
+        {showBuyNow && buyNow ? (
+          <button
+            type="button"
+            className="comic-btn w-full"
+            disabled={busy || !open}
+            onClick={() => {
+              pendingBid.current = { mode: "buy_now", amount: buyNow, maxAmount: buyNow };
+              if (!user || !isProfileComplete(user)) {
+                requestAuth(() => placeBid(), "signup");
+                return;
+              }
+              void placeBid();
+            }}
+          >
+            Buy now {formatCurrency(buyNow)}
+          </button>
+        ) : null}
 
         <p className="font-comic text-sm">
           {user ? (
@@ -277,7 +302,7 @@ export function AuctionRoom({ lot }: { lot: AuctionLot }) {
         {message && <p className="font-display text-xl">{message}</p>}
       </form>
 
-      <div className="border-4 border-black bg-[#FFF7D1] p-4 shadow-[6px_6px_0_0_#000]">
+      <div className="comic-panel p-4">
         <p className="font-display text-2xl">Bid tape</p>
         {feed.length === 0 ? (
           <p className="font-comic text-sm">Waiting for the first paddle…</p>

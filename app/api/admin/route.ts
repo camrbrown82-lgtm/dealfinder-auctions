@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { addDemoLot, getAdminDemo, seedDemoLots, stampAuctionNumbers } from "@/lib/demoAdminStore";
 import { getDemoLot, registerDemoLot } from "@/lib/demoAuctionStore";
 import { isAdminSession, unauthorized } from "@/lib/adminAuth";
-import { suggestAuctionNumber, suggestLotNumber } from "@/lib/catalogNumbers";
+import { suggestAuctionNumber, sortLotsByNumber } from "@/lib/catalogNumbers";
 import { getSupabaseAdmin, isSupabaseConfigured } from "@/lib/supabaseClient";
 import { mapConsignment, mapLot, type ConsignmentRow, type LotRow } from "@/lib/mappers";
 import { buildPayoutItems, buildPayoutReport } from "@/lib/payouts";
@@ -10,8 +10,18 @@ import type { AuctionEvent, AuctionLot, ConsignmentStatus, LotCategory, LotStatu
 import { persistPublicImageUrls } from "@/lib/consignmentStorage";
 import { uniqueConsignorNames } from "@/lib/consignors";
 import { uniqueImageUrls } from "@/lib/utils";
+import { startingBidFromBuyNow } from "@/lib/buyNow";
+import {
+  allocateLotNumber,
+  normalizeHouseSettings,
+  readHouseDeskSettings,
+  settingsAfterUsingLot,
+  writeHouseDeskSettings,
+  type HouseDeskSettings,
+} from "@/lib/houseDesk";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 30;
 
 const FALLBACK_IMAGE =
   "https://images.unsplash.com/photo-1513885535751-8b9238bd345a?auto=format&fit=crop&w=800&q=80";
@@ -40,13 +50,68 @@ function isUniqueConflict(error: { message?: string } | null) {
   );
 }
 
-async function nextLotNumber(
-  supabase: NonNullable<ReturnType<typeof getSupabaseAdmin>>,
+async function listLotNumbers(
+  supabase: NonNullable<ReturnType<typeof getSupabaseAdmin>> | null,
   fallback: Array<{ lotNumber?: string | null }>,
 ) {
+  if (!supabase) return fallback;
   const { data } = await supabase.from("lots").select("lot_number");
   const rows = (data ?? []).map((row) => ({ lotNumber: row.lot_number as string | null }));
-  return suggestLotNumber(rows.length ? rows : fallback);
+  return rows.length ? rows : fallback;
+}
+
+async function currentHouseSettings(
+  supabase: NonNullable<ReturnType<typeof getSupabaseAdmin>> | null,
+  existing: Array<{ lotNumber?: string | null }>,
+  demo: ReturnType<typeof getAdminDemo>,
+): Promise<HouseDeskSettings> {
+  if (supabase) return readHouseDeskSettings(supabase, existing);
+  return normalizeHouseSettings(demo.houseSettings, existing);
+}
+
+async function persistHouseSettings(
+  supabase: NonNullable<ReturnType<typeof getSupabaseAdmin>> | null,
+  demo: ReturnType<typeof getAdminDemo>,
+  settings: HouseDeskSettings,
+) {
+  demo.houseSettings = settings;
+  if (supabase) await writeHouseDeskSettings(supabase, settings);
+}
+
+async function allocateFromHouse(
+  supabase: NonNullable<ReturnType<typeof getSupabaseAdmin>> | null,
+  demo: ReturnType<typeof getAdminDemo>,
+  requested?: string,
+) {
+  const existing = await listLotNumbers(supabase, demo.inventory);
+  const settings = await currentHouseSettings(supabase, existing, demo);
+  const lotNumber = allocateLotNumber(requested, settings, existing);
+  return { lotNumber, settings, existing };
+}
+
+async function commitHouseLot(
+  supabase: NonNullable<ReturnType<typeof getSupabaseAdmin>> | null,
+  demo: ReturnType<typeof getAdminDemo>,
+  settings: HouseDeskSettings,
+  usedLotNumber: string,
+  existing: Array<{ lotNumber?: string | null }>,
+) {
+  const next = settingsAfterUsingLot(settings, usedLotNumber, [...existing, { lotNumber: usedLotNumber }]);
+  await persistHouseSettings(supabase, demo, next);
+  return next;
+}
+
+function withHouseSettings<T extends Record<string, unknown>>(
+  payload: T,
+  demo: ReturnType<typeof getAdminDemo>,
+  houseSettings?: HouseDeskSettings,
+) {
+  const settings = houseSettings ?? demo.houseSettings;
+  return {
+    ...payload,
+    houseSettings: settings,
+    suggestedLotNumber: settings.nextLotNumber,
+  };
 }
 
 async function insertLotRow(
@@ -60,6 +125,10 @@ async function insertLotRow(
   }
   if (isMissingColumn(error, "reserve_price")) {
     const { reserve_price: _reserve, ...rest } = insertRow;
+    ({ data, error } = await supabase.from("lots").insert(rest).select("*").single());
+  }
+  if (isMissingColumn(error, "buy_now_price")) {
+    const { buy_now_price: _buyNow, ...rest } = insertRow;
     ({ data, error } = await supabase.from("lots").insert(rest).select("*").single());
   }
   if (isMissingColumn(error, "consignment_id")) {
@@ -85,15 +154,23 @@ function reviewQueue<T extends { status: string }>(items: T[]) {
   return items.filter((item) => item.status === "pending" || item.status === "held");
 }
 
+function databaseError(message?: string) {
+  if (/invalid api key/i.test(message ?? "")) {
+    return "The server cannot reach Supabase (invalid API key). In Vercel → Settings → Environment Variables, set SUPABASE_SERVICE_ROLE_KEY and NEXT_PUBLIC_SUPABASE_ANON_KEY to the same values as .env.local, then redeploy.";
+  }
+  return message || "Could not load admin data.";
+}
+
 function payloadFromDemo() {
   const demo = getAdminDemo();
   stampAuctionNumbers(demo);
   return {
     source: "demo" as const,
     queue: reviewQueue(demo.queue),
-    inventory: demo.inventory.filter((lot) => lot.status !== "removed"),
+    inventory: sortLotsByNumber(demo.inventory.filter((lot) => lot.status !== "removed")),
     events: demo.events,
-    suggestedLotNumber: suggestLotNumber(demo.inventory),
+    suggestedLotNumber: demo.houseSettings.nextLotNumber,
+    houseSettings: demo.houseSettings,
     suggestedAuctionNumber: suggestAuctionNumber(demo.events),
     payouts: buildPayoutReport(demo.inventory),
     payoutItems: buildPayoutItems(demo.inventory),
@@ -107,6 +184,7 @@ function mapEvent(row: {
   auction_number?: string | null;
   starts_at: string;
   ends_at: string;
+  archived_at?: string | null;
 }): AuctionEvent {
   return {
     id: row.id,
@@ -114,6 +192,7 @@ function mapEvent(row: {
     auctionNumber: row.auction_number ?? null,
     startsAt: row.starts_at,
     endsAt: row.ends_at,
+    archivedAt: row.archived_at ?? null,
   };
 }
 
@@ -144,10 +223,10 @@ export async function GET() {
   ]);
 
   if (queueRes.error) {
-    return NextResponse.json({ error: queueRes.error.message }, { status: 500 });
+    return NextResponse.json({ error: databaseError(queueRes.error.message) }, { status: 500 });
   }
   if (lotsRes.error) {
-    return NextResponse.json({ error: lotsRes.error.message }, { status: 500 });
+    return NextResponse.json({ error: databaseError(lotsRes.error.message) }, { status: 500 });
   }
 
   const events: AuctionEvent[] = (eventsRes.data ?? []).map(mapEvent);
@@ -160,13 +239,15 @@ export async function GET() {
       auctionNumber: lot.eventId ? numbers.get(lot.eventId) ?? lot.auctionNumber : lot.auctionNumber,
     }));
   const mappedQueue = (queueRes.data as ConsignmentRow[]).map(mapConsignment);
+  const houseSettings = await readHouseDeskSettings(supabase, inventory);
 
   return NextResponse.json({
     source: "supabase",
     queue: reviewQueue(mappedQueue),
-    inventory,
+    inventory: sortLotsByNumber(inventory),
     events,
-    suggestedLotNumber: suggestLotNumber(inventory),
+    suggestedLotNumber: houseSettings.nextLotNumber,
+    houseSettings,
     suggestedAuctionNumber: suggestAuctionNumber(events),
     payouts: buildPayoutReport(inventory),
     payoutItems: buildPayoutItems(inventory),
@@ -183,19 +264,24 @@ type AdminBody = {
   auctionNumber?: string;
   startsAt?: string;
   endsAt?: string;
+  archivedAt?: string | null;
   title?: string;
   description?: string;
   category?: LotCategory;
   consignorName?: string;
   startingBid?: number;
   reservePrice?: number;
+  buyNowPrice?: number;
   currentBid?: number;
   commissionRate?: number;
   imageUrls?: string[];
   lotNumber?: string;
+  defaultStartingBid?: number;
+  nextLotNumber?: string;
   postLive?: boolean;
   status?: string;
   remove?: boolean;
+  relist?: boolean;
 };
 
 function applyEventToLot(lot: AuctionLot, event: AuctionEvent, forceLive?: boolean) {
@@ -218,6 +304,19 @@ export async function POST(request: NextRequest) {
   if (body.action === "seed") {
     const seeded = seedDemoLots();
     return NextResponse.json({ ok: true, seeded });
+  }
+
+  if (body.action === "saveHouseSettings") {
+    const existing = await listLotNumbers(supabase, demo.inventory);
+    const settings = normalizeHouseSettings(
+      {
+        defaultStartingBid: body.defaultStartingBid,
+        nextLotNumber: body.nextLotNumber,
+      },
+      existing,
+    );
+    await persistHouseSettings(supabase, demo, settings);
+    return NextResponse.json(withHouseSettings({ ok: true }, demo, settings));
   }
 
   if (body.action === "createEvent") {
@@ -257,7 +356,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Title is required." }, { status: 400 });
     }
     const starting = Number(body.startingBid) || 0;
-    const reserve = Number(body.reservePrice) || 0;
+    const buyNow = Number(body.buyNowPrice ?? body.reservePrice) || 0;
     const event = body.eventId
       ? demo.events.find((row) => row.id === body.eventId)
       : undefined;
@@ -265,12 +364,8 @@ export async function POST(request: NextRequest) {
     const endsAt = event?.endsAt ?? new Date(Date.now() + 1000 * 60 * 60 * 24).toISOString();
 
     if (isSupabaseConfigured && supabase) {
-      const { data: existingLots } = await supabase.from("lots").select("lot_number");
-      const lotNumber =
-        body.lotNumber?.trim() ||
-        suggestLotNumber(
-          (existingLots ?? []).map((row) => ({ lotNumber: row.lot_number as string | null })),
-        );
+      const claimed = await allocateFromHouse(supabase, demo, body.lotNumber);
+      const lotNumber = claimed.lotNumber;
       let photos = body.imageUrls ?? [];
       try {
         photos = await persistPublicImageUrls(supabase, photos);
@@ -306,7 +401,8 @@ export async function POST(request: NextRequest) {
           image_urls: images,
           starting_bid: starting,
           current_bid: starting,
-          reserve_price: reserve || null,
+          reserve_price: buyNow || null,
+          buy_now_price: buyNow || null,
           min_increment: 5,
           ends_at: eventEnds,
           status,
@@ -321,6 +417,10 @@ export async function POST(request: NextRequest) {
       if (isMissingColumn(error, "reserve_price")) {
         const { reserve_price: _reserve, ...withoutReserve } = insertRow;
         ({ data, error } = await supabase.from("lots").insert(withoutReserve).select("*").single());
+      }
+      if (isMissingColumn(error, "buy_now_price")) {
+        const { buy_now_price: _buyNow, ...withoutBuyNow } = insertRow;
+        ({ data, error } = await supabase.from("lots").insert(withoutBuyNow).select("*").single());
       }
       if (isUniqueConflict(error)) {
         const suffix = crypto.randomUUID().slice(0, 8);
@@ -337,10 +437,18 @@ export async function POST(request: NextRequest) {
       if (error) {
         return NextResponse.json({ error: error.message }, { status: 400 });
       }
-      return NextResponse.json({ ok: true, lot: mapLot(data as LotRow) });
+      const houseSettings = await commitHouseLot(
+        supabase,
+        demo,
+        claimed.settings,
+        lotNumber,
+        claimed.existing,
+      );
+      return NextResponse.json(withHouseSettings({ ok: true, lot: mapLot(data as LotRow) }, demo, houseSettings));
     }
 
-    const lotNumber = body.lotNumber?.trim() || suggestLotNumber(demo.inventory);
+    const claimed = await allocateFromHouse(null, demo, body.lotNumber);
+    const lotNumber = claimed.lotNumber;
     const { image, images } = lotPhotos(body.imageUrls);
 
     const lot: AuctionLot = {
@@ -359,10 +467,14 @@ export async function POST(request: NextRequest) {
       eventId: body.eventId || null,
       lotNumber,
       auctionNumber: event?.auctionNumber ?? null,
+      startingBid: starting,
+      reservePrice: buyNow || null,
+      buyNowPrice: buyNow || null,
     };
     if (event && body.postLive) applyEventToLot(lot, event, true);
     addDemoLot(lot);
-    return NextResponse.json({ ok: true, lot });
+    const houseSettings = await commitHouseLot(null, demo, claimed.settings, lotNumber, claimed.existing);
+    return NextResponse.json(withHouseSettings({ ok: true, lot }, demo, houseSettings));
   }
 
   return NextResponse.json({ error: "Unknown action" }, { status: 400 });
@@ -382,6 +494,7 @@ export async function PATCH(request: NextRequest) {
       if (body.auctionNumber != null) event.auctionNumber = body.auctionNumber.trim();
       if (body.startsAt) event.startsAt = body.startsAt;
       if (body.endsAt) event.endsAt = body.endsAt;
+      if (body.archivedAt !== undefined) event.archivedAt = body.archivedAt;
       stampAuctionNumbers(demo);
       for (const lot of demo.inventory) {
         if (lot.eventId === event.id) {
@@ -396,8 +509,15 @@ export async function PATCH(request: NextRequest) {
       if (body.auctionNumber != null) updates.auction_number = body.auctionNumber.trim();
       if (body.startsAt) updates.starts_at = body.startsAt;
       if (body.endsAt) updates.ends_at = body.endsAt;
+      if (body.archivedAt !== undefined) updates.archived_at = body.archivedAt;
       const { error } = await supabase.from("auction_events").update(updates).eq("id", body.id);
-      if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+      if (error && /archived_at/i.test(error.message)) {
+        delete updates.archived_at;
+        const retry = await supabase.from("auction_events").update(updates).eq("id", body.id);
+        if (retry.error) return NextResponse.json({ error: retry.error.message }, { status: 400 });
+      } else if (error) {
+        return NextResponse.json({ error: error.message }, { status: 400 });
+      }
       if (body.endsAt) {
         await supabase.from("lots").update({ ends_at: body.endsAt }).eq("event_id", body.id);
       }
@@ -411,10 +531,19 @@ export async function PATCH(request: NextRequest) {
       if (body.title != null) item.title = body.title;
       if (body.description != null) item.description = body.description;
       if (body.startingBid != null) item.startingBid = body.startingBid;
+      if (body.buyNowPrice != null || body.reservePrice != null) {
+        const buyNow = Number(body.buyNowPrice ?? body.reservePrice) || 0;
+        item.buyNowPrice = buyNow;
+        item.reservePrice = buyNow;
+      }
+      if (!item.startingBid && item.buyNowPrice) {
+        item.startingBid = startingBidFromBuyNow(item.buyNowPrice);
+      }
       if (body.consignorName != null) item.consignor = body.consignorName.trim();
       if (body.status) item.status = body.status as ConsignmentStatus;
       if (body.status === "approved") {
-        const lotNumber = suggestLotNumber(demo.inventory);
+        const claimed = await allocateFromHouse(null, demo);
+        const lotNumber = claimed.lotNumber;
         const event = body.eventId
           ? demo.events.find((row) => row.id === body.eventId)
           : undefined;
@@ -434,10 +563,12 @@ export async function PATCH(request: NextRequest) {
           status: "paused",
           lotNumber,
           startingBid: item.startingBid ?? 0,
-          reservePrice: item.reservePrice ?? null,
+          reservePrice: item.buyNowPrice ?? item.reservePrice ?? null,
+          buyNowPrice: item.buyNowPrice ?? item.reservePrice ?? null,
         };
         if (event) applyEventToLot(lot, event);
         addDemoLot(lot);
+        await commitHouseLot(null, demo, claimed.settings, lotNumber, claimed.existing);
         if (!isSupabaseConfigured || !supabase) {
           return NextResponse.json({
             ok: true,
@@ -456,21 +587,37 @@ export async function PATCH(request: NextRequest) {
       if (body.title != null) updates.title = body.title;
       if (body.description != null) updates.description = body.description;
       if (body.startingBid != null) updates.starting_bid = body.startingBid;
+      if (body.buyNowPrice != null || body.reservePrice != null) {
+        const buyNow = Number(body.buyNowPrice ?? body.reservePrice) || 0;
+        updates.reserve_price = buyNow || null;
+        updates.buy_now_price = buyNow || null;
+      }
       if (body.consignorName != null) updates.consignor_name = body.consignorName.trim();
       if (body.status) updates.status = body.status;
-      const { data: consignment, error } = await supabase
+      let { data: consignment, error } = await supabase
         .from("consignments")
         .update(updates)
         .eq("id", body.id)
         .select("*")
         .single();
+      if (isMissingColumn(error, "buy_now_price")) {
+        const { buy_now_price: _buyNow, ...rest } = updates;
+        ({ data: consignment, error } = await supabase
+          .from("consignments")
+          .update(rest)
+          .eq("id", body.id)
+          .select("*")
+          .single());
+      }
       if (error) {
         return NextResponse.json({ error: error.message }, { status: 400 });
       }
       if (body.status === "approved" && consignment) {
         const row = consignment as ConsignmentRow;
-        const starting = Number(row.starting_bid ?? row.estimated_low) || 0;
-        const reserve = Number(row.reserve_price ?? 0);
+        const reserve = Number(row.buy_now_price ?? row.reserve_price ?? 0);
+        const starting =
+          Number(row.starting_bid ?? row.estimated_low) ||
+          (reserve ? startingBidFromBuyNow(reserve) : 0);
         let photos = row.image_urls ?? [];
         try {
           photos = await persistPublicImageUrls(supabase, photos);
@@ -522,7 +669,8 @@ export async function PATCH(request: NextRequest) {
             postedLive: lot.status === "live",
           });
         }
-        const lotNumber = await nextLotNumber(supabase, demo.inventory);
+        const claimed = await allocateFromHouse(supabase, demo);
+        const lotNumber = claimed.lotNumber;
         const insertRow: Record<string, unknown> = {
             consignment_id: row.id,
             slug: lotNumber.toLowerCase().replace(/[^a-z0-9-]+/g, "-"),
@@ -535,6 +683,7 @@ export async function PATCH(request: NextRequest) {
             starting_bid: starting,
             current_bid: starting,
             reserve_price: reserve || null,
+            buy_now_price: reserve || null,
             min_increment: 5,
             ends_at: eventEnds,
             status: houseStatus,
@@ -551,6 +700,7 @@ export async function PATCH(request: NextRequest) {
           const lot = mapLot(lotRow as LotRow);
           lot.auctionNumber = event?.auctionNumber ?? lot.auctionNumber;
           lot.eventId = eventId ?? lot.eventId;
+          await commitHouseLot(supabase, demo, claimed.settings, lotNumber, claimed.existing);
           return NextResponse.json({
             ok: true,
             lot,
@@ -580,12 +730,21 @@ export async function PATCH(request: NextRequest) {
         lot.currentBid = body.startingBid;
       }
     }
-    if (body.reservePrice != null) lot.reservePrice = body.reservePrice;
+    if (body.reservePrice != null || body.buyNowPrice != null) {
+      const buyNow = Number(body.buyNowPrice ?? body.reservePrice) || 0;
+      lot.reservePrice = buyNow || null;
+      lot.buyNowPrice = buyNow || null;
+    }
     if (body.lotNumber != null) lot.lotNumber = body.lotNumber.trim();
     if (body.category) lot.category = body.category;
     if (body.eventId) {
       const event = demo.events.find((row) => row.id === body.eventId);
       if (event) applyEventToLot(lot, event, body.status === "live");
+    }
+    if (body.relist) {
+      lot.highBidder = null;
+      lot.highBidderId = null;
+      lot.currentBid = body.startingBid ?? lot.startingBid ?? lot.currentBid;
     }
     registerDemoLot(lot);
   }
@@ -603,7 +762,11 @@ export async function PATCH(request: NextRequest) {
       if (body.description != null) updates.description = body.description;
       if (body.currentBid != null) updates.current_bid = body.currentBid;
       if (body.startingBid != null) updates.starting_bid = body.startingBid;
-      if (body.reservePrice != null) updates.reserve_price = body.reservePrice;
+      if (body.reservePrice != null || body.buyNowPrice != null) {
+        const buyNow = Number(body.buyNowPrice ?? body.reservePrice) || 0;
+        updates.reserve_price = buyNow || null;
+        updates.buy_now_price = buyNow || null;
+      }
       if (body.lotNumber != null) updates.lot_number = body.lotNumber.trim();
       if (body.category) updates.category = body.category;
       if (body.eventId) {
@@ -620,8 +783,22 @@ export async function PATCH(request: NextRequest) {
           }
         }
       }
+      if (body.relist) {
+        updates.high_bidder = null;
+        updates.high_bidder_id = null;
+        if (body.startingBid != null) {
+          updates.starting_bid = body.startingBid;
+          updates.current_bid = body.startingBid;
+        } else if (body.currentBid != null) {
+          updates.current_bid = body.currentBid;
+        }
+      }
       if (Object.keys(updates).length) {
-        await supabase.from("lots").update(updates).eq("id", body.id);
+        let { error } = await supabase.from("lots").update(updates).eq("id", body.id);
+        if (isMissingColumn(error, "buy_now_price")) {
+          const { buy_now_price: _buyNow, ...rest } = updates;
+          ({ error } = await supabase.from("lots").update(rest).eq("id", body.id));
+        }
       }
     }
   }

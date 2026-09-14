@@ -20,14 +20,17 @@ export function LotImage({
   priority?: boolean;
 }) {
   const useNative = !canUseNextImage(src);
+  const contain = className?.includes("object-contain");
+  const fitStyle = contain ? ({ objectFit: "contain" } as const) : undefined;
   if (useNative) {
     return (
       // eslint-disable-next-line @next/next/no-img-element
       <img
         src={src}
         alt={alt}
+        style={fitStyle}
         className={
-          fill ? `absolute inset-0 h-full w-full object-cover ${className ?? ""}` : className
+          fill ? `absolute inset-0 h-full w-full ${className ?? "object-cover"}` : className
         }
       />
     );
@@ -39,6 +42,7 @@ export function LotImage({
       alt={alt}
       fill={fill}
       className={className}
+      style={fitStyle}
       sizes={sizes}
       priority={priority}
     />

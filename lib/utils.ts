@@ -32,6 +32,7 @@ export type AuctionLot = {
   auctionNumber?: string | null;
   startingBid?: number | null;
   reservePrice?: number | null;
+  buyNowPrice?: number | null;
   commissionRate?: number | null;
 };
 
@@ -41,6 +42,7 @@ export type AuctionEvent = {
   auctionNumber?: string | null;
   startsAt: string;
   endsAt: string;
+  archivedAt?: string | null;
 };
 
 export type PayoutRow = {
@@ -62,6 +64,7 @@ export type Consignment = {
   estimatedLow?: number | null;
   estimatedHigh?: number | null;
   reservePrice?: number | null;
+  buyNowPrice?: number | null;
   startingBid?: number | null;
   commissionRate?: number | null;
   imageUrls: string[];
@@ -76,7 +79,7 @@ export type ConsignorItem = {
   consignor: string;
   pipelineStatus: PipelineStatus;
   startingBid: number;
-  reservePrice: number;
+  buyNowPrice: number;
   commissionRate: number;
 };
 
@@ -126,6 +129,8 @@ export const MOCK_LOTS: AuctionLot[] = [
     status: "live",
     lotNumber: "LOT-0001",
     auctionNumber: "AU-2026-001",
+    buyNowPrice: 420,
+    reservePrice: 420,
   },
   {
     id: "zap-014",
@@ -147,6 +152,8 @@ export const MOCK_LOTS: AuctionLot[] = [
     status: "live",
     lotNumber: "LOT-0002",
     auctionNumber: "AU-2026-001",
+    buyNowPrice: 150,
+    reservePrice: 150,
   },
   {
     id: "bam-077",
@@ -168,6 +175,8 @@ export const MOCK_LOTS: AuctionLot[] = [
     status: "live",
     lotNumber: "LOT-0003",
     auctionNumber: "AU-2026-001",
+    buyNowPrice: 210,
+    reservePrice: 210,
   },
   {
     id: "wham-003",
@@ -189,6 +198,8 @@ export const MOCK_LOTS: AuctionLot[] = [
     status: "live",
     lotNumber: "LOT-0004",
     auctionNumber: "AU-2026-001",
+    buyNowPrice: 540,
+    reservePrice: 540,
   },
   {
     id: "kapow-9",
@@ -210,6 +221,8 @@ export const MOCK_LOTS: AuctionLot[] = [
     status: "live",
     lotNumber: "LOT-0005",
     auctionNumber: "AU-2026-001",
+    buyNowPrice: 80,
+    reservePrice: 80,
   },
   {
     id: "sold-001",
@@ -226,6 +239,8 @@ export const MOCK_LOTS: AuctionLot[] = [
     status: "ended",
     lotNumber: "LOT-0006",
     auctionNumber: "AU-2026-001",
+    buyNowPrice: 175,
+    reservePrice: 175,
   },
 ];
 
@@ -237,6 +252,7 @@ export const MOCK_CONSIGNMENTS: Consignment[] = [
     category: "Comics",
     description: "Awaiting sort and pull.",
     startingBid: 40,
+    buyNowPrice: 80,
     imageUrls: [],
     status: "pending",
   },
@@ -247,6 +263,7 @@ export const MOCK_CONSIGNMENTS: Consignment[] = [
     category: "Toys",
     description: "Mixed scales, some chrome wear.",
     startingBid: 25,
+    buyNowPrice: 50,
     imageUrls: [],
     status: "pending",
   },
@@ -257,6 +274,7 @@ export const MOCK_CONSIGNMENTS: Consignment[] = [
     category: "Vinyl",
     description: "Hold for grading.",
     startingBid: 30,
+    buyNowPrice: 60,
     imageUrls: [],
     status: "held",
   },

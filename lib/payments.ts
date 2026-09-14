@@ -29,6 +29,12 @@ export function paymentMethodLabel(method: PaymentMethod) {
     : "Pay on Arrival / Local Pickup";
 }
 
+export function settlementInvoice(auctionNumber: string | null | undefined, buyerKey: string) {
+  const sale = (auctionNumber ?? "SALE").replace(/[^a-z0-9]/gi, "").slice(-8).toUpperCase() || "SALE";
+  const paddle = buyerKey.replace(/[^a-z0-9]/gi, "").slice(0, 6).toUpperCase() || "FLOOR";
+  return `DF-${sale}-${paddle}`;
+}
+
 export function invoiceNumber(lotId: string, userId: string) {
   const stamp = lotId.replace(/[^a-z0-9]/gi, "").slice(-6).toUpperCase();
   const paddle = userId.replace(/[^a-z0-9]/gi, "").slice(0, 4).toUpperCase();

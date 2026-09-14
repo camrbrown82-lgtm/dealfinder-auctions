@@ -19,6 +19,7 @@ export type LotRow = {
   lot_number?: string | null;
   starting_bid?: number | string | null;
   reserve_price?: number | string | null;
+  buy_now_price?: number | string | null;
 };
 
 export type ConsignmentRow = {
@@ -32,6 +33,7 @@ export type ConsignmentRow = {
   estimated_low: number | string | null;
   estimated_high: number | string | null;
   reserve_price?: number | string | null;
+  buy_now_price?: number | string | null;
   starting_bid?: number | string | null;
   commission_rate?: number | string | null;
   image_urls: string[] | null;
@@ -56,7 +58,8 @@ export function mapLot(row: LotRow): AuctionLot {
     highBidder: row.high_bidder ?? null,
     highBidderId: row.high_bidder_id ?? null,
     startingBid: Number(row.starting_bid ?? row.current_bid),
-    reservePrice: row.reserve_price == null ? null : Number(row.reserve_price),
+    reservePrice: Number(row.buy_now_price ?? row.reserve_price ?? 0) || null,
+    buyNowPrice: Number(row.buy_now_price ?? row.reserve_price ?? 0) || null,
     eventId: row.event_id ?? null,
     lotNumber: row.lot_number ?? null,
   };
@@ -73,7 +76,8 @@ export function mapConsignment(row: ConsignmentRow): Consignment {
     notes: row.notes,
     estimatedLow: row.estimated_low === null ? null : Number(row.estimated_low),
     estimatedHigh: row.estimated_high === null ? null : Number(row.estimated_high),
-    reservePrice: row.reserve_price == null ? null : Number(row.reserve_price),
+    reservePrice: Number(row.buy_now_price ?? row.reserve_price ?? 0) || null,
+    buyNowPrice: Number(row.buy_now_price ?? row.reserve_price ?? 0) || null,
     startingBid: row.starting_bid == null ? null : Number(row.starting_bid),
     commissionRate: row.commission_rate == null ? null : Number(row.commission_rate),
     imageUrls: row.image_urls ?? [],

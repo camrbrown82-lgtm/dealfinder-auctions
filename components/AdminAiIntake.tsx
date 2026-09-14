@@ -8,6 +8,9 @@ import { OwnerPicker } from "@/components/OwnerPicker";
 import { HOUSE_CONSIGNOR } from "@/lib/consignors";
 import { collectItemImageUrls } from "@/lib/files";
 import { requestStudioImage } from "@/lib/studioClient";
+import { requestCatalog } from "@/lib/aiIntakeClient";
+import { mergeAiRuns, type AiRun } from "@/lib/aiRuns";
+import { AiFeedback } from "@/components/AiFeedback";
 import { listingImages, parsePastedImageUrls } from "@/lib/imageUrls";
 import {
   CATEGORIES,
@@ -20,11 +23,13 @@ const categories = CATEGORIES.filter((item): item is LotCategory => item !== "Al
 
 export function AdminAiIntake({
   suggestedLotNumber,
+  defaultStartingBid,
   consignors,
   onPosted,
   workspace = false,
 }: {
   suggestedLotNumber: string;
+  defaultStartingBid: number;
   consignors: string[];
   workspace?: boolean;
   onPosted: (message: string, lot?: { id: string; title: string; lotNumber?: string | null }) => Promise<void> | void;
@@ -36,7 +41,8 @@ export function AdminAiIntake({
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [category, setCategory] = useState<LotCategory>("Oddities");
-  const [startingBid, setStartingBid] = useState("");
+  const [startingBid, setStartingBid] = useState(String(defaultStartingBid));
+  const [startingTouched, setStartingTouched] = useState(false);
   const [reservePrice, setReservePrice] = useState("");
   const [marketValue, setMarketValue] = useState("");
   const [commissionPercent, setCommissionPercent] = useState("20");
@@ -47,14 +53,20 @@ export function AdminAiIntake({
   const [filePreview, setFilePreview] = useState<string | null>(null);
   const [compsNote, setCompsNote] = useState<string | null>(null);
   const [studioImageUrl, setStudioImageUrl] = useState<string | null>(null);
+  const [aiRun, setAiRun] = useState<AiRun | null>(null);
 
   useEffect(() => {
     setLotNumber(suggestedLotNumber);
   }, [suggestedLotNumber]);
 
   useEffect(() => {
+    if (!startingTouched) setStartingBid(String(defaultStartingBid));
+  }, [defaultStartingBid, startingTouched]);
+
+  useEffect(() => {
     setResolvedImageUrls([]);
     setStudioImageUrl(null);
+    setAiRun(null);
   }, [files, imageUrlText]);
   useEffect(() => {
     const file = files[0];
@@ -91,38 +103,35 @@ export function AdminAiIntake({
     }
     setGenerating(true);
     try {
-      const imageUrls = await collectItemImageUrls(photos, imageUrlText, { fallbackDataUrl: true });
-      setResolvedImageUrls(imageUrls);
-      const response = await fetch("/api/ai-intake", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ imageUrls }),
-      });
-      const json = await response.json();
-      if (!response.ok) throw new Error(json.error || "AI intake failed");
-      setTitle(String(json.title ?? ""));
-      setDescription(String(json.description ?? ""));
-      if (json.suggested_starting_bid) setStartingBid(String(json.suggested_starting_bid));
-      if (json.estimated_market_value) setMarketValue(String(json.estimated_market_value));
-      if (json.suggested_reserve) setReservePrice(String(json.suggested_reserve));
-      else if (json.estimated_market_value) {
-        setReservePrice(String(Math.round(Number(json.estimated_market_value) * 0.8)));
+      const catalog = await requestCatalog(photos, imageUrlText);
+      setResolvedImageUrls(catalog.imageUrls);
+      setTitle(String(catalog.title ?? ""));
+      setDescription(String(catalog.description ?? ""));
+      if (catalog.estimated_market_value) setMarketValue(String(catalog.estimated_market_value));
+      if (catalog.suggested_reserve) setReservePrice(String(catalog.suggested_reserve));
+      else if (catalog.estimated_market_value) {
+        setReservePrice(String(Math.round(Number(catalog.estimated_market_value) * 0.8)));
       }
-      setCompsNote(json.comps_note ? String(json.comps_note) : null);
+      setCompsNote(catalog.comps_note ? String(catalog.comps_note) : null);
+      let run = catalog.ai ?? null;
       try {
         const studio = await requestStudioImage({
-          imageUrls,
-          title: String(json.title ?? ""),
-          objectType: String(json.object_type ?? ""),
-          materials: Array.isArray(json.materials) ? json.materials.map(String) : [],
-          condition: String(json.condition ?? ""),
-          displaySetting: String(json.display_setting ?? ""),
+          imageUrls: catalog.imageUrls,
+          files: photos,
+          title: String(catalog.title ?? ""),
+          objectType: String(catalog.object_type ?? ""),
+          materials: Array.isArray(catalog.materials) ? catalog.materials.map(String) : [],
+          condition: String(catalog.condition ?? ""),
+          displaySetting: String(catalog.display_setting ?? ""),
+          photoBrief: String(catalog.photo_brief ?? ""),
         });
-        setStudioImageUrl(studio);
+        setStudioImageUrl(studio.url);
+        run = mergeAiRuns(run, studio.ai);
       } catch (studioErr) {
         setStudioImageUrl(null);
         setError(studioErr instanceof Error ? studioErr.message : "Listing photo failed.");
       }
+      setAiRun(run);
     } catch (err) {
       setError(err instanceof Error ? err.message : "AI intake failed");
     } finally {
@@ -151,7 +160,8 @@ export function AdminAiIntake({
           title,
           description,
           category,
-          startingBid: start,
+          startingBid: start || defaultStartingBid,
+          buyNowPrice: reserve,
           reservePrice: reserve,
           commissionRate,
           imageUrls,
@@ -163,7 +173,8 @@ export function AdminAiIntake({
       if (!response.ok) throw new Error(json.error || "Could not save lot.");
       setTitle("");
       setDescription("");
-      setStartingBid("");
+      setStartingBid(String(defaultStartingBid));
+      setStartingTouched(false);
       setReservePrice("");
       setMarketValue("");
       setFiles([]);
@@ -171,6 +182,7 @@ export function AdminAiIntake({
       setResolvedImageUrls([]);
       setStudioImageUrl(null);
       setCompsNote(null);
+      setAiRun(null);
       await onPosted(
         postLive
           ? `Posted ${lotNumber} live. Pick the auction inventory.`
@@ -198,7 +210,7 @@ export function AdminAiIntake({
           : "Upload up to 4 warehouse photos. Generate catalogs them, looks up comps, and builds a studio listing photo."}
       </p>
       <form onSubmit={onSubmit} className="grid gap-6 lg:grid-cols-2">
-        <div className="space-y-4 border-4 border-black bg-white p-5 shadow-[6px_6px_0_0_#000]">
+        <div className="comic-panel space-y-4 p-5">
           {workspace && (
             <div className="relative min-h-[22rem] overflow-hidden border-4 border-black bg-[#FFF7D1]">
               {workingImage ? (
@@ -243,7 +255,7 @@ export function AdminAiIntake({
             {generating ? "Cataloging + studio photo…" : "Auto-Generate Details"}
           </button>
         </div>
-        <div className="space-y-4 border-4 border-black bg-white p-5 shadow-[6px_6px_0_0_#000]">
+        <div className="comic-panel space-y-4 p-5">
           <label className="block font-comic font-bold">
             Title
             <input
@@ -295,13 +307,16 @@ export function AdminAiIntake({
                 type="number"
                 min={0}
                 value={startingBid}
-                onChange={(e) => setStartingBid(e.target.value)}
+                onChange={(e) => {
+                  setStartingTouched(true);
+                  setStartingBid(e.target.value);
+                }}
                 required
                 className="mt-2 w-full border-4 border-black px-3 py-2 font-normal"
               />
             </label>
             <label className="block font-comic font-bold">
-              Reserve price ($)
+              Buy now ($)
               <input
                 type="number"
                 min={0}
@@ -347,7 +362,7 @@ export function AdminAiIntake({
               </span>
             </p>
             <p className="mt-1 flex justify-between gap-4">
-              <span>At reserve</span>
+              <span>At buy now</span>
               <span>
                 House {formatCurrency(breakdown.reserve.house)} · Consignor{" "}
                 {formatCurrency(breakdown.reserve.consignor)}
@@ -368,6 +383,13 @@ export function AdminAiIntake({
             </button>
           </div>
           {error && <p className="font-display text-xl text-[#FF0000]">{error}</p>}
+          {aiRun && !generating ? (
+            <AiFeedback
+              staff
+              run={aiRun}
+              summary={[title, description, compsNote].filter(Boolean).join(" · ")}
+            />
+          ) : null}
         </div>
       </form>
     </section>

@@ -20,7 +20,7 @@ export function LiveMonitor({
   const [drafts, setDrafts] = useState<Record<string, { start: string; reserve: string }>>({});
 
   async function load() {
-    const response = await fetch("/api/admin/monitor");
+    const response = await fetch("/api/admin/monitor", { credentials: "include", cache: "no-store" });
     const json = await response.json();
     if (!response.ok) return;
     setLots(json.lots ?? []);
@@ -29,7 +29,7 @@ export function LiveMonitor({
     for (const lot of json.lots as MonitorLot[]) {
       next[lot.id] = {
         start: String(lot.startingBid),
-        reserve: String(lot.reservePrice),
+        reserve: String(lot.buyNowPrice ?? lot.reservePrice),
       };
     }
     setDrafts(next);
@@ -94,6 +94,7 @@ export function LiveMonitor({
         entity: "lot",
         id: lot.id,
         startingBid: Number(draft?.start) || 0,
+        buyNowPrice: Number(draft?.reserve) || 0,
         reservePrice: Number(draft?.reserve) || 0,
       }),
     });
@@ -102,20 +103,20 @@ export function LiveMonitor({
       onNotice(json.error || "Could not update pricing.");
       return;
     }
-    onNotice(`Updated starting / reserve on ${lot.title}`);
+    onNotice(`Updated starting bid / buy now on ${lot.title}`);
     await load();
   }
 
   return (
     <section className="space-y-4">
-      <div className="border-4 border-black bg-[#FF0000] p-4 text-white shadow-[6px_6px_0_0_#000]">
-        <p className="font-display text-sm tracking-[0.25em]">LIVE AUCTION MONITOR</p>
-        <h2 className="font-display text-4xl">Floor feed · {source}</h2>
+      <div className="comic-panel p-4">
+        <p className="font-display text-sm tracking-[0.25em] text-brand-red">LIVE AUCTION MONITOR</p>
+        <h2 className="font-display text-2xl text-brand-red sm:text-4xl">Floor feed · {source}</h2>
         <p className="font-comic text-sm">
-          Realtime on lots + bids when Supabase is connected; otherwise this desk polls every 4s.
+          Realtime on lots + bids when Supabase is connected; otherwise this page polls every 4s.
         </p>
       </div>
-      <div className="overflow-x-auto border-4 border-black shadow-[6px_6px_0_0_#000]">
+      <div className="comic-table-wrap">
         <table className="w-full min-w-[960px] border-collapse font-comic text-sm">
           <thead className="bg-[#FF0000] text-left text-white">
             <tr>
@@ -123,7 +124,7 @@ export function LiveMonitor({
               <th className="border-b-4 border-black p-3">High paddle</th>
               <th className="border-b-4 border-black p-3">Max / current</th>
               <th className="border-b-4 border-black p-3">Clock</th>
-              <th className="border-b-4 border-black p-3">Modify starting / reserve</th>
+              <th className="border-b-4 border-black p-3">Modify start / buy now</th>
               <th className="border-b-4 border-black p-3">Audit</th>
             </tr>
           </thead>
@@ -131,7 +132,7 @@ export function LiveMonitor({
             {lots.map((lot) => {
               const draft = drafts[lot.id] ?? {
                 start: String(lot.startingBid),
-                reserve: String(lot.reservePrice),
+                reserve: String(lot.buyNowPrice ?? lot.reservePrice),
               };
               return (
                 <tr key={lot.id} className="bg-[#FFF7D1]">
@@ -166,7 +167,7 @@ export function LiveMonitor({
                         />
                       </label>
                       <label>
-                        Reserve
+                        Buy now
                         <input
                           type="number"
                           value={draft.reserve}
