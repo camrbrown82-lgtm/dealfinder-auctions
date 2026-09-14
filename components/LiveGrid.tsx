@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { LotTimer } from "@/components/LotTimer";
 import { LotGallery } from "@/components/LotGallery";
 import {
@@ -15,24 +15,22 @@ import { listingGradeOf } from "@/lib/listingGrade";
 import { formatCurrency, isLotOpen, lotImages, type AuctionLot } from "@/lib/utils";
 import { defaultSaleId, lotsForSale, type SaleWindowItem } from "@/lib/liveSales";
 
-const VIEW_OPTIONS = [1, 2, 3, 4, 5, 6, 7, 8, 9] as const;
+const VIEW_OPTIONS = [1, 4, 6, 9] as const;
 type ViewCount = (typeof VIEW_OPTIONS)[number];
 const VIEW_STORAGE_KEY = "dealfinder-live-view";
 const GRID_CLASS: Record<ViewCount, string> = {
   1: "lg:grid-cols-1",
-  2: "lg:grid-cols-2",
-  3: "lg:grid-cols-3",
   4: "lg:grid-cols-4",
-  5: "lg:grid-cols-5",
   6: "lg:grid-cols-6",
-  7: "lg:grid-cols-7",
-  8: "lg:grid-cols-8",
   9: "lg:grid-cols-9",
 };
 
-
-function isViewCount(value: number): value is ViewCount {
-  return (VIEW_OPTIONS as readonly number[]).includes(value);
+function normalizeView(value: number): ViewCount {
+  if (value === 1 || value === 4 || value === 6 || value === 9) return value;
+  if (value <= 3) return 1;
+  if (value <= 5) return 4;
+  if (value <= 7) return 6;
+  return 9;
 }
 
 export function LiveGrid({
@@ -51,14 +49,12 @@ export function LiveGrid({
     keywords: [],
     lotIds: [],
   });
-  const scroller = useRef<HTMLDivElement>(null);
 
   const selected = sales.find((item) => item.event.id === saleId) ?? sales[0];
 
   useEffect(() => {
     try {
-      const saved = Number(window.localStorage.getItem(VIEW_STORAGE_KEY));
-      if (isViewCount(saved)) setView(saved);
+      setView(normalizeView(Number(window.localStorage.getItem(VIEW_STORAGE_KEY))));
     } catch {
       /* ignore */
     }
@@ -103,21 +99,15 @@ export function LiveGrid({
     return rankLotsByInterest(filtered, interest);
   }, [lots, selected, query, interest]);
 
-  function scrollByCard(direction: -1 | 1) {
-    const node = scroller.current;
-    if (!node) return;
-    node.scrollBy({ left: direction * node.clientWidth, behavior: "smooth" });
-  }
-
   return (
-    <div className="space-y-4">
+    <div className="min-w-0 max-w-full space-y-4 overflow-x-clip">
       {sales.length > 0 && (
         <div className="comic-panel p-4">
           <p className="font-display text-lg">Auctions</p>
           <p className="font-comic text-sm">
             Two previous sales, the current sale, and two upcoming — bid live or leave an early bid.
           </p>
-          <div className="mt-3 flex snap-x gap-2 overflow-x-auto pb-1">
+          <div className="mt-3 flex flex-wrap gap-2">
             {sales.map((item) => {
               const active = item.event.id === selected?.event.id;
               const label =
@@ -127,7 +117,7 @@ export function LiveGrid({
                   key={item.event.id}
                   type="button"
                   onClick={() => setSaleId(item.event.id)}
-                  className={`${active ? "comic-btn" : "comic-btn-invert"} shrink-0 !px-3 !py-2 !text-base`}
+                  className={`${active ? "comic-btn" : "comic-btn-invert"} max-w-full !px-3 !py-2 !text-base`}
                 >
                   <span className="block leading-none">{label}</span>
                   <span className="mt-1 block font-comic text-xs font-bold normal-case tracking-normal">
@@ -149,11 +139,11 @@ export function LiveGrid({
               value={query}
               onChange={(event) => setQuery(event.target.value)}
               placeholder="Title, Used/New/Issues, lot #, consignor…"
-              className="comic-field mt-1 w-full px-3 py-2 text-lg"
+              className="comic-field mt-1 w-full min-w-0 max-w-full px-3 py-2 text-lg"
               autoComplete="off"
             />
           </label>
-          <fieldset className="hidden shrink-0 lg:block">
+          <fieldset className="hidden min-w-0 shrink-0 lg:block">
             <legend className="font-display text-lg">Lots per row</legend>
             <div className="mt-1 flex flex-wrap gap-1" role="radiogroup" aria-label="Lots per row">
               {VIEW_OPTIONS.map((count) => {
@@ -180,7 +170,6 @@ export function LiveGrid({
           {selected?.kind === "upcoming" ? " you can bid on early" : ""}
           {query.trim() ? ` matching "${query.trim()}"` : ""}
           <span className="hidden lg:inline"> · {view} per row</span>
-          <span className="lg:hidden"> · one lot at a time</span>
         </p>
       </div>
 
@@ -189,31 +178,16 @@ export function LiveGrid({
           No lots in this sale yet.
         </p>
       ) : (
-        <>
-          <div className="flex items-center justify-between lg:hidden">
-            <button type="button" className="comic-btn-invert !px-3 !py-1 !text-lg" onClick={() => scrollByCard(-1)}>
-              Prev
-            </button>
-            <p className="font-comic text-xs font-bold uppercase">Swipe lots</p>
-            <button type="button" className="comic-btn-invert !px-3 !py-1 !text-lg" onClick={() => scrollByCard(1)}>
-              Next
-            </button>
-          </div>
-
-          <section
-            ref={scroller}
-            className={`flex snap-x snap-mandatory gap-4 overflow-x-auto pb-2 lg:grid lg:items-stretch lg:gap-3 lg:overflow-visible lg:pb-0 ${GRID_CLASS[view]}`}
-          >
-            {visible.map((lot) => (
-              <LotCard
-                key={lot.id}
-                lot={lot}
-                forYou={interestScore(lot, interest) >= 5}
-                view={view}
-              />
-            ))}
-          </section>
-        </>
+        <section className={`grid grid-cols-1 items-stretch gap-4 lg:gap-3 ${GRID_CLASS[view]}`}>
+          {visible.map((lot) => (
+            <LotCard
+              key={lot.id}
+              lot={lot}
+              forYou={interestScore(lot, interest) >= 5}
+              view={view}
+            />
+          ))}
+        </section>
       )}
     </div>
   );
@@ -233,21 +207,19 @@ function LotCard({
   const bidLabel = lot.status === "ended" || !open ? "View lot" : "Bid now";
   const catalogLine = [lot.auctionNumber, lot.lotNumber].filter(Boolean).join(" · ");
   const compact = view >= 6;
-  const wide = view <= 2;
-  const sizes = `(max-width: 1023px) 100vw, ${Math.round(100 / view)}vw`;
-  const photoFrame =
+  const sizes =
     view === 1
-      ? "aspect-[4/3] lg:aspect-[16/10] lg:max-h-64"
-      : view === 2
-        ? "aspect-[4/3] lg:max-h-52"
-        : view <= 4
-          ? "aspect-[4/3] lg:aspect-square lg:max-h-44"
-          : "aspect-[4/3] lg:aspect-square";
+      ? "(max-width: 1023px) 100vw, 25vw"
+      : `(max-width: 1023px) 100vw, ${Math.round(100 / view)}vw`;
 
   return (
-    <article className="comic-panel flex min-w-0 shrink-0 basis-full snap-center flex-col overflow-hidden lg:h-auto lg:basis-auto">
+    <article
+      className={`comic-panel flex min-w-0 max-w-full flex-col overflow-hidden ${
+        view === 1 ? "lg:max-w-[calc((100%-2.25rem)/4)] lg:justify-self-start" : ""
+      }`}
+    >
       <Link href={href} className="block shrink-0">
-        <div className={`relative w-full overflow-hidden border-b-4 border-brand-ink bg-brand-cream ${photoFrame}`}>
+        <div className="relative aspect-square w-full overflow-hidden border-b-4 border-brand-ink bg-brand-cream">
           <LotGallery
             images={lotImages(lot)}
             alt={lot.title}
@@ -272,7 +244,7 @@ function LotCard({
         <Link href={href} className="mt-0.5 block">
           <h2
             className={`line-clamp-2 h-10 font-display text-lg leading-5 ${
-              wide ? "lg:h-11 lg:text-xl lg:leading-5" : compact ? "lg:h-8 lg:text-sm lg:leading-4" : "lg:h-10 lg:text-base lg:leading-5"
+              compact ? "lg:h-8 lg:text-sm lg:leading-4" : "lg:h-10 lg:text-base lg:leading-5"
             }`}
           >
             {lot.title}
@@ -282,7 +254,7 @@ function LotCard({
           <div className="min-w-0">
             <p
               className={`truncate font-display text-xl leading-none text-brand-red ${
-                wide ? "lg:text-2xl" : compact ? "lg:text-sm" : "lg:text-lg"
+                compact ? "lg:text-sm" : "lg:text-lg"
               }`}
             >
               {formatCurrency(lot.currentBid)}
@@ -293,7 +265,7 @@ function LotCard({
                 : "\u00a0"}
             </p>
           </div>
-          <LotTimer endsAt={lot.endsAt} compact={view >= 3} />
+          <LotTimer endsAt={lot.endsAt} compact />
         </div>
         <Link
           href={href}

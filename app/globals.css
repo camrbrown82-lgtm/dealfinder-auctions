@@ -11,12 +11,14 @@
 
 html {
   min-height: 100%;
-  overflow-x: hidden;
+  max-width: 100%;
+  overflow-x: clip;
 }
 
 body {
   min-height: 100%;
-  overflow-x: hidden;
+  max-width: 100%;
+  overflow-x: clip;
   @apply bg-brand-cream text-brand-ink font-comic antialiased;
   background-image: radial-gradient(circle, #ff0000 1px, transparent 1px);
   background-size: 18px 18px;

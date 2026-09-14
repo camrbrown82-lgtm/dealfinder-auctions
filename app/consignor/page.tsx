@@ -393,40 +393,56 @@ export default function ConsignorPage() {
 
 function StatusTable({ items, empty }: { items: ConsignorItem[]; empty: string }) {
   return (
-    <div className="overflow-x-auto comic-panel">
-      <table className="w-full min-w-[720px] border-collapse font-comic">
-        <thead className="bg-brand-red text-left text-white">
-          <tr>
-            <th className="border-b-4 border-black p-3">Lot</th>
-            <th className="border-b-4 border-black p-3">Consignor</th>
-            <th className="border-b-4 border-black p-3">Status</th>
-            <th className="border-b-4 border-black p-3">Buy now</th>
-          </tr>
-        </thead>
-        <tbody>
-          {items.length === 0 ? (
-            <tr className="bg-brand-cream">
-              <td className="p-3" colSpan={4}>
-                {empty}
-              </td>
+    <>
+      <div className="space-y-3 md:hidden">
+        {items.length === 0 ? (
+          <p className="comic-panel p-3 font-comic">{empty}</p>
+        ) : (
+          items.map((item) => (
+            <article key={item.id} className="comic-panel space-y-1 p-3 font-comic">
+              <p className="font-display text-lg leading-5">{item.title}</p>
+              <p>{item.consignor}</p>
+              <p className="font-bold uppercase">{pipelineLabel(item.pipelineStatus)}</p>
+              <p>Buy now {formatCurrency(item.buyNowPrice || 0)}</p>
+            </article>
+          ))
+        )}
+      </div>
+      <div className="hidden md:block comic-panel">
+        <table className="w-full border-collapse font-comic">
+          <thead className="bg-brand-red text-left text-white">
+            <tr>
+              <th className="border-b-4 border-black p-3">Lot</th>
+              <th className="border-b-4 border-black p-3">Consignor</th>
+              <th className="border-b-4 border-black p-3">Status</th>
+              <th className="border-b-4 border-black p-3">Buy now</th>
             </tr>
-          ) : (
-            items.map((item) => (
-              <tr key={item.id} className="bg-brand-cream">
-                <td className="border-b-2 border-black p-3">{item.title}</td>
-                <td className="border-b-2 border-black p-3">{item.consignor}</td>
-                <td className="border-b-2 border-black p-3 font-bold uppercase">
-                  {pipelineLabel(item.pipelineStatus)}
-                </td>
-                <td className="border-b-2 border-black p-3">
-                  {formatCurrency(item.buyNowPrice || 0)}
+          </thead>
+          <tbody>
+            {items.length === 0 ? (
+              <tr className="bg-brand-cream">
+                <td className="p-3" colSpan={4}>
+                  {empty}
                 </td>
               </tr>
-            ))
-          )}
-        </tbody>
-      </table>
-    </div>
+            ) : (
+              items.map((item) => (
+                <tr key={item.id} className="bg-brand-cream">
+                  <td className="border-b-2 border-black p-3">{item.title}</td>
+                  <td className="border-b-2 border-black p-3">{item.consignor}</td>
+                  <td className="border-b-2 border-black p-3 font-bold uppercase">
+                    {pipelineLabel(item.pipelineStatus)}
+                  </td>
+                  <td className="border-b-2 border-black p-3">
+                    {formatCurrency(item.buyNowPrice || 0)}
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+    </>
   );
 }
 

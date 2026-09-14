@@ -34,7 +34,7 @@ export default async function AuctionLotPage({ params }: PageProps) {
             {lot.lotNumber ? `Lot ${lot.lotNumber}` : ""}
           </p>
         )}
-        <h1 className="mt-3 font-display text-5xl leading-none text-brand-red">{lot.title}</h1>
+        <h1 className="mt-3 break-words font-display text-4xl leading-none text-brand-red sm:text-5xl">{lot.title}</h1>
       </div>
 
       <div className="grid gap-8 lg:grid-cols-2">

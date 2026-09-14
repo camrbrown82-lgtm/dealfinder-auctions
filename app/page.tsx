@@ -43,7 +43,7 @@ export default function LandingPage() {
 
         <Link
           href="/live"
-          className="relative mt-10 inline-flex min-h-[4.5rem] items-center border-4 border-brand-cream bg-brand-red px-10 py-4 font-display text-4xl uppercase tracking-wide text-white shadow-comic transition hover:-translate-y-1 hover:shadow-comic-red sm:text-6xl"
+          className="relative mt-10 inline-flex min-h-[4.5rem] max-w-full items-center border-4 border-brand-cream bg-brand-red px-4 py-4 text-center font-display text-3xl uppercase tracking-wide text-white shadow-comic transition hover:-translate-y-1 hover:shadow-comic-red sm:px-10 sm:text-6xl"
         >
           Enter the auction
         </Link>

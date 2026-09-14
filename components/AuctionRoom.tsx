@@ -197,7 +197,7 @@ export function AuctionRoom({ lot }: { lot: AuctionLot }) {
       <div className="flex flex-col items-start justify-between gap-3 comic-panel p-4 sm:flex-row sm:items-center">
         <div>
           <p className="font-display text-sm tracking-[0.25em] text-brand-red">LIVE HAMMER</p>
-          <p className="font-display text-4xl text-brand-red">{formatCurrency(currentBid)}</p>
+          <p className="break-words font-display text-4xl text-brand-red">{formatCurrency(currentBid)}</p>
           <p className="font-comic text-sm">
             {highBidder ? `High bidder: ${highBidder}` : "No bids yet — open the floor"}
           </p>
@@ -209,7 +209,7 @@ export function AuctionRoom({ lot }: { lot: AuctionLot }) {
         onSubmit={onSubmit}
         className="comic-panel space-y-4 p-5"
       >
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <button
             type="button"
             className={mode === "live" ? "comic-btn !text-base" : "comic-btn-invert !text-base"}

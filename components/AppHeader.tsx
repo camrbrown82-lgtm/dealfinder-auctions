@@ -12,7 +12,7 @@ export function AppHeader() {
   const { user, logout, requestAuth } = useBidder();
 
   return (
-    <header className="relative w-full border-b-4 border-brand-ink bg-black">
+    <header className="relative w-full max-w-full overflow-x-clip border-b-4 border-brand-ink bg-black">
       <Link
         href="/admin"
         className="absolute left-2 top-2 z-30 flex items-center justify-center border-4 border-brand-cream bg-black p-1 shadow-comic-sm sm:left-4 sm:top-4"
@@ -31,7 +31,7 @@ export function AppHeader() {
           />
         </Link>
       </div>
-      <nav className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1 border-t-4 border-brand-ink px-3 py-2 sm:absolute sm:right-6 sm:top-4 sm:z-10 sm:max-w-none sm:justify-end sm:border-t-0 sm:bg-transparent sm:p-0">
+      <nav className="flex max-w-full flex-wrap items-center justify-center gap-x-4 gap-y-1 border-t-4 border-brand-ink px-3 py-2 sm:absolute sm:right-6 sm:top-4 sm:z-10 sm:max-w-[min(100%,28rem)] sm:justify-end sm:border-t-0 sm:bg-transparent sm:p-0">
         <Link href="/live" className={navClass}>
           Live
         </Link>

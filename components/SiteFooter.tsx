@@ -3,8 +3,8 @@ import { SITE } from "@/lib/site";
 
 export function SiteFooter() {
   return (
-    <footer className="border-t-4 border-brand-ink bg-brand-red text-brand-cream">
-      <div className="mx-auto grid w-full max-w-[90rem] gap-8 px-4 py-10 sm:grid-cols-2 lg:grid-cols-4">
+    <footer className="max-w-full overflow-x-clip border-t-4 border-brand-ink bg-brand-red text-brand-cream">
+      <div className="mx-auto grid w-full max-w-[90rem] gap-8 px-3 py-10 sm:grid-cols-2 sm:px-4 lg:grid-cols-4">
         <div>
           <p className="font-display text-3xl text-white pop-shadow">DealFinder Auctions</p>
           <p className="mt-2 font-comic text-sm font-bold">{SITE.tagline}</p>
