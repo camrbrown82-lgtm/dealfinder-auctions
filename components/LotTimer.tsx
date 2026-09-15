@@ -30,9 +30,11 @@ export function LotTimer({
     <div className="text-center">
       <div
         suppressHydrationWarning
-        className={`border-4 border-black font-display ${
-          compact ? "whitespace-nowrap px-1 py-0.5 text-[10px] sm:text-xs" : "px-3 py-2 text-2xl sm:text-3xl"
-        } ${ended ? "bg-black text-white" : "bg-[#FFF7D1] text-[#FF0000]"}`}
+        className={`border-4 border-black font-display tabular-nums tracking-wide ${
+          compact
+            ? "min-w-[6.25rem] whitespace-nowrap px-2 py-1 text-base leading-none shadow-comic-red-sm sm:px-2.5 sm:text-lg"
+            : "px-3 py-2 text-3xl sm:text-4xl"
+        } ${ended ? "bg-black text-white" : "bg-white text-[#FF0000]"}`}
       >
         {label}
       </div>

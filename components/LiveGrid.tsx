@@ -20,7 +20,7 @@ const VIEW_OPTIONS = [1, 4, 6, 9] as const;
 type ViewCount = (typeof VIEW_OPTIONS)[number];
 const VIEW_STORAGE_KEY = "dealfinder-live-view";
 const GRID_CLASS: Record<ViewCount, string> = {
-  1: "grid grid-cols-1 gap-4",
+  1: "grid grid-cols-1 justify-items-center gap-4",
   4: "grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4",
   6: "grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6",
   9: "grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-9",
@@ -271,29 +271,23 @@ function LotCard({
   const compact = view >= 6;
   const single = view === 1;
   const sizes = single
-    ? "176px"
+    ? "(max-width: 640px) 100vw, 24rem"
     : `(max-width: 1023px) 100vw, ${Math.round(100 / view)}vw`;
 
   return (
     <article
       className={
         single
-          ? "comic-panel flex min-w-0 w-full flex-col overflow-hidden sm:flex-row"
+          ? "comic-panel flex w-full max-w-sm flex-col overflow-hidden"
           : "comic-panel flex min-w-0 w-full flex-col overflow-hidden"
       }
     >
-      <div
-        className={
-          single
-            ? "relative h-48 w-full shrink-0 overflow-hidden border-b-4 border-brand-ink bg-brand-cream sm:h-44 sm:w-44 sm:border-b-0 sm:border-r-4"
-            : "relative aspect-square w-full overflow-hidden border-b-4 border-brand-ink bg-brand-cream"
-        }
-      >
+      <div className="relative aspect-square w-full overflow-hidden border-b-4 border-brand-ink bg-brand-cream">
         <Link href={href} className="absolute inset-0 z-0" aria-label={lot.title} />
         <LotGallery
           images={lot.image ? [lot.image] : lotImages(lot)}
           alt={lot.title}
-          variant={compact || single ? "compact" : "card"}
+          variant={compact ? "compact" : "card"}
           sizes={sizes}
           fit="cover"
         />
@@ -319,7 +313,7 @@ function LotCard({
             {lot.title}
           </h2>
         </Link>
-        <div className="mt-1 flex items-end justify-between gap-1">
+        <div className="mt-1 flex items-end justify-between gap-2">
           <div className="min-w-0">
             <p
               className={`truncate font-display text-xl leading-none text-brand-red ${
