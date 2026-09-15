@@ -22,9 +22,8 @@ Pop-art live auction house: consignor AI intake, admin inventory, realtime lot p
 Cash and Interac e-Transfer are retired. Every payment prompt uses Helcim.
 
 - **Agreement:** the bid ticket (and signup / bidder card) shows a Sunday $50 pre-authorization disclaimer with a required checkbox. After they agree, they can bid all week without being charged.
-- **Sunday hold:** auctions close every Sunday. On that day Helcim places a **$50 CAD pre-authorization** (a hold, not a charge) on high paddles. If the hold is denied, those bids are forfeited and the lots reopen.
+- **Sunday hold:** auctions close every Sunday. On that day Helcim places a **$50 CAD pre-authorization** (a hold, not a charge) on high paddles. If the hold is denied, those bids are forfeited and the lots reopen. The live floor also runs this sweep on Sunday; a logged-in admin can hit `/api/cron/sunday-preauth`. Hobby Vercel does not allow extra cron jobs, so we do not ship `vercel.json` crons.
 - **Checkout:** the hammer is charged through Helcim. When that sale goes through, we reverse the $50 hold. If checkout is denied, that bid is forfeited.
-- Vercel cron hits `/api/cron/sunday-preauth` late Sunday UTC / early Monday UTC (18:00 America/Edmonton). Set `CRON_SECRET` so only Vercel (or a logged-in admin) can run it.
 - Without `HELCIM_API_TOKEN` the site still runs: the Helcim modal offers a local test approval so you can walk the flow before the sandbox token arrives.
 
 Copy `.env.example` to `.env.local` and fill the Helcim block. On Vercel, add the same keys before redeploy. In the Helcim dashboard API Access Configuration, whitelist `localhost`, the Vercel domain, and any custom domain (skipped on developer test accounts).
