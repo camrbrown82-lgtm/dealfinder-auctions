@@ -2,7 +2,9 @@ import { cookies } from "next/headers";
 import { createHmac, timingSafeEqual } from "crypto";
 import { NextResponse } from "next/server";
 import { getDemoUser, publicProfile } from "@/lib/demoUsers";
-import { isPaymentMethod, type BidderProfile } from "@/lib/profileTypes";
+import { normalizePaymentMethod, type BidderProfile } from "@/lib/profileTypes";
+import { BID_PREAUTH_AMOUNT } from "@/lib/helcimCopy";
+import { loadBidderPayment } from "@/lib/helcim";
 import { getSupabaseAdmin, isSupabaseConfigured } from "@/lib/supabaseClient";
 
 export const BIDDER_COOKIE = "df_bidder";
@@ -57,6 +59,7 @@ export async function getBidderSession(): Promise<BidderProfile | null> {
         .eq("id", userId)
         .maybeSingle();
       if (!error && data) {
+        const payment = await loadBidderPayment(data.id);
         return {
           id: data.id,
           email: data.email ?? "",
@@ -66,10 +69,11 @@ export async function getBidderSession(): Promise<BidderProfile | null> {
           city: data.city ?? "",
           province: data.province ?? "",
           postalCode: data.postal_code ?? "",
-          paymentMethod: isPaymentMethod(data.payment_method)
-            ? data.payment_method
-            : "interac_etransfer",
+          paymentMethod: normalizePaymentMethod(data.payment_method),
           status: data.status === "suspended" ? "suspended" : "active",
+          preauthStatus: payment.preauthStatus,
+          preauthAmount: payment.preauthAmount || Number(data.preauth_amount ?? BID_PREAUTH_AMOUNT) || BID_PREAUTH_AMOUNT,
+          hasCardOnFile: payment.hasCardOnFile,
         };
       }
     }

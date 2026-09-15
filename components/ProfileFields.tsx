@@ -1,7 +1,8 @@
 "use client";
 
-import { CANADIAN_PROVINCES, paymentMethodLabel } from "@/lib/payments";
-import type { PaymentMethod, ProfileInput } from "@/lib/profileTypes";
+import { CANADIAN_PROVINCES } from "@/lib/payments";
+import type { ProfileInput } from "@/lib/profileTypes";
+import { PreauthDisclaimer } from "@/components/PreauthDisclaimer";
 
 const inputClass =
   "comic-field mt-1 w-full px-3 py-2 font-normal";
@@ -42,7 +43,7 @@ export function ProfileFields({
           onChange={(e) => patch("phone", e.target.value)}
           className={inputClass}
           autoComplete="tel"
-          placeholder="(416) 555-0199"
+          placeholder="(403) 555-0199"
         />
       </label>
       <p className="font-display text-xl">Shipping address</p>
@@ -91,33 +92,19 @@ export function ProfileFields({
           onChange={(e) => patch("postalCode", e.target.value)}
           className={inputClass}
           autoComplete="postal-code"
-          placeholder="M5V 2T6"
+          placeholder="T4B 0J6"
         />
       </label>
 
-      <p className="font-display text-xl">Preferred payment</p>
+      <p className="font-display text-xl">Payment</p>
       <p className="font-comic text-xs">
-        No credit-card vault. Hammer invoices settle by Interac or at the desk.
+        Helcim is the house processor. Cash and e-Transfer are retired. Cards are taken through
+        HelcimPay.js — we do not store full card numbers.
       </p>
-      <div className="grid gap-2 sm:grid-cols-2">
-        {(["interac_etransfer", "pay_on_arrival"] as PaymentMethod[]).map((method) => {
-          const active = value.paymentMethod === method;
-          return (
-            <button
-              key={method}
-              type="button"
-              onClick={() => patch("paymentMethod", method)}
-              className={
-                active
-                  ? "border-4 border-black bg-[#FF0000] px-3 py-3 text-left font-comic text-sm font-bold text-white shadow-comic-red-sm"
-                  : "border-4 border-black bg-white px-3 py-3 text-left font-comic text-sm font-bold shadow-comic-red-sm"
-              }
-            >
-              {paymentMethodLabel(method)}
-            </button>
-          );
-        })}
+      <div className="border-4 border-black bg-[#FF0000] px-3 py-3 text-left font-comic text-sm font-bold text-white shadow-comic-red-sm">
+        Helcim card
       </div>
+      <PreauthDisclaimer compact />
     </div>
   );
 }

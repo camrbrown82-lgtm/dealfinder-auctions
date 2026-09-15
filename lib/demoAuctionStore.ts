@@ -13,6 +13,8 @@ export type DemoLotState = {
   highBidderId: string | null;
   status: string;
   fulfillment?: "unset" | "ship" | "pickup";
+  paidAt?: string | null;
+  helcimPurchaseTransactionId?: string | null;
   absentees: AbsenteeMax[];
   bids: AdminBid[];
 };
@@ -47,6 +49,8 @@ function put(target: Map<string, DemoLotState>, lot: AuctionLot) {
     highBidderId: lot.highBidderId ?? null,
     status: lot.status ?? "live",
     fulfillment: lot.fulfillment ?? "unset",
+    paidAt: lot.paidAt ?? null,
+    helcimPurchaseTransactionId: lot.helcimPurchaseTransactionId ?? null,
     absentees: [],
     bids: [],
   };
@@ -58,6 +62,9 @@ function put(target: Map<string, DemoLotState>, lot: AuctionLot) {
     row.highBidderId = existing.highBidderId;
     row.currentBid = existing.currentBid;
     row.fulfillment = existing.fulfillment ?? row.fulfillment;
+    row.paidAt = existing.paidAt ?? row.paidAt;
+    row.helcimPurchaseTransactionId =
+      existing.helcimPurchaseTransactionId ?? row.helcimPurchaseTransactionId;
   }
   target.set(lot.id, row);
   if (lot.slug) target.set(lot.slug, row);
@@ -107,4 +114,12 @@ export function seedDemoBidTape() {
     },
   ];
   lot.highBidder = "Pat Paddle";
+}
+
+export function markDemoLotPaid(lotId: string, transactionId: string) {
+  const lot = map().get(lotId);
+  if (!lot) return null;
+  lot.paidAt = new Date().toISOString();
+  lot.helcimPurchaseTransactionId = transactionId;
+  return lot;
 }

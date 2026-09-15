@@ -7,7 +7,9 @@ import { useBidder } from "@/components/BidderProvider";
 import { LotTimer } from "@/components/LotTimer";
 import { nextLiveAmount } from "@/lib/bidding";
 import { isProfileComplete } from "@/lib/profileTypes";
-import { INTERAC_EMAIL, fulfillmentInstructions } from "@/lib/payments";
+import { HelcimPayModal } from "@/components/HelcimPayModal";
+import { PreauthDisclaimer } from "@/components/PreauthDisclaimer";
+import { fulfillmentInstructions } from "@/lib/payments";
 import type { FulfillmentChoice } from "@/lib/payments";
 import { profileAddress } from "@/lib/profileTypes";
 import { getSupabaseClient, isSupabaseConfigured } from "@/lib/supabaseClient";
@@ -29,7 +31,7 @@ type BidRow = {
 
 export function AuctionRoom({ lot }: { lot: AuctionLot }) {
   const router = useRouter();
-  const { user, requestAuth } = useBidder();
+  const { user, requestAuth, refresh } = useBidder();
   const [currentBid, setCurrentBid] = useState(lot.currentBid);
   const [endsAt, setEndsAt] = useState(lot.endsAt);
   const [highBidder, setHighBidder] = useState(lot.highBidder ?? null);
@@ -43,6 +45,7 @@ export function AuctionRoom({ lot }: { lot: AuctionLot }) {
   const [now, setNow] = useState(() => Date.now());
   const [feed, setFeed] = useState<BidRow[]>([]);
   const [fulfillment, setFulfillment] = useState<FulfillmentChoice>(lot.fulfillment ?? "unset");
+  const [helcimOpen, setHelcimOpen] = useState(false);
   const pendingBid = useRef<{
     mode: "live" | "absentee" | "buy_now";
     amount: number;
@@ -229,6 +232,10 @@ export function AuctionRoom({ lot }: { lot: AuctionLot }) {
             : err && typeof err === "object" && "message" in err
               ? String((err as { message: string }).message)
               : "Bid failed";
+        if (response.status === 402 || json.code === "PREAUTH_REQUIRED") {
+          setHelcimOpen(true);
+          throw new Error("Authorize the $50 bidding hold, then we drop the paddle.");
+        }
         throw new Error(text);
       }
       recordInterest(lot);
@@ -271,6 +278,10 @@ export function AuctionRoom({ lot }: { lot: AuctionLot }) {
     };
     if (!user || !isProfileComplete(user)) {
       requestAuth(() => placeBidRef.current(), "login");
+      return;
+    }
+    if (user.preauthStatus !== "held") {
+      setHelcimOpen(true);
       return;
     }
     await placeBid();
@@ -317,8 +328,8 @@ export function AuctionRoom({ lot }: { lot: AuctionLot }) {
             <p className="font-display text-sm tracking-[0.25em] text-brand-red">YOU WON THIS LOT</p>
             <p className="font-display text-3xl">Hammer {formatCurrency(currentBid)}</p>
             <p className="font-comic text-sm">
-              Pay by Interac e-Transfer to <strong>{INTERAC_EMAIL}</strong> or pay on arrival.
-              Choose ship or pick up here — that choice is made after the win.
+              Pay the hammer with Helcim at checkout. The $50 bidding hold is reversed as soon as
+              this sale goes through. Choose ship or pick up here — that choice is made after the win.
             </p>
             <div className="grid gap-2 sm:grid-cols-2">
               <button
@@ -342,7 +353,7 @@ export function AuctionRoom({ lot }: { lot: AuctionLot }) {
               {fulfillmentInstructions(fulfillment, user ? profileAddress(user) : "")}
             </p>
             <Link href="/checkout" className="comic-btn inline-block">
-              Settle payment
+              Pay with Helcim
             </Link>
             {message ? <p className="font-display text-xl">{message}</p> : null}
           </div>
@@ -399,6 +410,10 @@ export function AuctionRoom({ lot }: { lot: AuctionLot }) {
                 requestAuth(() => placeBidRef.current(), "login");
                 return;
               }
+              if (user.preauthStatus !== "held") {
+                setHelcimOpen(true);
+                return;
+              }
               void placeBid();
             }}
           >
@@ -410,16 +425,17 @@ export function AuctionRoom({ lot }: { lot: AuctionLot }) {
           {user ? (
             <>
               Paddle: <strong>{user.fullName}</strong> — guests can watch the tape;
-              placing a bid uses this account.
+              placing a bid uses this account. Helcim holds $50 on first bid.
             </>
           ) : (
             <>
               Watch the room free. <strong>Place Bid</strong> or{" "}
               <strong>Set Absentee Bid</strong> opens the paddle gate — we keep your
-              amount and submit it after you log in.
+              amount and submit it after you log in. First bid asks Helcim for a $50 hold.
             </>
           )}
         </p>
+        <PreauthDisclaimer compact />
 
         {mode === "live" ? (
           <p className="font-comic text-sm">
@@ -465,6 +481,17 @@ export function AuctionRoom({ lot }: { lot: AuctionLot }) {
         {message && <p className="font-display text-xl">{message}</p>}
       </form>
         )}
+
+      <HelcimPayModal
+        open={helcimOpen}
+        purpose="bid_preauth"
+        lotId={lot.id}
+        onClose={() => setHelcimOpen(false)}
+        onComplete={() => {
+          setHelcimOpen(false);
+          void refresh().then(() => placeBidRef.current());
+        }}
+      />
 
       <div className="comic-panel p-4">
         <p className="font-display text-2xl">Bid tape</p>

@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Script from "next/script";
 import { Bangers, Comic_Neue } from "next/font/google";
 import { AppShell } from "@/components/AppShell";
 import { BidderProvider } from "@/components/BidderProvider";
@@ -30,6 +31,13 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={`${bangers.variable} ${comicNeue.variable}`}>
+        <Script
+          src={
+            process.env.NEXT_PUBLIC_HELCIM_PAY_JS ||
+            "https://secure.helcim.app/helcim-pay/services/start.js"
+          }
+          strategy="afterInteractive"
+        />
         <BidderProvider>
           <div className="flex min-h-screen max-w-full flex-col overflow-x-clip">
             <AppShell>{children}</AppShell>

@@ -6,9 +6,11 @@ export type WinInvoice = {
   status?: string;
   invoice: string;
   paymentMethod: string;
-  paymentMethodKey: "interac_etransfer" | "pay_on_arrival";
+  paymentMethodKey: "helcim_card";
   instructions: string;
   winning: boolean;
   fulfillment: "unset" | "ship" | "pickup";
   address: string;
+  paid: boolean;
+  paidAt?: string | null;
 };

@@ -1,7 +1,14 @@
 import { randomUUID, scryptSync, randomBytes, timingSafeEqual } from "crypto";
-import type { AccountStatus, BidderProfile, PaymentMethod } from "@/lib/profileTypes";
+import type { AccountStatus, BidderProfile, PaymentMethod, PreauthStatus } from "@/lib/profileTypes";
+import { normalizePaymentMethod } from "@/lib/profileTypes";
+import { BID_PREAUTH_AMOUNT } from "@/lib/helcimCopy";
 
-export type DemoUser = BidderProfile & { passwordHash: string };
+export type DemoUser = BidderProfile & {
+  passwordHash: string;
+  helcimCardToken: string | null;
+  helcimCustomerCode: string | null;
+  preauthTransactionId: string | null;
+};
 
 declare global {
   // eslint-disable-next-line no-var
@@ -51,7 +58,7 @@ export function createDemoUser(input: {
   city: string;
   province: string;
   postalCode: string;
-  paymentMethod: PaymentMethod;
+  paymentMethod?: PaymentMethod;
 }): DemoUser {
   const email = input.email.trim().toLowerCase();
   if (findDemoUserByEmail(email)) {
@@ -66,8 +73,14 @@ export function createDemoUser(input: {
     city: input.city.trim(),
     province: input.province.trim(),
     postalCode: input.postalCode.trim().toUpperCase(),
-    paymentMethod: input.paymentMethod,
+    paymentMethod: "helcim_card",
     status: "active",
+    preauthStatus: "none",
+    preauthAmount: BID_PREAUTH_AMOUNT,
+    hasCardOnFile: false,
+    preauthTransactionId: null,
+    helcimCardToken: null,
+    helcimCustomerCode: null,
     passwordHash: hashPassword(input.password),
   };
   store().set(user.id, user);
@@ -76,24 +89,44 @@ export function createDemoUser(input: {
 
 export function updateDemoUser(
   id: string,
-  patch: Partial<Omit<BidderProfile, "id" | "email">>,
+  patch: Partial<
+    Omit<BidderProfile, "id" | "email"> & {
+      helcimCardToken?: string | null;
+      helcimCustomerCode?: string | null;
+      preauthTransactionId?: string | null;
+      preauthStatus?: PreauthStatus;
+    }
+  >,
 ) {
   const current = store().get(id);
   if (!current) return null;
   const next: DemoUser = {
     ...current,
     ...patch,
-    postalCode: patch.postalCode
-      ? patch.postalCode.trim().toUpperCase()
-      : current.postalCode,
+    paymentMethod: "helcim_card",
+    postalCode: patch.postalCode ? patch.postalCode.trim().toUpperCase() : current.postalCode,
+    hasCardOnFile: Boolean(patch.helcimCardToken ?? current.helcimCardToken),
   };
   store().set(id, next);
   return next;
 }
 
 export function publicProfile(user: DemoUser): BidderProfile {
-  const { passwordHash: _ignored, ...profile } = user;
-  return { ...profile, status: profile.status ?? "active" };
+  return {
+    id: user.id,
+    email: user.email,
+    fullName: user.fullName,
+    phone: user.phone,
+    street: user.street,
+    city: user.city,
+    province: user.province,
+    postalCode: user.postalCode,
+    paymentMethod: normalizePaymentMethod(user.paymentMethod),
+    status: user.status ?? "active",
+    preauthStatus: user.preauthStatus ?? "none",
+    preauthAmount: user.preauthAmount ?? BID_PREAUTH_AMOUNT,
+    hasCardOnFile: Boolean(user.helcimCardToken || user.hasCardOnFile),
+  };
 }
 
 export function listDemoUsers() {
@@ -119,7 +152,6 @@ export function ensureSeedBidders() {
       city: "Toronto",
       province: "ON",
       postalCode: "M5V 2T6",
-      paymentMethod: "interac_etransfer" as const,
     },
     {
       email: "kim.kapow@example.com",
@@ -129,7 +161,6 @@ export function ensureSeedBidders() {
       city: "Hamilton",
       province: "ON",
       postalCode: "L8P 1A1",
-      paymentMethod: "pay_on_arrival" as const,
     },
   ];
   for (const row of sample) {

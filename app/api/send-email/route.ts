@@ -3,13 +3,7 @@ import { Resend } from "resend";
 import { isAdminSession, unauthorized } from "@/lib/adminAuth";
 import { getOutbox } from "@/lib/demoEmailStore";
 import { renderTemplate } from "@/lib/emailTemplates";
-import { INTERAC_EMAIL } from "@/lib/payments";
-import {
-  buildEmailHtml,
-  EMAIL_LOGO_CID,
-  htmlToText,
-  looksLikeHtml,
-} from "@/lib/emailBrand";
+import { buildEmailHtml, EMAIL_LOGO_CID, htmlToText, looksLikeHtml } from "@/lib/emailBrand";
 import { loadLiveEmailTemplates, resolveEmailLogo } from "@/lib/emailService";
 
 export const dynamic = "force-dynamic";
@@ -37,7 +31,7 @@ export async function POST(request: NextRequest) {
     customer_name: body.customer_name || "Paddle",
     item_title: body.item_title || "Lot",
     winning_bid: body.winning_bid || "$0",
-    payment_link: body.payment_link || `Interac: ${INTERAC_EMAIL}`,
+    payment_link: body.payment_link || "/checkout",
   });
 
   const recipients = (body.to ?? "")

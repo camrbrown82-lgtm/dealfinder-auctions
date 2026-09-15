@@ -40,6 +40,8 @@ export type AuctionLot = {
   itemDetails?: string | null;
   fulfillment?: "unset" | "ship" | "pickup";
   consignmentId?: string | null;
+  paidAt?: string | null;
+  helcimPurchaseTransactionId?: string | null;
 };
 
 export type AuctionEvent = {

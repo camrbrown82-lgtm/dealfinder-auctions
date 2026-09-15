@@ -9,6 +9,7 @@ import {
 } from "@/lib/bidding";
 import { getSupabaseAdmin, isSupabaseConfigured } from "@/lib/supabaseClient";
 import { isProfileComplete, type BidderProfile } from "@/lib/profileTypes";
+import { loadBidderPayment } from "@/lib/helcim";
 import { openUnsoldFloors, patchLotRow, weekFromNow } from "@/lib/openFloor";
 import { recordSoldLotSettlement } from "@/lib/recordSale";
 import { mapLot, type LotRow } from "@/lib/mappers";
@@ -163,6 +164,16 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(
       { error: "Finish your bidder profile before placing a bid." },
       { status: 400 },
+    );
+  }
+  const payment = await loadBidderPayment(session.id);
+  if (payment.preauthStatus !== "held") {
+    return NextResponse.json(
+      {
+        error: "Authorize the $50 bidding hold before placing a paddle.",
+        code: "PREAUTH_REQUIRED",
+      },
+      { status: 402 },
     );
   }
 

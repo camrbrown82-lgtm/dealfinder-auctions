@@ -84,7 +84,7 @@ export function AuthModal({
             phone: me.user.phone,
             street: me.user.street,
             city: me.user.city,
-            province: me.user.province || "ON",
+            province: me.user.province || "AB",
             postalCode: me.user.postalCode,
             paymentMethod: me.user.paymentMethod,
           });

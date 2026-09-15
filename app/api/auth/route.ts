@@ -10,7 +10,7 @@ import {
   publicProfile,
   verifyPassword,
 } from "@/lib/demoUsers";
-import { isPaymentMethod, type PaymentMethod } from "@/lib/profileTypes";
+import { normalizePaymentMethod, type PaymentMethod } from "@/lib/profileTypes";
 import { getSupabaseAdmin, getSupabaseAuthClient, isSupabaseConfigured } from "@/lib/supabaseClient";
 
 export const dynamic = "force-dynamic";
@@ -28,9 +28,7 @@ type AuthBody = {
 };
 
 function profileFields(body: AuthBody) {
-  const paymentMethod = isPaymentMethod(body.paymentMethod)
-    ? body.paymentMethod
-    : "interac_etransfer";
+  const paymentMethod = normalizePaymentMethod(body.paymentMethod);
   return {
     fullName: String(body.fullName ?? "").trim(),
     phone: String(body.phone ?? "").trim(),
@@ -124,7 +122,7 @@ export async function PUT(request: NextRequest) {
         }
       } else {
         const userId = created.data.user.id;
-        const { error } = await supabase.from("profiles").upsert({
+        const row = {
           id: userId,
           email,
           full_name: fields.fullName,
@@ -134,7 +132,14 @@ export async function PUT(request: NextRequest) {
           province: fields.province,
           postal_code: fields.postalCode.toUpperCase(),
           payment_method: fields.paymentMethod,
-        });
+          preauth_status: "none",
+          preauth_amount: 50,
+        };
+        let { error } = await supabase.from("profiles").upsert(row);
+        if (error && /payment_method|preauth|enum|column|schema/i.test(error.message)) {
+          const { preauth_status: _s, preauth_amount: _a, payment_method: _m, ...legacy } = row;
+          ({ error } = await supabase.from("profiles").upsert(legacy));
+        }
         if (error) {
           return NextResponse.json({ error: error.message }, { status: 400 });
         }

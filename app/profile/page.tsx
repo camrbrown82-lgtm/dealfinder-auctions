@@ -4,8 +4,10 @@ import { FormEvent, useEffect, useState } from "react";
 import Link from "next/link";
 import { useBidder } from "@/components/BidderProvider";
 import { ProfileFields } from "@/components/ProfileFields";
-import { INTERAC_EMAIL, PICKUP_INSTRUCTIONS, paymentMethodLabel } from "@/lib/payments";
+import { PreauthDisclaimer } from "@/components/PreauthDisclaimer";
+import { PICKUP_INSTRUCTIONS, paymentMethodLabel } from "@/lib/payments";
 import { emptyProfileInput, type ProfileInput } from "@/lib/profileTypes";
+import { formatCurrency } from "@/lib/utils";
 
 export default function ProfilePage() {
   const { user, ready, refresh, requestAuth } = useBidder();
@@ -20,9 +22,9 @@ export default function ProfilePage() {
       phone: user.phone,
       street: user.street,
       city: user.city,
-      province: user.province || "ON",
+      province: user.province || "AB",
       postalCode: user.postalCode,
-      paymentMethod: user.paymentMethod,
+      paymentMethod: "helcim_card",
     });
   }, [user]);
 
@@ -34,7 +36,7 @@ export default function ProfilePage() {
       const response = await fetch("/api/profile", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form),
+        body: JSON.stringify({ ...form, paymentMethod: "helcim_card" }),
       });
       const json = await response.json();
       if (!response.ok) throw new Error(json.error || "Could not save.");
@@ -53,7 +55,7 @@ export default function ProfilePage() {
     return (
       <div className="comic-panel p-6">
         <h1 className="font-display text-5xl text-[#FF0000]">Bidder profile</h1>
-        <p className="mt-2 font-comic">Log in to edit shipping and payment prefs.</p>
+        <p className="mt-2 font-comic">Log in to edit shipping and Helcim payment prefs.</p>
         <button
           type="button"
           className="comic-btn mt-4"
@@ -64,6 +66,13 @@ export default function ProfilePage() {
       </div>
     );
   }
+
+  const holdLabel =
+    user.preauthStatus === "held"
+      ? `${formatCurrency(user.preauthAmount)} Helcim hold is on the card`
+      : user.preauthStatus === "released"
+        ? "Last $50 hold was released after checkout"
+        : "No bidding hold yet — it appears when you place a bid";
 
   return (
     <div className="space-y-4">
@@ -77,13 +86,13 @@ export default function ProfilePage() {
       >
         <ProfileFields value={form} onChange={setForm} />
         <p className="border-4 border-black bg-white px-3 py-2 font-comic text-sm">
-          Interac recipient: <strong>{INTERAC_EMAIL}</strong>
+          Payment: <strong>{paymentMethodLabel(form.paymentMethod)}</strong>
+          <br />
+          Hold: <strong>{holdLabel}</strong>
           <br />
           {PICKUP_INSTRUCTIONS}
         </p>
-        <p className="font-comic text-sm">
-          Current method: <strong>{paymentMethodLabel(form.paymentMethod)}</strong>
-        </p>
+        <PreauthDisclaimer />
         <div className="flex flex-wrap gap-2">
           <button type="submit" className="comic-btn" disabled={busy}>
             {busy ? "Saving…" : "Save profile"}

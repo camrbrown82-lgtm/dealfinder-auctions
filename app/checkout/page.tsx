@@ -4,18 +4,20 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useBidder } from "@/components/BidderProvider";
 import { InvoicePanel } from "@/components/InvoicePanel";
-import { INTERAC_EMAIL, PICKUP_INSTRUCTIONS, paymentMethodLabel } from "@/lib/payments";
+import { HelcimPayModal } from "@/components/HelcimPayModal";
+import { PreauthDisclaimer } from "@/components/PreauthDisclaimer";
+import { PICKUP_INSTRUCTIONS } from "@/lib/payments";
 import type { FulfillmentChoice } from "@/lib/payments";
 import { profileAddress } from "@/lib/profileTypes";
-import type { PaymentMethod } from "@/lib/profileTypes";
 import type { WinInvoice } from "@/lib/winTypes";
+import { formatCurrency } from "@/lib/utils";
 
 export default function CheckoutPage() {
   const { user, ready, refresh, requestAuth } = useBidder();
   const [wins, setWins] = useState<WinInvoice[]>([]);
-  const [method, setMethod] = useState<PaymentMethod>("interac_etransfer");
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
+  const [payLotId, setPayLotId] = useState<string | null>(null);
 
   async function load() {
     const response = await fetch("/api/wins", { credentials: "include" });
@@ -25,31 +27,8 @@ export default function CheckoutPage() {
 
   useEffect(() => {
     if (!user) return;
-    setMethod(user.paymentMethod);
     void load();
   }, [user]);
-
-  async function chooseMethod(next: PaymentMethod) {
-    setMethod(next);
-    const response = await fetch("/api/profile", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        fullName: user?.fullName,
-        phone: user?.phone,
-        street: user?.street,
-        city: user?.city,
-        province: user?.province,
-        postalCode: user?.postalCode,
-        paymentMethod: next,
-      }),
-    });
-    if (response.ok) {
-      await refresh();
-      await load();
-      setNotice(`Payment set to ${paymentMethodLabel(next)}.`);
-    }
-  }
 
   async function chooseFulfillment(lotId: string, fulfillment: FulfillmentChoice) {
     setBusy(lotId);
@@ -87,52 +66,40 @@ export default function CheckoutPage() {
     );
   }
 
+  const holdLabel =
+    user.preauthStatus === "held"
+      ? `${formatCurrency(user.preauthAmount)} Helcim hold is sitting on your card until a sale is paid.`
+      : user.preauthStatus === "released"
+        ? "The $50 bidding hold has been released back to your card."
+        : "No active bidding hold. It is placed the next time you bid.";
+
   return (
     <div className="space-y-4">
       <div className="comic-panel p-4">
         <h1 className="font-display text-5xl text-brand-red">Winning checkout</h1>
         <p className="font-comic text-sm">
-          Payment is Interac or pay on arrival. After each hammer, pick ship or pick up on that
-          invoice — it is not set at signup.
+          Invoices settle by Helcim card only. After each hammer, pick ship or pick up, then pay
+          the hammer — we reverse the $50 bidding hold as soon as that sale goes through.
         </p>
       </div>
 
-      <div className="comic-panel p-5">
-        <p className="font-display text-2xl">Preferred payment method</p>
-        <div className="mt-3 grid gap-2 sm:grid-cols-2">
-          <button
-            type="button"
-            className={
-              method === "interac_etransfer" ? "comic-btn" : "comic-btn-invert"
-            }
-            onClick={() => void chooseMethod("interac_etransfer")}
-          >
-            Interac e-Transfer
-          </button>
-          <button
-            type="button"
-            className={method === "pay_on_arrival" ? "comic-btn" : "comic-btn-invert"}
-            onClick={() => void chooseMethod("pay_on_arrival")}
-          >
-            Pay on Arrival
-          </button>
-        </div>
-        <div className="mt-4 space-y-2 font-comic text-sm">
-          <p className="border-4 border-black bg-white px-3 py-2">
-            Interac recipient email: <strong>{INTERAC_EMAIL}</strong>
+      <div className="comic-panel space-y-3 p-5">
+        <p className="font-display text-2xl">Helcim card</p>
+        <PreauthDisclaimer />
+        <p className="border-4 border-black bg-white px-3 py-2 font-comic text-sm">
+          {holdLabel}
+        </p>
+        {user && profileAddress(user) ? (
+          <p className="border-4 border-black bg-white px-3 py-2 font-comic text-sm">
+            Address on your paddle: <strong>{profileAddress(user)}</strong>
           </p>
-          {user && profileAddress(user) ? (
-            <p className="border-4 border-black bg-white px-3 py-2">
-              Address on your paddle: <strong>{profileAddress(user)}</strong>
-            </p>
-          ) : (
-            <p className="border-4 border-black bg-white px-3 py-2">
-              Add a street address on your bidder card if you want a lot shipped.
-            </p>
-          )}
-          <p className="border-4 border-black bg-white px-3 py-2">{PICKUP_INSTRUCTIONS}</p>
-        </div>
-        {notice && <p className="mt-3 font-display text-xl">{notice}</p>}
+        ) : (
+          <p className="border-4 border-black bg-white px-3 py-2 font-comic text-sm">
+            Add a street address on your bidder card if you want a lot shipped.
+          </p>
+        )}
+        <p className="border-4 border-black bg-white px-3 py-2 font-comic text-sm">{PICKUP_INSTRUCTIONS}</p>
+        {notice && <p className="font-display text-xl">{notice}</p>}
       </div>
 
       {wins.length === 0 ? (
@@ -151,10 +118,29 @@ export default function CheckoutPage() {
               win={win}
               busy={busy === win.lotId}
               onFulfillment={(lotId, fulfillment) => void chooseFulfillment(lotId, fulfillment)}
+              onPay={(lotId) => setPayLotId(lotId)}
             />
           ))}
         </div>
       )}
+
+      <HelcimPayModal
+        open={Boolean(payLotId)}
+        purpose="checkout_purchase"
+        lotId={payLotId ?? undefined}
+        onClose={() => setPayLotId(null)}
+        onComplete={(result) => {
+          setPayLotId(null);
+          void refresh();
+          void load();
+          setNotice(
+            result.warning ||
+              (result.preauthReleased
+                ? "Hammer paid with Helcim. The $50 bidding hold was sent back to your card."
+                : "Hammer paid with Helcim."),
+          );
+        }}
+      />
     </div>
   );
 }

@@ -1,6 +1,8 @@
-export type PaymentMethod = "interac_etransfer" | "pay_on_arrival";
+export type PaymentMethod = "helcim_card";
 
 export type AccountStatus = "active" | "suspended";
+
+export type PreauthStatus = "none" | "held" | "released";
 
 export type BidderProfile = {
   id: string;
@@ -13,9 +15,15 @@ export type BidderProfile = {
   postalCode: string;
   paymentMethod: PaymentMethod;
   status: AccountStatus;
+  preauthStatus: PreauthStatus;
+  preauthAmount: number;
+  hasCardOnFile: boolean;
 };
 
-export type ProfileInput = Omit<BidderProfile, "id" | "email" | "status">;
+export type ProfileInput = Omit<
+  BidderProfile,
+  "id" | "email" | "status" | "preauthStatus" | "preauthAmount" | "hasCardOnFile"
+>;
 
 export function emptyProfileInput(): ProfileInput {
   return {
@@ -23,9 +31,9 @@ export function emptyProfileInput(): ProfileInput {
     phone: "",
     street: "",
     city: "",
-    province: "ON",
+    province: "AB",
     postalCode: "",
-    paymentMethod: "interac_etransfer",
+    paymentMethod: "helcim_card",
   };
 }
 
@@ -42,7 +50,15 @@ export function isProfileComplete(profile: Pick<BidderProfile, keyof ProfileInpu
 }
 
 export function isPaymentMethod(value: unknown): value is PaymentMethod {
-  return value === "interac_etransfer" || value === "pay_on_arrival";
+  return value === "helcim_card";
+}
+
+export function normalizePaymentMethod(_value?: unknown): PaymentMethod {
+  return "helcim_card";
+}
+
+export function isPreauthStatus(value: unknown): value is PreauthStatus {
+  return value === "none" || value === "held" || value === "released";
 }
 
 export function profileAddress(

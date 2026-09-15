@@ -36,7 +36,8 @@ export async function GET() {
         paymentMethod: row.payment_method ?? "",
         auctionsWon: wins.length,
         lifetimeSpend: spend,
-        paymentFlag: spend > 0 ? "has_invoices" : "none",
+        paymentFlag:
+          row.preauth_status === "held" ? "helcim-hold" : spend > 0 ? "helcim-paid" : "helcim",
       };
     });
     return NextResponse.json({ customers });
@@ -63,7 +64,7 @@ export async function GET() {
       paymentMethod: user.paymentMethod,
       auctionsWon: wins.length,
       lifetimeSpend: spend,
-      paymentFlag: user.paymentMethod === "interac_etransfer" ? "interac" : "pickup",
+        paymentFlag: user.preauthStatus === "held" ? "helcim-hold" : "helcim",
     };
   });
 

@@ -15,24 +15,39 @@ Pop-art live auction house: consignor AI intake, admin inventory, realtime lot p
 - Tailwind CSS (pop-art / comic)
 - Supabase (PostgreSQL + Realtime)
 - OpenAI GPT-4o vision
+- Helcim (HelcimPay.js + Payment API) for card checkout and the $50 bid pre-authorization
 
-## Prompt execution checklist
+## Payments
 
-- [x] Prompt 1: Project initialization & Tailwind setup
-- [x] Prompt 2: Supabase database schema migration (`supabase/migrations/20260903_init.sql`)
-- [x] Prompt 3: AI item intake & consignor portal (`/consignor`)
-- [x] Prompt 4: Realtime bidding & timed countdown (`/auctions/[id]`)
-- [x] Prompt 5: Admin control panel & inventory (`/admin`)
+Cash and Interac e-Transfer are retired. Every payment prompt uses Helcim.
+
+- **Bid:** Helcim places a **$50 CAD pre-authorization** as soon as a paddle is dropped. This is a hold, not a charge — it proves the card is valid and protects the house if a winner walks. Copy on the bid ticket explains this.
+- **Checkout:** the hammer is charged through Helcim. When that sale goes through, we reverse the $50 hold so it is released back to the card.
+- Without `HELCIM_API_TOKEN` the site still runs: the Helcim modal offers a local test approval so you can walk the flow before the sandbox token arrives.
+
+Copy `.env.example` to `.env.local` and fill the Helcim block. On Vercel, add the same keys before redeploy. In the Helcim dashboard API Access Configuration, whitelist `localhost`, the Vercel domain, and any custom domain (skipped on developer test accounts).
 
 ## Setup
 
-1. Fill `.env.local` (`OPENAI_API_KEY`, `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, optional `SUPABASE_SERVICE_ROLE_KEY`).
-2. In the Supabase SQL editor, run `supabase/migrations/20260903_init.sql`, then `supabase/migrations/20260903_consignor_pricing.sql`, then `supabase/migrations/20260903_anti_snipe_absentee.sql`, then `supabase/migrations/20260903_admin_events.sql`.
+1. Fill `.env.local` from `.env.example` (`OPENAI_API_KEY`, Supabase, Helcim, optional `SUPABASE_SERVICE_ROLE_KEY` / Resend).
+2. In the Supabase SQL editor, run historical migrations as needed, then **run the Helcim SQL** in `supabase/sql-editor-helcim.sql` (Query 1, then Query 2).
 3. Enable Realtime for `lots`, `bids`, and `consignments` if the publication block was skipped.
 4. Set `ADMIN_PASSWORD` (demo default: `hammer`).
-5. `npm install` then `npm run dev` → http://localhost:3000
+5. `npm install` then `npm run dev` → http://localhost:43173
 
 Without Supabase keys the UI runs in demo mode (in-memory mock lots).
+
+### Helcim SQL editor queries
+
+Paste `supabase/sql-editor-helcim.sql` into the Supabase SQL editor.
+
+**Query 1** adds `helcim_card` to the old payment enum. Run it first and wait for success (Postgres must commit the new enum value before it can be used).
+
+**Query 2** converts `profiles.payment_method` to text, migrates every paddle off Interac / pay-on-arrival onto Helcim, and adds:
+
+- `profiles.helcim_card_token`, `helcim_customer_code`, `preauth_*` columns
+- `lots.paid_at`, `lots.helcim_purchase_transaction_id`
+- `helcim_sessions` and `helcim_transactions` ledgers (service-role only)
 
 ## Prompt log
 
@@ -41,3 +56,4 @@ Without Supabase keys the UI runs in demo mode (in-memory mock lots).
 - 2026-09-03 — Prompt 3: GPT-4o intake returns title, description, suggested_starting_bid, and estimated_market_value from photo URLs; consignor dashboard adds drag-drop + camera, auto-generate, reserve/start/commission split, and a pending/live/sold status table.
 - 2026-09-03 — Prompt 4: auction lots get a red/cream comic room, bids-table realtime, +2:00 anti-snipe in the last two minutes, and live vs absentee max auto-increment bidding.
 - 2026-09-03 — Prompt 5: password-gated admin desk with AI queue edits, auction event scheduler, inventory search/removal/bulk seed, and consignor payout report.
+- 2026-09-15 — Helcim card checkout everywhere payments were prompted; $50 bid pre-auth with disclaimer; cash and e-Transfer removed; hold released after hammer checkout.

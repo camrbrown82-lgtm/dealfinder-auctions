@@ -1,11 +1,11 @@
 import type { PaymentMethod } from "@/lib/profileTypes";
+import { BID_PREAUTH_AMOUNT, PREAUTH_DISCLAIMER } from "@/lib/helcimCopy";
 
-export const INTERAC_EMAIL =
-  process.env.NEXT_PUBLIC_INTERAC_EMAIL || "payments@dealfinder.auctions";
+export { BID_PREAUTH_AMOUNT, PREAUTH_DISCLAIMER, PREAUTH_DISCLAIMER_SHORT, PREAUTH_DISCLAIMER_TITLE } from "@/lib/helcimCopy";
 
 export const PICKUP_INSTRUCTIONS =
   process.env.NEXT_PUBLIC_PICKUP_INSTRUCTIONS ||
-  "DealFinder Auctions desk — pay on arrival with cash, debit, or in-person credit. Bring photo ID that matches your bidder profile. Pickup window: weekdays 10:00–18:00.";
+  "DealFinder Auctions desk — lots are paid online with Helcim before pickup. Bring photo ID that matches your bidder profile. Pickup window: weekdays 10:00–18:00.";
 
 export const CANADIAN_PROVINCES = [
   "AB",
@@ -23,10 +23,9 @@ export const CANADIAN_PROVINCES = [
   "YT",
 ] as const;
 
-export function paymentMethodLabel(method: PaymentMethod) {
-  return method === "interac_etransfer"
-    ? "Interac e-Transfer"
-    : "Pay on Arrival / Local Pickup";
+export function paymentMethodLabel(method: PaymentMethod | string) {
+  if (method === "helcim_card") return "Helcim card";
+  return "Helcim card";
 }
 
 export function settlementInvoice(auctionNumber: string | null | undefined, buyerKey: string) {
@@ -41,15 +40,12 @@ export function invoiceNumber(lotId: string, userId: string) {
   return `DF-${paddle}-${stamp}`;
 }
 
-export function paymentInstructions(method: PaymentMethod, invoice: string) {
-  if (method === "interac_etransfer") {
-    return [
-      `Send an Interac e-Transfer to ${INTERAC_EMAIL}.`,
-      `Put ${invoice} in the message / memo field.`,
-      "Auto-deposit is enabled — no security question required.",
-    ].join(" ");
-  }
-  return `${PICKUP_INSTRUCTIONS} Quote invoice ${invoice} at the desk.`;
+export function paymentInstructions(method: PaymentMethod | string, invoice: string) {
+  return [
+    `Pay invoice ${invoice} by card through Helcim at checkout.`,
+    `A $${BID_PREAUTH_AMOUNT.toFixed(0)} bidding hold sits on your card until this sale is paid; we reverse that hold as soon as Helcim captures the hammer.`,
+    PREAUTH_DISCLAIMER,
+  ].join(" ");
 }
 
 export type FulfillmentChoice = "unset" | "ship" | "pickup";

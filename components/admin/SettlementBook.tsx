@@ -4,7 +4,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { formatCurrency, type PayoutRow } from "@/lib/utils";
 import { paymentMethodLabel, fulfillmentLabel } from "@/lib/payments";
 import { mergePersistedInvoices, type AuctionSettlement, type BuyerSettlement } from "@/lib/settlements";
-import type { PaymentMethod } from "@/lib/profileTypes";
 import type { PayoutItem } from "@/lib/payouts";
 import {
   emptyMark,
@@ -18,10 +17,10 @@ import {
 } from "@/lib/settlementRecords";
 
 function methodLabel(value: string) {
-  if (value === "interac_etransfer" || value === "pay_on_arrival") {
-    return paymentMethodLabel(value as PaymentMethod);
+  if (value === "helcim_card" || value === "interac_etransfer" || value === "pay_on_arrival") {
+    return paymentMethodLabel("helcim_card");
   }
-  return value || "Not on file";
+  return value || "Helcim card";
 }
 
 export function SettlementBook({

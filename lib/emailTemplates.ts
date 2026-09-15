@@ -36,7 +36,7 @@ DealFinder Auctions`,
 
 You hammered {{item_title}} at {{winning_bid}}.
 
-Pay / pickup details: {{payment_link}}
+Pay this invoice with Helcim at checkout: {{payment_link}}
 
 Bring photo ID matching your bidder card.
 
@@ -50,7 +50,7 @@ DealFinder Auctions desk`,
 
 Invoice for {{item_title}} ({{winning_bid}}) is waiting.
 
-Settle here: {{payment_link}}
+Settle with Helcim here: {{payment_link}}
 
 Overdue lots may be relisted.
 
@@ -76,7 +76,7 @@ DealFinder Auctions`,
 
 Your bidder card is live. Browse lots, drop a paddle, and keep an eye on the clock.
 
-If we need a payment, we'll send it here: {{payment_link}}
+If we need a payment, Helcim checkout is here: {{payment_link}}
 
 DealFinder Auctions`,
   },

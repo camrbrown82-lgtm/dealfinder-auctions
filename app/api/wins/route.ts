@@ -14,6 +14,7 @@ import { getSupabaseAdmin, isSupabaseConfigured } from "@/lib/supabaseClient";
 import { MOCK_LOTS, type AuctionLot } from "@/lib/utils";
 import { saveWinFulfillment } from "@/lib/winFulfillment";
 import type { WinInvoice } from "@/lib/winTypes";
+import { isLotPaid, lotPaidRecord } from "@/lib/helcim";
 
 export const dynamic = "force-dynamic";
 
@@ -55,6 +56,9 @@ export async function GET() {
         highBidderId: demo.highBidderId,
         status: (demo.status as AuctionLot["status"]) ?? lot.status,
         fulfillment: demo.fulfillment ?? lot.fulfillment ?? "unset",
+        paidAt: demo.paidAt ?? lot.paidAt ?? null,
+        helcimPurchaseTransactionId:
+          demo.helcimPurchaseTransactionId ?? lot.helcimPurchaseTransactionId ?? null,
       };
     }).filter(
       (lot) => lot.highBidderId === session.id || lot.highBidder === session.fullName,
@@ -64,6 +68,8 @@ export async function GET() {
   const address = profileAddress(session);
   const wins: WinInvoice[] = lots.map((lot) => {
     const invoice = invoiceNumber(lot.id, session.id);
+    const memory = lotPaidRecord(lot.id);
+    const paid = isLotPaid(lot) || Boolean(memory);
     return {
       lotId: lot.id,
       title: lot.title,
@@ -71,12 +77,14 @@ export async function GET() {
       currentBid: lot.currentBid,
       status: lot.status,
       invoice,
-      paymentMethodKey: session.paymentMethod,
-      paymentMethod: paymentMethodLabel(session.paymentMethod),
-      instructions: paymentInstructions(session.paymentMethod, invoice),
+      paymentMethodKey: "helcim_card",
+      paymentMethod: paymentMethodLabel("helcim_card"),
+      instructions: paymentInstructions("helcim_card", invoice),
       winning: lot.status === "ended",
       fulfillment: lot.fulfillment ?? "unset",
       address,
+      paid,
+      paidAt: lot.paidAt ?? memory?.paidAt ?? null,
     };
   });
 
