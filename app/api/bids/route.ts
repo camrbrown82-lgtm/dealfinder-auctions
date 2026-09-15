@@ -9,7 +9,6 @@ import {
 } from "@/lib/bidding";
 import { getSupabaseAdmin, isSupabaseConfigured } from "@/lib/supabaseClient";
 import { isProfileComplete, type BidderProfile } from "@/lib/profileTypes";
-import { loadBidderPayment } from "@/lib/helcim";
 import { openUnsoldFloors, patchLotRow, weekFromNow } from "@/lib/openFloor";
 import { recordSoldLotSettlement } from "@/lib/recordSale";
 import { mapLot, type LotRow } from "@/lib/mappers";
@@ -166,12 +165,11 @@ export async function POST(request: NextRequest) {
       { status: 400 },
     );
   }
-  const payment = await loadBidderPayment(session.id);
-  if (payment.preauthStatus !== "held") {
+  if (!session.preauthTermsAgreed) {
     return NextResponse.json(
       {
-        error: "Authorize the $50 bidding hold before placing a paddle.",
-        code: "PREAUTH_REQUIRED",
+        error: "Agree to the Sunday $50 pre-authorization before placing a paddle.",
+        code: "PREAUTH_TERMS_REQUIRED",
       },
       { status: 402 },
     );

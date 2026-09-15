@@ -7,7 +7,6 @@ import { useBidder } from "@/components/BidderProvider";
 import { LotTimer } from "@/components/LotTimer";
 import { nextLiveAmount } from "@/lib/bidding";
 import { isProfileComplete } from "@/lib/profileTypes";
-import { HelcimPayModal } from "@/components/HelcimPayModal";
 import { PreauthDisclaimer } from "@/components/PreauthDisclaimer";
 import { fulfillmentInstructions } from "@/lib/payments";
 import type { FulfillmentChoice } from "@/lib/payments";
@@ -42,10 +41,9 @@ export function AuctionRoom({ lot }: { lot: AuctionLot }) {
   const [maxAmount, setMaxAmount] = useState("");
   const [message, setMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [now, setNow] = useState(() => Date.now());
   const [feed, setFeed] = useState<BidRow[]>([]);
   const [fulfillment, setFulfillment] = useState<FulfillmentChoice>(lot.fulfillment ?? "unset");
-  const [helcimOpen, setHelcimOpen] = useState(false);
+  const [agreed, setAgreed] = useState(false);
   const pendingBid = useRef<{
     mode: "live" | "absentee" | "buy_now";
     amount: number;
@@ -53,6 +51,7 @@ export function AuctionRoom({ lot }: { lot: AuctionLot }) {
   } | null>(null);
   const openRef = useRef(false);
   const placeBidRef = useRef<() => Promise<void>>(async () => undefined);
+  const ensureAgreementRef = useRef<() => Promise<void>>(async () => undefined);
 
   const nextBid = useMemo(
     () => nextLiveAmount(currentBid, lot.minIncrement),
@@ -75,9 +74,8 @@ export function AuctionRoom({ lot }: { lot: AuctionLot }) {
   const showBuyNow = open && canBuyNow(currentBid, buyNow);
 
   useEffect(() => {
-    const id = window.setInterval(() => setNow(Date.now()), 1000);
-    return () => window.clearInterval(id);
-  }, []);
+    if (user?.preauthTermsAgreed) setAgreed(true);
+  }, [user?.preauthTermsAgreed]);
 
   useEffect(() => {
     void fetch(`/api/bids?lotId=${encodeURIComponent(lot.id)}`, { credentials: "include" })
@@ -232,9 +230,8 @@ export function AuctionRoom({ lot }: { lot: AuctionLot }) {
             : err && typeof err === "object" && "message" in err
               ? String((err as { message: string }).message)
               : "Bid failed";
-        if (response.status === 402 || json.code === "PREAUTH_REQUIRED") {
-          setHelcimOpen(true);
-          throw new Error("Authorize the $50 bidding hold, then we drop the paddle.");
+        if (response.status === 402 || json.code === "PREAUTH_TERMS_REQUIRED") {
+          throw new Error("Agree to the Sunday $50 pre-authorization, then we drop the paddle.");
         }
         throw new Error(text);
       }
@@ -269,6 +266,41 @@ export function AuctionRoom({ lot }: { lot: AuctionLot }) {
   }
   placeBidRef.current = placeBid;
 
+  async function ensureAgreementAndBid() {
+    if (!user || !isProfileComplete(user)) {
+      requestAuth(() => ensureAgreementRef.current(), "login");
+      return;
+    }
+    if (!agreed) {
+      setMessage("Check the Sunday $50 pre-authorization box to bid.");
+      return;
+    }
+    if (!user.preauthTermsAgreed) {
+      const response = await fetch("/api/profile", {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          fullName: user.fullName,
+          phone: user.phone,
+          street: user.street,
+          city: user.city,
+          province: user.province,
+          postalCode: user.postalCode,
+          paymentMethod: "helcim_card",
+          preauthTermsAgreed: true,
+        }),
+      });
+      if (!response.ok) {
+        setMessage("Could not save the Sunday pre-authorization agreement.");
+        return;
+      }
+      await refresh();
+    }
+    await placeBid();
+  }
+  ensureAgreementRef.current = ensureAgreementAndBid;
+
   async function onSubmit(event: FormEvent) {
     event.preventDefault();
     pendingBid.current = {
@@ -276,15 +308,7 @@ export function AuctionRoom({ lot }: { lot: AuctionLot }) {
       amount: nextBid,
       maxAmount: Number(maxAmount),
     };
-    if (!user || !isProfileComplete(user)) {
-      requestAuth(() => placeBidRef.current(), "login");
-      return;
-    }
-    if (user.preauthStatus !== "held") {
-      setHelcimOpen(true);
-      return;
-    }
-    await placeBid();
+    await ensureAgreementAndBid();
   }
 
   async function chooseFulfillment(next: FulfillmentChoice) {
@@ -328,8 +352,8 @@ export function AuctionRoom({ lot }: { lot: AuctionLot }) {
             <p className="font-display text-sm tracking-[0.25em] text-brand-red">YOU WON THIS LOT</p>
             <p className="font-display text-3xl">Hammer {formatCurrency(currentBid)}</p>
             <p className="font-comic text-sm">
-              Pay the hammer with Helcim at checkout. The $50 bidding hold is reversed as soon as
-              this sale goes through. Choose ship or pick up here — that choice is made after the win.
+              Pay the hammer with Helcim at checkout. The Sunday $50 hold is reversed as soon as
+              this sale goes through. If checkout is denied, the bid is forfeited. Choose ship or pick up here.
             </p>
             <div className="grid gap-2 sm:grid-cols-2">
               <button
@@ -403,18 +427,10 @@ export function AuctionRoom({ lot }: { lot: AuctionLot }) {
           <button
             type="button"
             className="comic-btn w-full"
-            disabled={busy}
+            disabled={busy || !agreed}
             onClick={() => {
               pendingBid.current = { mode: "buy_now", amount: buyNow, maxAmount: buyNow };
-              if (!user || !isProfileComplete(user)) {
-                requestAuth(() => placeBidRef.current(), "login");
-                return;
-              }
-              if (user.preauthStatus !== "held") {
-                setHelcimOpen(true);
-                return;
-              }
-              void placeBid();
+              void ensureAgreementAndBid();
             }}
           >
             Buy now {formatCurrency(buyNow)}
@@ -425,17 +441,18 @@ export function AuctionRoom({ lot }: { lot: AuctionLot }) {
           {user ? (
             <>
               Paddle: <strong>{user.fullName}</strong> — guests can watch the tape;
-              placing a bid uses this account. Helcim holds $50 on first bid.
+              placing a bid uses this account. The $50 Helcim hold runs Sunday, when the sale ends.
             </>
           ) : (
             <>
               Watch the room free. <strong>Place Bid</strong> or{" "}
               <strong>Set Absentee Bid</strong> opens the paddle gate — we keep your
-              amount and submit it after you log in. First bid asks Helcim for a $50 hold.
+              amount and submit it after you log in. Agree to the Sunday $50 hold first;
+              you are not charged until checkout.
             </>
           )}
         </p>
-        <PreauthDisclaimer compact />
+        <PreauthDisclaimer compact agreed={agreed} onAgree={setAgreed} />
 
         {mode === "live" ? (
           <p className="font-comic text-sm">
@@ -462,7 +479,7 @@ export function AuctionRoom({ lot }: { lot: AuctionLot }) {
           </label>
         )}
 
-        <button type="submit" className="comic-btn w-full" disabled={busy}>
+        <button type="submit" className="comic-btn w-full" disabled={busy || !agreed}>
           {busy
             ? "Placing…"
             : !open
@@ -471,6 +488,13 @@ export function AuctionRoom({ lot }: { lot: AuctionLot }) {
                 ? `Place Bid ${formatCurrency(nextBid)}`
                 : "Set Absentee Bid"}
         </button>
+        {!agreed ? (
+          <p className="font-comic text-sm">
+            Check the Sunday $50 pre-authorization box above. You can bid all week after that —
+            nothing is charged until checkout. If Sunday&apos;s hold or checkout is denied, the bid
+            is forfeited.
+          </p>
+        ) : null}
 
         {!isSupabaseConfigured && (
           <p className="font-comic text-xs">
@@ -481,17 +505,6 @@ export function AuctionRoom({ lot }: { lot: AuctionLot }) {
         {message && <p className="font-display text-xl">{message}</p>}
       </form>
         )}
-
-      <HelcimPayModal
-        open={helcimOpen}
-        purpose="bid_preauth"
-        lotId={lot.id}
-        onClose={() => setHelcimOpen(false)}
-        onComplete={() => {
-          setHelcimOpen(false);
-          void refresh().then(() => placeBidRef.current());
-        }}
-      />
 
       <div className="comic-panel p-4">
         <p className="font-display text-2xl">Bid tape</p>

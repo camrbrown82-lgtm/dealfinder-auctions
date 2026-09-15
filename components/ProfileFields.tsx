@@ -104,7 +104,12 @@ export function ProfileFields({
       <div className="border-4 border-black bg-[#FF0000] px-3 py-3 text-left font-comic text-sm font-bold text-white shadow-comic-red-sm">
         Helcim card
       </div>
-      <PreauthDisclaimer compact />
+      <PreauthDisclaimer
+        compact
+        agreed={value.preauthTermsAgreed}
+        onAgree={(next) => patch("preauthTermsAgreed", next)}
+        id={`${idPrefix}-preauth-agree`}
+      />
     </div>
   );
 }

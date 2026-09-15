@@ -1,7 +1,13 @@
 import type { PaymentMethod } from "@/lib/profileTypes";
 import { BID_PREAUTH_AMOUNT, PREAUTH_DISCLAIMER } from "@/lib/helcimCopy";
 
-export { BID_PREAUTH_AMOUNT, PREAUTH_DISCLAIMER, PREAUTH_DISCLAIMER_SHORT, PREAUTH_DISCLAIMER_TITLE } from "@/lib/helcimCopy";
+export {
+  BID_PREAUTH_AMOUNT,
+  PREAUTH_AGREEMENT,
+  PREAUTH_DISCLAIMER,
+  PREAUTH_DISCLAIMER_SHORT,
+  PREAUTH_DISCLAIMER_TITLE,
+} from "@/lib/helcimCopy";
 
 export const PICKUP_INSTRUCTIONS =
   process.env.NEXT_PUBLIC_PICKUP_INSTRUCTIONS ||
@@ -43,7 +49,7 @@ export function invoiceNumber(lotId: string, userId: string) {
 export function paymentInstructions(method: PaymentMethod | string, invoice: string) {
   return [
     `Pay invoice ${invoice} by card through Helcim at checkout.`,
-    `A $${BID_PREAUTH_AMOUNT.toFixed(0)} bidding hold sits on your card until this sale is paid; we reverse that hold as soon as Helcim captures the hammer.`,
+    `A $${BID_PREAUTH_AMOUNT.toFixed(0)} hold is placed on Sunday, the day the auction ends. We reverse it as soon as Helcim captures the hammer. Denied Sunday hold or checkout forfeits the bid.`,
     PREAUTH_DISCLAIMER,
   ].join(" ");
 }

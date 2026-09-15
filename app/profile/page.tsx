@@ -4,7 +4,6 @@ import { FormEvent, useEffect, useState } from "react";
 import Link from "next/link";
 import { useBidder } from "@/components/BidderProvider";
 import { ProfileFields } from "@/components/ProfileFields";
-import { PreauthDisclaimer } from "@/components/PreauthDisclaimer";
 import { PICKUP_INSTRUCTIONS, paymentMethodLabel } from "@/lib/payments";
 import { emptyProfileInput, type ProfileInput } from "@/lib/profileTypes";
 import { formatCurrency } from "@/lib/utils";
@@ -25,6 +24,7 @@ export default function ProfilePage() {
       province: user.province || "AB",
       postalCode: user.postalCode,
       paymentMethod: "helcim_card",
+      preauthTermsAgreed: Boolean(user.preauthTermsAgreed),
     });
   }, [user]);
 
@@ -69,10 +69,12 @@ export default function ProfilePage() {
 
   const holdLabel =
     user.preauthStatus === "held"
-      ? `${formatCurrency(user.preauthAmount)} Helcim hold is on the card`
+      ? `${formatCurrency(user.preauthAmount)} Sunday Helcim hold is on the card`
       : user.preauthStatus === "released"
-        ? "Last $50 hold was released after checkout"
-        : "No bidding hold yet — it appears when you place a bid";
+        ? "Last $50 Sunday hold was released after checkout"
+        : user.preauthStatus === "denied"
+          ? "Sunday hold was denied — bids on that sale were forfeited"
+          : "Sunday $50 hold runs on auction-end day after you agree";
 
   return (
     <div className="space-y-4">
@@ -92,7 +94,6 @@ export default function ProfilePage() {
           <br />
           {PICKUP_INSTRUCTIONS}
         </p>
-        <PreauthDisclaimer />
         <div className="flex flex-wrap gap-2">
           <button type="submit" className="comic-btn" disabled={busy}>
             {busy ? "Saving…" : "Save profile"}

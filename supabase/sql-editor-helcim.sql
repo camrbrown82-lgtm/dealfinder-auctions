@@ -1,6 +1,6 @@
 -- =============================================================================
 -- DealFinder / Helcim — paste into the Supabase SQL editor
--- Run QUERY 1, wait for success, then run QUERY 2.
+-- Run QUERY 1, wait for success, then QUERY 2, then QUERY 3.
 -- =============================================================================
 
 -- QUERY 1 — add Helcim to the payment_method enum (must commit before Query 2)
@@ -78,3 +78,7 @@ create index if not exists lots_paid_at_idx on public.lots (paid_at);
 
 alter table public.helcim_sessions enable row level security;
 alter table public.helcim_transactions enable row level security;
+
+-- QUERY 3 — Sunday pre-auth agreement checkbox (run after Query 2)
+alter table public.profiles
+  add column if not exists preauth_terms_agreed_at timestamptz;

@@ -48,6 +48,8 @@ declare global {
     customerCode: string | null;
     amount: number;
   }> | undefined;
+  // eslint-disable-next-line no-var
+  var __dealfinderHelcimTerms: Map<string, boolean> | undefined;
 }
 
 function sessionStore() {
@@ -69,6 +71,13 @@ function preauthMemory() {
     globalThis.__dealfinderHelcimPreauth = new Map();
   }
   return globalThis.__dealfinderHelcimPreauth;
+}
+
+function termsMemory() {
+  if (!globalThis.__dealfinderHelcimTerms) {
+    globalThis.__dealfinderHelcimTerms = new Map();
+  }
+  return globalThis.__dealfinderHelcimTerms;
 }
 
 export function helcimApiBase() {
@@ -168,6 +177,28 @@ export async function initializeHelcimCheckout(input: {
     throw new Error("Helcim did not return checkout tokens.");
   }
   return { checkoutToken: json.checkoutToken, secretToken: json.secretToken };
+}
+
+export async function processPreauthWithToken(input: {
+  cardToken: string;
+  customerCode?: string | null;
+  ipAddress: string;
+  invoiceNumber?: string;
+}) {
+  const json = (await helcimFetch("/payment/preauth", {
+    method: "POST",
+    idempotency: true,
+    body: JSON.stringify({
+      amount: Number(preauthAmount().toFixed(2)),
+      currency: helcimCurrency(),
+      ipAddress: input.ipAddress,
+      ecommerce: true,
+      invoiceNumber: input.invoiceNumber,
+      customerCode: input.customerCode || undefined,
+      cardData: { cardToken: input.cardToken },
+    }),
+  })) as HelcimTxnPayload;
+  return json;
 }
 
 export async function reverseHelcimTransaction(cardTransactionId: string | number, ipAddress: string) {
@@ -368,11 +399,44 @@ export async function persistBidderPreauth(
   if (patch.customerCode) row.helcim_customer_code = patch.customerCode;
   if (patch.status === "held") row.preauth_held_at = new Date().toISOString();
   if (patch.status === "released") row.preauth_released_at = new Date().toISOString();
+  if (patch.status === "denied") row.preauth_held_at = null;
   const { error } = await supabase.from("profiles").update(row).eq("id", userId);
   if (error && /payment_method|enum|invalid input/i.test(error.message)) {
     delete row.payment_method;
     await supabase.from("profiles").update(row).eq("id", userId);
   }
+}
+
+export async function persistTermsAgreement(userId: string, agreed: boolean) {
+  termsMemory().set(userId, agreed);
+  const demo = getDemoUser(userId);
+  if (demo) updateDemoUser(userId, { preauthTermsAgreed: agreed });
+  const supabase = getSupabaseAdmin();
+  if (!isSupabaseConfigured || !supabase) return;
+  const { error } = await supabase
+    .from("profiles")
+    .update({ preauth_terms_agreed_at: agreed ? new Date().toISOString() : null })
+    .eq("id", userId);
+  if (error && /preauth_terms|column/i.test(error.message)) return;
+}
+
+export function termsAgreedFromRow(row: Record<string, unknown> | null | undefined, userId: string) {
+  if (termsMemory().get(userId)) return true;
+  return Boolean(row?.preauth_terms_agreed_at);
+}
+
+export async function loadTermsAgreed(userId: string) {
+  if (termsMemory().get(userId)) return true;
+  const demo = getDemoUser(userId);
+  if (demo?.preauthTermsAgreed) return true;
+  const supabase = getSupabaseAdmin();
+  if (!isSupabaseConfigured || !supabase) return false;
+  const { data } = await supabase
+    .from("profiles")
+    .select("preauth_terms_agreed_at")
+    .eq("id", userId)
+    .maybeSingle();
+  return Boolean(data?.preauth_terms_agreed_at);
 }
 
 export async function recordHelcimTransaction(input: {

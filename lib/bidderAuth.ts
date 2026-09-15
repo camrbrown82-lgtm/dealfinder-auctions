@@ -4,7 +4,7 @@ import { NextResponse } from "next/server";
 import { getDemoUser, publicProfile } from "@/lib/demoUsers";
 import { normalizePaymentMethod, type BidderProfile } from "@/lib/profileTypes";
 import { BID_PREAUTH_AMOUNT } from "@/lib/helcimCopy";
-import { loadBidderPayment } from "@/lib/helcim";
+import { loadBidderPayment, loadTermsAgreed } from "@/lib/helcim";
 import { getSupabaseAdmin, isSupabaseConfigured } from "@/lib/supabaseClient";
 
 export const BIDDER_COOKIE = "df_bidder";
@@ -60,6 +60,7 @@ export async function getBidderSession(): Promise<BidderProfile | null> {
         .maybeSingle();
       if (!error && data) {
         const payment = await loadBidderPayment(data.id);
+        const agreed = await loadTermsAgreed(data.id);
         return {
           id: data.id,
           email: data.email ?? "",
@@ -74,6 +75,7 @@ export async function getBidderSession(): Promise<BidderProfile | null> {
           preauthStatus: payment.preauthStatus,
           preauthAmount: payment.preauthAmount || Number(data.preauth_amount ?? BID_PREAUTH_AMOUNT) || BID_PREAUTH_AMOUNT,
           hasCardOnFile: payment.hasCardOnFile,
+          preauthTermsAgreed: agreed || Boolean(data.preauth_terms_agreed_at),
         };
       }
     }

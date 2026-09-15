@@ -2,7 +2,7 @@ export type PaymentMethod = "helcim_card";
 
 export type AccountStatus = "active" | "suspended";
 
-export type PreauthStatus = "none" | "held" | "released";
+export type PreauthStatus = "none" | "held" | "released" | "denied";
 
 export type BidderProfile = {
   id: string;
@@ -18,6 +18,7 @@ export type BidderProfile = {
   preauthStatus: PreauthStatus;
   preauthAmount: number;
   hasCardOnFile: boolean;
+  preauthTermsAgreed: boolean;
 };
 
 export type ProfileInput = Omit<
@@ -34,6 +35,7 @@ export function emptyProfileInput(): ProfileInput {
     province: "AB",
     postalCode: "",
     paymentMethod: "helcim_card",
+    preauthTermsAgreed: false,
   };
 }
 
@@ -58,7 +60,7 @@ export function normalizePaymentMethod(_value?: unknown): PaymentMethod {
 }
 
 export function isPreauthStatus(value: unknown): value is PreauthStatus {
-  return value === "none" || value === "held" || value === "released";
+  return value === "none" || value === "held" || value === "released" || value === "denied";
 }
 
 export function profileAddress(

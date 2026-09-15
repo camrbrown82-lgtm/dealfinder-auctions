@@ -1,0 +1,12 @@
+{
+  "crons": [
+    {
+      "path": "/api/cron/sunday-preauth",
+      "schedule": "0 17,18,19,23 * * 0"
+    },
+    {
+      "path": "/api/cron/sunday-preauth",
+      "schedule": "0 0,1 * * 1"
+    }
+  ]
+}

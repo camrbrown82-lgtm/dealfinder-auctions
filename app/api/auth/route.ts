@@ -11,6 +11,7 @@ import {
   verifyPassword,
 } from "@/lib/demoUsers";
 import { normalizePaymentMethod, type PaymentMethod } from "@/lib/profileTypes";
+import { persistTermsAgreement } from "@/lib/helcim";
 import { getSupabaseAdmin, getSupabaseAuthClient, isSupabaseConfigured } from "@/lib/supabaseClient";
 
 export const dynamic = "force-dynamic";
@@ -25,6 +26,7 @@ type AuthBody = {
   province?: string;
   postalCode?: string;
   paymentMethod?: PaymentMethod;
+  preauthTermsAgreed?: boolean;
 };
 
 function profileFields(body: AuthBody) {
@@ -37,6 +39,7 @@ function profileFields(body: AuthBody) {
     province: String(body.province ?? "").trim(),
     postalCode: String(body.postalCode ?? "").trim(),
     paymentMethod,
+    preauthTermsAgreed: Boolean(body.preauthTermsAgreed),
   };
 }
 
@@ -134,6 +137,7 @@ export async function PUT(request: NextRequest) {
           payment_method: fields.paymentMethod,
           preauth_status: "none",
           preauth_amount: 50,
+          preauth_terms_agreed_at: fields.preauthTermsAgreed ? new Date().toISOString() : null,
         };
         let { error } = await supabase.from("profiles").upsert(row);
         if (error && /payment_method|preauth|enum|column|schema/i.test(error.message)) {
@@ -143,6 +147,7 @@ export async function PUT(request: NextRequest) {
         if (error) {
           return NextResponse.json({ error: error.message }, { status: 400 });
         }
+        await persistTermsAgreement(userId, fields.preauthTermsAgreed);
         const response = NextResponse.json({ ok: true });
         return setBidderCookie(response, userId);
       }

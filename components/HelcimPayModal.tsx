@@ -60,12 +60,14 @@ export function HelcimPayModal({
   lotId,
   onClose,
   onComplete,
+  onDeclined,
 }: {
   open: boolean;
   purpose: HelcimPurpose;
   lotId?: string;
   onClose: () => void;
   onComplete: (result: { demo: boolean; preauthReleased?: boolean; warning?: string }) => void;
+  onDeclined?: () => void;
 }) {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -77,6 +79,8 @@ export function HelcimPayModal({
   } | null>(null);
   const onCompleteRef = useRef(onComplete);
   onCompleteRef.current = onComplete;
+  const onDeclinedRef = useRef(onDeclined);
+  onDeclinedRef.current = onDeclined;
 
   useEffect(() => {
     if (!open) {
@@ -172,6 +176,7 @@ export function HelcimPayModal({
           destroyHelcimIframe();
           setBusy(false);
           setMessage(String(event.data.eventMessage || "Card was declined."));
+          onDeclinedRef.current?.();
         } else if (event.data.eventStatus === "HIDE") {
           window.removeEventListener("message", onMessage);
           destroyHelcimIframe();
@@ -189,7 +194,7 @@ export function HelcimPayModal({
   if (!open) return null;
 
   const heading =
-    purpose === "bid_preauth" ? "Authorize the $50 bidding hold" : "Pay this hammer with Helcim";
+    purpose === "bid_preauth" ? "Sunday $50 pre-authorization" : "Pay this hammer with Helcim";
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 p-4">
@@ -223,11 +228,14 @@ export function HelcimPayModal({
             <div className="border-4 border-black bg-white px-3 py-2">
               <p className="font-display text-xl">{PREAUTH_DISCLAIMER_TITLE}</p>
               <p className="mt-1 font-comic text-sm">{PREAUTH_DISCLAIMER}</p>
+              <p className="mt-2 font-comic text-sm font-bold">
+                If this Sunday hold is denied, your bids on this sale are forfeited.
+              </p>
             </div>
           ) : (
             <p className="font-comic text-sm">
-              Helcim charges the hammer now. The $50 bidding hold is reversed as soon as this sale
-              goes through.
+              Helcim charges the hammer now. The $50 Sunday hold is reversed as soon as this sale
+              goes through. If this payment is denied, the bid is forfeited.
             </p>
           )}
           {session ? (
@@ -255,7 +263,7 @@ export function HelcimPayModal({
                 disabled={busy || !session}
                 onClick={() => void confirm(undefined, true)}
               >
-                {busy ? "Working…" : purpose === "bid_preauth" ? "Test-approve $50 hold" : "Test-pay hammer"}
+                {busy ? "Working…" : purpose === "bid_preauth" ? "Test-approve Sunday $50 hold" : "Test-pay hammer"}
               </button>
             ) : (
               <button
@@ -267,6 +275,19 @@ export function HelcimPayModal({
                 {busy ? "Working…" : "Open Helcim"}
               </button>
             )}
+            {session?.demo && purpose === "bid_preauth" ? (
+              <button
+                type="button"
+                className="comic-btn-invert"
+                disabled={busy}
+                onClick={() => {
+                  destroyHelcimIframe();
+                  onDeclinedRef.current?.();
+                }}
+              >
+                Test-deny Sunday hold
+              </button>
+            ) : null}
             <button
               type="button"
               className="comic-btn-invert"

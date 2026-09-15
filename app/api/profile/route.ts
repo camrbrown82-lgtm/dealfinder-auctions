@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { bidderUnauthorized, getBidderSession } from "@/lib/bidderAuth";
 import { updateDemoUser, publicProfile } from "@/lib/demoUsers";
+import { persistTermsAgreement } from "@/lib/helcim";
 import { normalizePaymentMethod } from "@/lib/profileTypes";
 import { getSupabaseAdmin, isSupabaseConfigured } from "@/lib/supabaseClient";
 
@@ -10,8 +11,12 @@ export async function PATCH(request: NextRequest) {
   const session = await getBidderSession();
   if (!session) return bidderUnauthorized();
 
-  const body = (await request.json()) as Record<string, string>;
+  const body = (await request.json()) as Record<string, unknown>;
   const paymentMethod = normalizePaymentMethod(body.paymentMethod || session.paymentMethod);
+  const agreed =
+    typeof body.preauthTermsAgreed === "boolean"
+      ? body.preauthTermsAgreed
+      : session.preauthTermsAgreed;
   const patch = {
     fullName: String(body.fullName ?? session.fullName).trim(),
     phone: String(body.phone ?? session.phone).trim(),
@@ -20,12 +25,13 @@ export async function PATCH(request: NextRequest) {
     province: String(body.province ?? session.province).trim(),
     postalCode: String(body.postalCode ?? session.postalCode).trim().toUpperCase(),
     paymentMethod,
+    preauthTermsAgreed: agreed,
   };
 
   if (isSupabaseConfigured) {
     const supabase = getSupabaseAdmin();
     if (supabase) {
-      const update = {
+      const update: Record<string, unknown> = {
         full_name: patch.fullName,
         phone: patch.phone,
         street: patch.street,
@@ -33,6 +39,7 @@ export async function PATCH(request: NextRequest) {
         province: patch.province,
         postal_code: patch.postalCode,
         payment_method: patch.paymentMethod,
+        preauth_terms_agreed_at: patch.preauthTermsAgreed ? new Date().toISOString() : null,
       };
       let { data, error } = await supabase
         .from("profiles")
@@ -49,9 +56,19 @@ export async function PATCH(request: NextRequest) {
           .select("*")
           .single());
       }
+      if (error && /preauth_terms|column/i.test(error.message)) {
+        const { preauth_terms_agreed_at: _terms, ...withoutTerms } = update;
+        ({ data, error } = await supabase
+          .from("profiles")
+          .update(withoutTerms)
+          .eq("id", session.id)
+          .select("*")
+          .single());
+      }
       if (error) {
         return NextResponse.json({ error: error.message }, { status: 400 });
       }
+      await persistTermsAgreement(session.id, patch.preauthTermsAgreed);
       return NextResponse.json({
         user: {
           id: data.id,
@@ -64,11 +81,12 @@ export async function PATCH(request: NextRequest) {
           postalCode: data.postal_code,
           paymentMethod: normalizePaymentMethod(data.payment_method),
           status: data.status === "suspended" ? "suspended" : "active",
-          preauthStatus: data.preauth_status === "held" || data.preauth_status === "released"
+          preauthStatus: data.preauth_status === "held" || data.preauth_status === "released" || data.preauth_status === "denied"
             ? data.preauth_status
             : "none",
           preauthAmount: Number(data.preauth_amount ?? session.preauthAmount) || session.preauthAmount,
           hasCardOnFile: Boolean(data.helcim_card_token),
+          preauthTermsAgreed: patch.preauthTermsAgreed,
         },
       });
     }

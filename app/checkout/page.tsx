@@ -68,10 +68,12 @@ export default function CheckoutPage() {
 
   const holdLabel =
     user.preauthStatus === "held"
-      ? `${formatCurrency(user.preauthAmount)} Helcim hold is sitting on your card until a sale is paid.`
+      ? `${formatCurrency(user.preauthAmount)} Sunday Helcim hold is sitting on your card until a sale is paid.`
       : user.preauthStatus === "released"
-        ? "The $50 bidding hold has been released back to your card."
-        : "No active bidding hold. It is placed the next time you bid.";
+        ? "The $50 Sunday hold has been released back to your card."
+        : user.preauthStatus === "denied"
+          ? "Sunday's $50 hold was denied. Bids on that sale were forfeited."
+          : "The $50 hold is placed on Sunday, the day the auction ends — not when you bid.";
 
   return (
     <div className="space-y-4">
@@ -79,7 +81,8 @@ export default function CheckoutPage() {
         <h1 className="font-display text-5xl text-brand-red">Winning checkout</h1>
         <p className="font-comic text-sm">
           Invoices settle by Helcim card only. After each hammer, pick ship or pick up, then pay
-          the hammer — we reverse the $50 bidding hold as soon as that sale goes through.
+          the hammer — we reverse the Sunday $50 hold as soon as that sale goes through. If checkout
+          is denied, that bid is forfeited.
         </p>
       </div>
 
@@ -136,9 +139,23 @@ export default function CheckoutPage() {
           setNotice(
             result.warning ||
               (result.preauthReleased
-                ? "Hammer paid with Helcim. The $50 bidding hold was sent back to your card."
+                ? "Hammer paid with Helcim. The $50 Sunday hold was sent back to your card."
                 : "Hammer paid with Helcim."),
           );
+        }}
+        onDeclined={() => {
+          const lotId = payLotId;
+          setPayLotId(null);
+          if (!lotId) return;
+          void fetch("/api/payments/helcim/denied", {
+            method: "POST",
+            credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ lotId, scope: "lot" }),
+          }).then(() => {
+            void load();
+            setNotice("Checkout was denied. That bid is forfeited.");
+          });
         }}
       />
     </div>

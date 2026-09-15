@@ -21,8 +21,10 @@ Pop-art live auction house: consignor AI intake, admin inventory, realtime lot p
 
 Cash and Interac e-Transfer are retired. Every payment prompt uses Helcim.
 
-- **Bid:** Helcim places a **$50 CAD pre-authorization** as soon as a paddle is dropped. This is a hold, not a charge — it proves the card is valid and protects the house if a winner walks. Copy on the bid ticket explains this.
-- **Checkout:** the hammer is charged through Helcim. When that sale goes through, we reverse the $50 hold so it is released back to the card.
+- **Agreement:** the bid ticket (and signup / bidder card) shows a Sunday $50 pre-authorization disclaimer with a required checkbox. After they agree, they can bid all week without being charged.
+- **Sunday hold:** auctions close every Sunday. On that day Helcim places a **$50 CAD pre-authorization** (a hold, not a charge) on high paddles. If the hold is denied, those bids are forfeited and the lots reopen.
+- **Checkout:** the hammer is charged through Helcim. When that sale goes through, we reverse the $50 hold. If checkout is denied, that bid is forfeited.
+- Vercel cron hits `/api/cron/sunday-preauth` late Sunday UTC / early Monday UTC (18:00 America/Edmonton). Set `CRON_SECRET` so only Vercel (or a logged-in admin) can run it.
 - Without `HELCIM_API_TOKEN` the site still runs: the Helcim modal offers a local test approval so you can walk the flow before the sandbox token arrives.
 
 Copy `.env.example` to `.env.local` and fill the Helcim block. On Vercel, add the same keys before redeploy. In the Helcim dashboard API Access Configuration, whitelist `localhost`, the Vercel domain, and any custom domain (skipped on developer test accounts).
@@ -30,7 +32,7 @@ Copy `.env.example` to `.env.local` and fill the Helcim block. On Vercel, add th
 ## Setup
 
 1. Fill `.env.local` from `.env.example` (`OPENAI_API_KEY`, Supabase, Helcim, optional `SUPABASE_SERVICE_ROLE_KEY` / Resend).
-2. In the Supabase SQL editor, run historical migrations as needed, then **run the Helcim SQL** in `supabase/sql-editor-helcim.sql` (Query 1, then Query 2).
+2. In the Supabase SQL editor, run historical migrations as needed, then **run the Helcim SQL** in `supabase/sql-editor-helcim.sql` (Query 1, then Query 2, then Query 3).
 3. Enable Realtime for `lots`, `bids`, and `consignments` if the publication block was skipped.
 4. Set `ADMIN_PASSWORD` (demo default: `hammer`).
 5. `npm install` then `npm run dev` → http://localhost:43173
@@ -49,6 +51,8 @@ Paste `supabase/sql-editor-helcim.sql` into the Supabase SQL editor.
 - `lots.paid_at`, `lots.helcim_purchase_transaction_id`
 - `helcim_sessions` and `helcim_transactions` ledgers (service-role only)
 
+**Query 3** adds `profiles.preauth_terms_agreed_at` (the Sunday-hold checkbox).
+
 ## Prompt log
 
 - 2026-09-03 — Scaffolded the App Router tree (layout, live grid, lot page, consignor intake, admin, GPT-4o route).
@@ -57,3 +61,4 @@ Paste `supabase/sql-editor-helcim.sql` into the Supabase SQL editor.
 - 2026-09-03 — Prompt 4: auction lots get a red/cream comic room, bids-table realtime, +2:00 anti-snipe in the last two minutes, and live vs absentee max auto-increment bidding.
 - 2026-09-03 — Prompt 5: password-gated admin desk with AI queue edits, auction event scheduler, inventory search/removal/bulk seed, and consignor payout report.
 - 2026-09-15 — Helcim card checkout everywhere payments were prompted; $50 bid pre-auth with disclaimer; cash and e-Transfer removed; hold released after hammer checkout.
+- 2026-09-15 — Sunday-only $50 pre-auth: checkbox agreement at bid time, hold on auction-end day, denied hold or checkout forfeits the paddle.

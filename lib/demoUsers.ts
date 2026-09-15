@@ -59,6 +59,7 @@ export function createDemoUser(input: {
   province: string;
   postalCode: string;
   paymentMethod?: PaymentMethod;
+  preauthTermsAgreed?: boolean;
 }): DemoUser {
   const email = input.email.trim().toLowerCase();
   if (findDemoUserByEmail(email)) {
@@ -78,6 +79,7 @@ export function createDemoUser(input: {
     preauthStatus: "none",
     preauthAmount: BID_PREAUTH_AMOUNT,
     hasCardOnFile: false,
+    preauthTermsAgreed: Boolean(input.preauthTermsAgreed),
     preauthTransactionId: null,
     helcimCardToken: null,
     helcimCustomerCode: null,
@@ -126,6 +128,7 @@ export function publicProfile(user: DemoUser): BidderProfile {
     preauthStatus: user.preauthStatus ?? "none",
     preauthAmount: user.preauthAmount ?? BID_PREAUTH_AMOUNT,
     hasCardOnFile: Boolean(user.helcimCardToken || user.hasCardOnFile),
+    preauthTermsAgreed: Boolean(user.preauthTermsAgreed),
   };
 }
 

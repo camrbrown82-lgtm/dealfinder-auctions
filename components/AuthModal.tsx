@@ -87,6 +87,7 @@ export function AuthModal({
             province: me.user.province || "AB",
             postalCode: me.user.postalCode,
             paymentMethod: me.user.paymentMethod,
+            preauthTermsAgreed: Boolean(me.user.preauthTermsAgreed),
           });
           setCompleting(true);
           onMode("signup");
@@ -204,7 +205,11 @@ export function AuthModal({
           )}
 
           <div className="flex flex-wrap gap-2 pt-1">
-            <button type="submit" className="comic-btn" disabled={busy}>
+            <button
+              type="submit"
+              className="comic-btn"
+              disabled={busy || (needsProfile && !profile.preauthTermsAgreed)}
+            >
               {busy
                 ? "Working…"
                 : mode === "login"
