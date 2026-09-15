@@ -9,25 +9,62 @@
   --brand-paper: #ffffff;
 }
 
-html,
-body {
+html {
   min-height: 100%;
+  max-width: 100%;
+  overflow-x: clip;
 }
 
 body {
+  min-height: 100%;
+  max-width: 100%;
+  overflow-x: clip;
   @apply bg-brand-cream text-brand-ink font-comic antialiased;
-  background-image: radial-gradient(circle, #000000 1px, transparent 1px);
+  background-image: radial-gradient(circle, #ff0000 1px, transparent 1px);
   background-size: 18px 18px;
   background-position: 0 0;
 }
 
+input,
+textarea,
+select {
+  @apply border-4 border-brand-ink bg-white font-comic text-brand-ink shadow-comic-red-sm outline-none;
+}
+
+input[type="checkbox"],
+input[type="radio"],
+input[type="file"],
+input[type="hidden"],
+input[type="range"],
+input[type="submit"],
+input[type="button"],
+input[type="image"],
+input[type="color"] {
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+input[type="checkbox"],
+input[type="radio"] {
+  accent-color: #ff0000;
+}
+
 @layer components {
   .comic-panel {
-    @apply border-4 border-brand-ink bg-white shadow-comic;
+    @apply border-4 border-brand-ink bg-brand-cream shadow-comic-red;
   }
 
   .comic-panel-sm {
-    @apply border-4 border-brand-ink bg-white shadow-comic-sm;
+    @apply border-4 border-brand-ink bg-brand-cream shadow-comic-red-sm;
+  }
+
+  .comic-field {
+    @apply border-4 border-brand-ink bg-white text-brand-ink shadow-comic-red-sm outline-none;
+  }
+
+  .comic-table-wrap {
+    @apply overflow-x-auto border-4 border-brand-ink bg-brand-cream shadow-comic-red;
   }
 
   .pop-shadow {
@@ -39,11 +76,11 @@ body {
   }
 
   .comic-btn {
-    @apply inline-flex items-center justify-center border-4 border-brand-ink bg-brand-red px-5 py-2 font-display text-xl tracking-wide text-white shadow-comic-sm transition hover:-translate-y-0.5 hover:shadow-comic disabled:cursor-not-allowed disabled:opacity-60;
+    @apply inline-flex items-center justify-center border-4 border-brand-ink bg-brand-red px-3 py-1.5 text-center font-display text-base tracking-wide text-white shadow-comic-sm transition hover:-translate-y-0.5 hover:shadow-comic disabled:cursor-not-allowed disabled:opacity-60 sm:px-5 sm:py-2 sm:text-xl;
   }
 
   .comic-btn-invert {
-    @apply inline-flex items-center justify-center border-4 border-brand-ink bg-brand-cream px-5 py-2 font-display text-xl tracking-wide text-brand-ink shadow-comic-sm transition hover:-translate-y-0.5 hover:shadow-comic disabled:cursor-not-allowed disabled:opacity-60;
+    @apply inline-flex items-center justify-center border-4 border-brand-ink bg-brand-cream px-3 py-1.5 text-center font-display text-base tracking-wide text-brand-ink shadow-comic-red-sm transition hover:-translate-y-0.5 hover:shadow-comic-red disabled:cursor-not-allowed disabled:opacity-60 sm:px-5 sm:py-2 sm:text-xl;
   }
 
   .halftone-bar {
@@ -52,5 +89,16 @@ body {
       #ff0000 0 12px,
       #fff7d1 12px 24px
     );
+  }
+}
+
+@media print {
+  body {
+    background: #fff !important;
+    background-image: none !important;
+  }
+
+  .print-auction {
+    break-after: page;
   }
 }

@@ -1,14 +1,23 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useBidder } from "@/components/BidderProvider";
 import { LotTimer } from "@/components/LotTimer";
 import { nextLiveAmount } from "@/lib/bidding";
 import { isProfileComplete } from "@/lib/profileTypes";
+import { INTERAC_EMAIL, fulfillmentInstructions } from "@/lib/payments";
+import type { FulfillmentChoice } from "@/lib/payments";
+import { profileAddress } from "@/lib/profileTypes";
 import { getSupabaseClient, isSupabaseConfigured } from "@/lib/supabaseClient";
+import { buyNowPriceOf, canBuyNow } from "@/lib/buyNow";
+import { recordInterest } from "@/lib/interest";
+import { LotImage } from "@/components/LotImage";
 import {
+  extraLotImages,
   formatCurrency,
-  isLotOpen,
+  parseLotEndMs,
   type AuctionLot,
 } from "@/lib/utils";
 
@@ -19,11 +28,13 @@ type BidRow = {
 };
 
 export function AuctionRoom({ lot }: { lot: AuctionLot }) {
+  const router = useRouter();
   const { user, requestAuth } = useBidder();
   const [currentBid, setCurrentBid] = useState(lot.currentBid);
   const [endsAt, setEndsAt] = useState(lot.endsAt);
   const [highBidder, setHighBidder] = useState(lot.highBidder ?? null);
-  const [status, setStatus] = useState(lot.status ?? "live");
+  const [highBidderId, setHighBidderId] = useState(lot.highBidderId ?? null);
+  const [status, setStatus] = useState<AuctionLot["status"]>(lot.status ?? "live");
   const [extended, setExtended] = useState(false);
   const [mode, setMode] = useState<"live" | "absentee">("live");
   const [maxAmount, setMaxAmount] = useState("");
@@ -31,17 +42,34 @@ export function AuctionRoom({ lot }: { lot: AuctionLot }) {
   const [busy, setBusy] = useState(false);
   const [now, setNow] = useState(() => Date.now());
   const [feed, setFeed] = useState<BidRow[]>([]);
+  const [fulfillment, setFulfillment] = useState<FulfillmentChoice>(lot.fulfillment ?? "unset");
   const pendingBid = useRef<{
-    mode: "live" | "absentee";
+    mode: "live" | "absentee" | "buy_now";
     amount: number;
     maxAmount: number;
   } | null>(null);
+  const openRef = useRef(false);
+  const placeBidRef = useRef<() => Promise<void>>(async () => undefined);
 
   const nextBid = useMemo(
     () => nextLiveAmount(currentBid, lot.minIncrement),
     [currentBid, lot.minIncrement],
   );
-  const open = isLotOpen({ endsAt, status }, now);
+  const buyNow = buyNowPriceOf(lot);
+  const extras = extraLotImages(lot);
+  const hasWinner = Boolean(highBidder || highBidderId);
+  const soldClosed = status === "ended" && hasWinner;
+  const open = status !== "removed" && !soldClosed;
+  openRef.current = open;
+  const youWon =
+    soldClosed &&
+    Boolean(
+      user &&
+        (highBidderId === user.id ||
+          highBidder === user.fullName ||
+          highBidder === user.email),
+    );
+  const showBuyNow = open && canBuyNow(currentBid, buyNow);
 
   useEffect(() => {
     const id = window.setInterval(() => setNow(Date.now()), 1000);
@@ -49,10 +77,42 @@ export function AuctionRoom({ lot }: { lot: AuctionLot }) {
   }, []);
 
   useEffect(() => {
-    void fetch(`/api/bids?lotId=${encodeURIComponent(lot.id)}`)
+    void fetch(`/api/bids?lotId=${encodeURIComponent(lot.id)}`, { credentials: "include" })
       .then((res) => res.json())
       .then((json) => {
         if (Array.isArray(json.bids)) setFeed(json.bids);
+      })
+      .catch(() => undefined);
+  }, [lot.id]);
+
+  useEffect(() => {
+    void fetch("/api/live-clock", { cache: "no-store" })
+      .then((res) => res.json())
+      .then((json) => {
+        const row = Array.isArray(json.lots)
+          ? json.lots.find((item: { id?: string }) => item.id === lot.id)
+          : null;
+        if (!row) return;
+        if (row.currentBid != null) setCurrentBid(Number(row.currentBid));
+        if (row.highBidder !== undefined) setHighBidder(row.highBidder);
+        if (row.status === "removed") setStatus("removed");
+        else setStatus("live");
+        if (row.endsAt) {
+          setEndsAt((prev) => {
+            if (row.status === "ended" || row.status === "removed") return String(row.endsAt);
+            const nextEnd = parseLotEndMs(String(row.endsAt));
+            const prevEnd = parseLotEndMs(prev);
+            if (
+              Number.isFinite(prevEnd) &&
+              prevEnd > Date.now() &&
+              Number.isFinite(nextEnd) &&
+              nextEnd <= Date.now()
+            ) {
+              return prev;
+            }
+            return String(row.endsAt);
+          });
+        }
       })
       .catch(() => undefined);
   }, [lot.id]);
@@ -104,19 +164,32 @@ export function AuctionRoom({ lot }: { lot: AuctionLot }) {
             current_bid?: number | string;
             ends_at?: string;
             high_bidder?: string | null;
+            high_bidder_id?: string | null;
             status?: AuctionLot["status"];
+            fulfillment?: FulfillmentChoice;
           };
           if (next.current_bid != null) setCurrentBid(Number(next.current_bid));
+          if (next.high_bidder !== undefined) setHighBidder(next.high_bidder);
+          if (next.high_bidder_id !== undefined) setHighBidderId(next.high_bidder_id);
+          if (next.fulfillment === "ship" || next.fulfillment === "pickup" || next.fulfillment === "unset") {
+            setFulfillment(next.fulfillment);
+          }
+          if (next.status === "removed" || next.status === "ended") setStatus(next.status);
+          else if (next.status) setStatus(next.status);
           if (next.ends_at) {
             setEndsAt((prev) => {
-              if (new Date(next.ends_at!).getTime() > new Date(prev).getTime()) {
+              if (next.status === "ended" || next.status === "removed") return next.ends_at!;
+              const nextEnd = parseLotEndMs(next.ends_at);
+              const prevEnd = parseLotEndMs(prev);
+              if (Number.isFinite(nextEnd) && Number.isFinite(prevEnd) && nextEnd > prevEnd) {
                 setExtended(true);
+              }
+              if (Number.isFinite(prevEnd) && prevEnd > Date.now() && Number.isFinite(nextEnd) && nextEnd <= Date.now()) {
+                return prev;
               }
               return next.ends_at!;
             });
           }
-          if (next.high_bidder !== undefined) setHighBidder(next.high_bidder);
-          if (next.status) setStatus(next.status);
         },
       )
       .subscribe();
@@ -127,7 +200,6 @@ export function AuctionRoom({ lot }: { lot: AuctionLot }) {
   }, [lot.id]);
 
   async function placeBid() {
-    if (!open) return;
     const intent = pendingBid.current ?? {
       mode,
       amount: nextBid,
@@ -139,6 +211,7 @@ export function AuctionRoom({ lot }: { lot: AuctionLot }) {
     try {
       const response = await fetch("/api/bids", {
         method: "POST",
+        credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           lotId: lot.id,
@@ -148,14 +221,33 @@ export function AuctionRoom({ lot }: { lot: AuctionLot }) {
         }),
       });
       const json = await response.json();
-      if (!response.ok) throw new Error(json.error || "Bid failed");
+      if (!response.ok) {
+        const err = json.error;
+        const text =
+          typeof err === "string"
+            ? err
+            : err && typeof err === "object" && "message" in err
+              ? String((err as { message: string }).message)
+              : "Bid failed";
+        throw new Error(text);
+      }
+      recordInterest(lot);
+      pendingBid.current = null;
 
       setCurrentBid(json.currentBid);
       setEndsAt(json.endsAt);
       setHighBidder(json.highBidder);
+      if (json.highBidderId) setHighBidderId(json.highBidderId);
       setExtended(Boolean(json.extended));
       if (Array.isArray(json.events)) {
         setFeed((current) => [...json.events.slice().reverse(), ...current].slice(0, 12));
+      }
+      if (json.status) setStatus(json.status);
+      if (json.boughtNow) {
+        setStatus("ended");
+        setMessage(`You won this lot for ${formatCurrency(json.currentBid)}. Choose ship or pick up below, then settle payment.`);
+        router.push("/checkout");
+        return;
       }
       setMessage(
         json.extended
@@ -168,28 +260,51 @@ export function AuctionRoom({ lot }: { lot: AuctionLot }) {
       setBusy(false);
     }
   }
+  placeBidRef.current = placeBid;
 
   async function onSubmit(event: FormEvent) {
     event.preventDefault();
-    if (!open) return;
     pendingBid.current = {
       mode,
       amount: nextBid,
       maxAmount: Number(maxAmount),
     };
     if (!user || !isProfileComplete(user)) {
-      requestAuth(() => placeBid(), "signup");
+      requestAuth(() => placeBidRef.current(), "login");
       return;
     }
     await placeBid();
   }
 
+  async function chooseFulfillment(next: FulfillmentChoice) {
+    setBusy(true);
+    setMessage(null);
+    try {
+      const response = await fetch("/api/wins", {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ lotId: lot.id, fulfillment: next }),
+      });
+      const json = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(typeof json.error === "string" ? json.error : "Could not save delivery.");
+      }
+      setFulfillment(next);
+      setMessage(next === "ship" ? "We will ship this lot." : "Marked for pickup.");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Could not save delivery.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <div className="space-y-4">
-      <div className="flex flex-col items-start justify-between gap-3 border-4 border-black bg-[#FF0000] p-4 text-white sm:flex-row sm:items-center">
+      <div className="flex flex-col items-start justify-between gap-3 comic-panel p-4 sm:flex-row sm:items-center">
         <div>
-          <p className="font-display text-sm tracking-[0.25em]">LIVE HAMMER</p>
-          <p className="font-display text-4xl">{formatCurrency(currentBid)}</p>
+          <p className="font-display text-sm tracking-[0.25em] text-brand-red">LIVE HAMMER</p>
+          <p className="break-words font-display text-4xl text-brand-red">{formatCurrency(currentBid)}</p>
           <p className="font-comic text-sm">
             {highBidder ? `High bidder: ${highBidder}` : "No bids yet — open the floor"}
           </p>
@@ -197,11 +312,67 @@ export function AuctionRoom({ lot }: { lot: AuctionLot }) {
         <LotTimer endsAt={endsAt} extended={extended} />
       </div>
 
-      <form
+        {youWon ? (
+          <div className="comic-panel space-y-3 p-5">
+            <p className="font-display text-sm tracking-[0.25em] text-brand-red">YOU WON THIS LOT</p>
+            <p className="font-display text-3xl">Hammer {formatCurrency(currentBid)}</p>
+            <p className="font-comic text-sm">
+              Pay by Interac e-Transfer to <strong>{INTERAC_EMAIL}</strong> or pay on arrival.
+              Choose ship or pick up here — that choice is made after the win.
+            </p>
+            <div className="grid gap-2 sm:grid-cols-2">
+              <button
+                type="button"
+                disabled={busy}
+                className={fulfillment === "ship" ? "comic-btn" : "comic-btn-invert"}
+                onClick={() => void chooseFulfillment("ship")}
+              >
+                Ship it
+              </button>
+              <button
+                type="button"
+                disabled={busy}
+                className={fulfillment === "pickup" ? "comic-btn" : "comic-btn-invert"}
+                onClick={() => void chooseFulfillment("pickup")}
+              >
+                Pick up
+              </button>
+            </div>
+            <p className="border-4 border-black bg-white px-3 py-2 font-comic text-sm">
+              {fulfillmentInstructions(fulfillment, user ? profileAddress(user) : "")}
+            </p>
+            <Link href="/checkout" className="comic-btn inline-block">
+              Settle payment
+            </Link>
+            {message ? <p className="font-display text-xl">{message}</p> : null}
+          </div>
+        ) : status === "removed" ? (
+          <div className="comic-panel space-y-3 p-5">
+            <p className="font-display text-sm tracking-[0.25em] text-brand-red">PULLED FROM THE SALE</p>
+            <p className="font-comic text-sm">
+              This lot is no longer on the live floor. House staff moved it to unsold or settlements.
+            </p>
+            <Link href="/live" className="comic-btn inline-block">
+              Back to live lots
+            </Link>
+          </div>
+        ) : soldClosed ? (
+          <div className="comic-panel space-y-3 p-5">
+            <p className="font-display text-sm tracking-[0.25em] text-brand-red">SOLD</p>
+            <p className="font-display text-3xl">Hammer {formatCurrency(currentBid)}</p>
+            <p className="font-comic text-sm">
+              {highBidder ? `Won by ${highBidder}.` : "This lot is closed."} It is on the settlement desk.
+            </p>
+            <Link href="/live" className="comic-btn inline-block">
+              Back to live lots
+            </Link>
+          </div>
+        ) : (
+        <form
         onSubmit={onSubmit}
-        className="space-y-4 border-4 border-black bg-[#FFF7D1] p-5 shadow-[6px_6px_0_0_#000]"
+        className="comic-panel space-y-4 p-5"
       >
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <button
             type="button"
             className={mode === "live" ? "comic-btn !text-base" : "comic-btn-invert !text-base"}
@@ -217,6 +388,23 @@ export function AuctionRoom({ lot }: { lot: AuctionLot }) {
             Absentee max
           </button>
         </div>
+        {showBuyNow && buyNow ? (
+          <button
+            type="button"
+            className="comic-btn w-full"
+            disabled={busy}
+            onClick={() => {
+              pendingBid.current = { mode: "buy_now", amount: buyNow, maxAmount: buyNow };
+              if (!user || !isProfileComplete(user)) {
+                requestAuth(() => placeBidRef.current(), "login");
+                return;
+              }
+              void placeBid();
+            }}
+          >
+            Buy now {formatCurrency(buyNow)}
+          </button>
+        ) : null}
 
         <p className="font-comic text-sm">
           {user ? (
@@ -258,11 +446,11 @@ export function AuctionRoom({ lot }: { lot: AuctionLot }) {
           </label>
         )}
 
-        <button type="submit" className="comic-btn w-full" disabled={busy || !open}>
-          {!open
-            ? "Bidding closed"
-            : busy
-              ? "Placing…"
+        <button type="submit" className="comic-btn w-full" disabled={busy}>
+          {busy
+            ? "Placing…"
+            : !open
+              ? `Place Bid ${formatCurrency(nextBid)}`
               : mode === "live"
                 ? `Place Bid ${formatCurrency(nextBid)}`
                 : "Set Absentee Bid"}
@@ -276,8 +464,9 @@ export function AuctionRoom({ lot }: { lot: AuctionLot }) {
         )}
         {message && <p className="font-display text-xl">{message}</p>}
       </form>
+        )}
 
-      <div className="border-4 border-black bg-[#FFF7D1] p-4 shadow-[6px_6px_0_0_#000]">
+      <div className="comic-panel p-4">
         <p className="font-display text-2xl">Bid tape</p>
         {feed.length === 0 ? (
           <p className="font-comic text-sm">Waiting for the first paddle…</p>
@@ -292,6 +481,20 @@ export function AuctionRoom({ lot }: { lot: AuctionLot }) {
           </ul>
         )}
       </div>
+
+      {extras.length > 0 ? (
+        <div className="comic-panel p-4">
+          <p className="font-display text-2xl">Submitted photos</p>
+          <p className="font-comic text-sm">Warehouse shots from intake, after the listing photo.</p>
+          <div className="mt-3 grid grid-cols-2 gap-2">
+            {extras.map((src) => (
+              <div key={src} className="relative aspect-square overflow-hidden border-4 border-black bg-white">
+                <LotImage src={src} alt={`${lot.title} submitted photo`} fill className="object-cover" sizes="40vw" />
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

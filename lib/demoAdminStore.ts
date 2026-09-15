@@ -7,11 +7,15 @@ import {
   type LotCategory,
 } from "@/lib/utils";
 import { registerDemoLot, seedDemoBidTape } from "@/lib/demoAuctionStore";
+import { suggestLotNumber } from "@/lib/catalogNumbers";
+import { DEFAULT_HOUSE_STARTING_BID, type HouseDeskSettings } from "@/lib/houseDesk";
+import { WEEKLY_SALES } from "@/lib/weeklySales";
 
 export type AdminDemoState = {
   queue: Consignment[];
   inventory: AuctionLot[];
   events: AuctionEvent[];
+  houseSettings: HouseDeskSettings;
 };
 
 declare global {
@@ -25,27 +29,42 @@ function clone<T>(value: T): T {
 
 export function getAdminDemo(): AdminDemoState {
   if (!globalThis.__dealfinderAdminDemo) {
-    const events: AuctionEvent[] = [
-      {
-        id: "evt-friday-pow",
-        name: "Friday Night POW Sale",
-        auctionNumber: "AU-2026-001",
-        startsAt: new Date(Date.now() + 1000 * 60 * 60).toISOString(),
-        endsAt: new Date(Date.now() + 1000 * 60 * 60 * 26).toISOString(),
-      },
-    ];
+    const events: AuctionEvent[] = WEEKLY_SALES.map((sale) => ({
+      id: `weekly-${sale.auctionNumber}`,
+      name: sale.name,
+      auctionNumber: sale.auctionNumber,
+      startsAt: sale.startsAt,
+      endsAt: sale.endsAt,
+    }));
+    const nextId = events[0]?.id;
     globalThis.__dealfinderAdminDemo = {
       queue: clone(MOCK_CONSIGNMENTS),
       inventory: clone(MOCK_LOTS).map((lot) => ({
         ...lot,
-        eventId: lot.status === "ended" ? "evt-friday-pow" : "evt-friday-pow",
-        auctionNumber: "AU-2026-001",
+        eventId: nextId,
+        auctionNumber: events[0]?.auctionNumber ?? "AU-2026-0920",
+        endsAt: events[0]?.endsAt ?? lot.endsAt,
+        status: lot.status === "ended" ? "ended" : "live",
       })),
       events,
+      houseSettings: {
+        defaultStartingBid: DEFAULT_HOUSE_STARTING_BID,
+        nextLotNumber: suggestLotNumber(MOCK_LOTS),
+      },
     };
     seedDemoBidTape();
   }
-  return globalThis.__dealfinderAdminDemo;
+  const state = globalThis.__dealfinderAdminDemo;
+  if (!state) {
+    throw new Error("Admin demo store failed to initialize.");
+  }
+  if (!state.houseSettings) {
+    state.houseSettings = {
+      defaultStartingBid: DEFAULT_HOUSE_STARTING_BID,
+      nextLotNumber: suggestLotNumber(state.inventory),
+    };
+  }
+  return state;
 }
 
 export function stampAuctionNumbers(state: AdminDemoState) {
@@ -60,6 +79,12 @@ export function addDemoLot(lot: AuctionLot) {
   state.inventory.unshift(lot);
   registerDemoLot(lot);
   return lot;
+}
+
+export function addDemoConsignment(item: Consignment) {
+  const state = getAdminDemo();
+  state.queue.unshift(item);
+  return item;
 }
 
 export function seedDemoLots() {

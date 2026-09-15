@@ -1,8 +1,10 @@
 import { getSupabaseAdmin, isSupabaseConfigured } from "@/lib/supabaseClient";
+import { openRows } from "@/lib/openFloor";
 import { mapLot, type LotRow } from "@/lib/mappers";
 import { getDemoLot } from "@/lib/demoAuctionStore";
 import { getAdminDemo, stampAuctionNumbers } from "@/lib/demoAdminStore";
-import { MOCK_LOTS, getLotById, filterLots, lotImages, type AuctionLot } from "@/lib/utils";
+import { MOCK_LOTS, getLotById, filterLots, lotImages, uniqueImageUrls, type AuctionEvent, type AuctionLot } from "@/lib/utils";
+import { ensureWeeklySales } from "@/lib/weeklySales";
 
 function withGallery(lot: AuctionLot): AuctionLot {
   if (lotImages(lot).length > 1) return lot;
@@ -23,28 +25,73 @@ function catalogLots(): AuctionLot[] {
   return Array.from(byId.values()).map(withGallery);
 }
 
-export async function fetchLiveLots(): Promise<AuctionLot[]> {
+function mapEvent(row: {
+  id: string;
+  name: string;
+  auction_number?: string | null;
+  starts_at: string;
+  ends_at: string;
+  archived_at?: string | null;
+}): AuctionEvent {
+  return {
+    id: row.id,
+    name: row.name,
+    auctionNumber: row.auction_number ?? null,
+    startsAt: row.starts_at,
+    endsAt: row.ends_at,
+    archivedAt: row.archived_at ?? null,
+  };
+}
+
+export async function fetchLiveCatalog(): Promise<{
+  lots: AuctionLot[];
+  events: AuctionEvent[];
+  floor?: Awaited<ReturnType<typeof openRows>>;
+}> {
   if (!isSupabaseConfigured) {
-    return filterLots(catalogLots(), "All");
+    const demo = getAdminDemo();
+    stampAuctionNumbers(demo);
+    return { lots: catalogLots(), events: demo.events };
   }
 
   const supabase = getSupabaseAdmin();
-  if (!supabase) return filterLots(MOCK_LOTS, "All");
+  if (!supabase) {
+    return { lots: [], events: [] };
+  }
+
+  await ensureWeeklySales(supabase).catch((error) => {
+    console.error("ensureWeeklySales", error instanceof Error ? error.message : error);
+  });
 
   const [{ data, error }, eventsRes] = await Promise.all([
-    supabase.from("lots").select("*").in("status", ["live"]).order("ends_at", { ascending: true }),
-    supabase.from("auction_events").select("id, auction_number"),
+    supabase.from("lots").select("*").order("ends_at", { ascending: true }),
+    supabase.from("auction_events").select("*").order("starts_at", { ascending: true }),
   ]);
 
-  if (error || !data) return filterLots(MOCK_LOTS, "All");
-  const numbers = new Map(
-    (eventsRes.data ?? []).map((row) => [row.id as string, row.auction_number as string | null]),
-  );
-  return (data as LotRow[]).map((row) => {
-    const lot = withGallery(mapLot(row));
-    lot.auctionNumber = row.event_id ? numbers.get(row.event_id) ?? null : lot.auctionNumber;
-    return lot;
-  });
+  if (error || !data) {
+    console.error("fetchLiveLots", error?.message);
+    return { lots: [], events: [] };
+  }
+
+  const rows = Array.isArray(data) ? (data as LotRow[]) : [];
+  const floor = await openRows(rows);
+
+  const events = (eventsRes.data ?? []).map(mapEvent);
+  const numbers = new Map(events.map((event) => [event.id, event.auctionNumber ?? null]));
+  const lots = rows
+    .map((row) => {
+      const lot = withGallery(mapLot(row));
+      lot.auctionNumber = row.event_id ? numbers.get(row.event_id) ?? null : lot.auctionNumber;
+      return lot;
+    })
+    .filter((lot) => lot.status !== "removed" && lot.status !== "draft" && lot.status !== "ended");
+
+  return { lots, events, floor };
+}
+
+export async function fetchLiveLots(): Promise<AuctionLot[]> {
+  const { lots } = await fetchLiveCatalog();
+  return filterLots(lots, "All");
 }
 
 export async function fetchLot(id: string): Promise<AuctionLot | undefined> {
@@ -53,16 +100,38 @@ export async function fetchLot(id: string): Promise<AuctionLot | undefined> {
   if (isSupabaseConfigured) {
     const supabase = getSupabaseAdmin();
     if (supabase) {
+      const decoded = decodeURIComponent(id);
       const uuid =
         /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
-          id,
+          decoded,
         );
-      const query = uuid
-        ? supabase.from("lots").select("*").or(`id.eq.${id},slug.eq.${id}`)
-        : supabase.from("lots").select("*").eq("slug", id);
-      const { data, error } = await query.maybeSingle();
-      if (!error && data) {
-        lot = withGallery(mapLot(data as LotRow));
+      let data: Record<string, unknown> | null = null;
+      if (uuid) {
+        const byId = await supabase.from("lots").select("*").eq("id", decoded).maybeSingle();
+        data = (byId.data as Record<string, unknown> | null) ?? null;
+      }
+      if (!data) {
+        const bySlug = await supabase.from("lots").select("*").eq("slug", decoded).limit(1).maybeSingle();
+        data = (bySlug.data as Record<string, unknown> | null) ?? null;
+      }
+      if (!data) {
+        const byNumber = await supabase.from("lots").select("*").eq("lot_number", decoded).limit(1).maybeSingle();
+        data = (byNumber.data as Record<string, unknown> | null) ?? null;
+      }
+      if (data) {
+        lot = withGallery(mapLot(data as unknown as LotRow));
+        const consignmentId = String(data.consignment_id ?? "");
+        if (consignmentId) {
+          const consignment = await supabase
+            .from("consignments")
+            .select("image_urls")
+            .eq("id", consignmentId)
+            .maybeSingle();
+          const extra = Array.isArray(consignment.data?.image_urls)
+            ? (consignment.data.image_urls as string[])
+            : [];
+          lot.images = uniqueImageUrls([...(lot.images ?? []), ...extra, lot.image]);
+        }
         if (lot.eventId) {
           const { data: event } = await supabase
             .from("auction_events")
@@ -75,6 +144,7 @@ export async function fetchLot(id: string): Promise<AuctionLot | undefined> {
     }
   }
 
+  if (!lot && isSupabaseConfigured) return undefined;
   if (!lot) lot = getLotById(id);
   if (!lot) {
     const demo = getAdminDemo();

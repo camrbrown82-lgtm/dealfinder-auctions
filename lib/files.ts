@@ -1,3 +1,5 @@
+import { parseApiJson } from "@/lib/apiJson";
+import { compressImageFiles } from "@/lib/compressImage";
 import { parsePastedImageUrls } from "@/lib/imageUrls";
 
 export async function filesToDataUrls(files: File[]) {
@@ -16,9 +18,10 @@ export async function filesToDataUrls(files: File[]) {
 
 export async function filesToConsignmentUrls(files: File[], options?: { fallbackDataUrl?: boolean }) {
   if (files.length === 0) return [];
+  const photos = await compressImageFiles(files);
 
   const form = new FormData();
-  for (const file of files.slice(0, 4)) {
+  for (const file of photos) {
     form.append("images", file);
   }
 
@@ -26,17 +29,17 @@ export async function filesToConsignmentUrls(files: File[], options?: { fallback
     method: "POST",
     body: form,
   });
-  const json = (await response.json()) as { urls?: string[]; error?: string };
+  const json = await parseApiJson<{ urls?: string[]; error?: string }>(response);
 
   if (response.ok && json.urls?.length) {
     return json.urls;
   }
 
   if (options?.fallbackDataUrl) {
-    return filesToDataUrls(files.slice(0, 4));
+    return filesToDataUrls(photos);
   }
 
-  throw new Error(json.error || "Could not upload to consignment-images.");
+  throw new Error(json.error || "Could not upload photos.");
 }
 
 export async function collectItemImageUrls(

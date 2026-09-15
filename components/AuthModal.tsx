@@ -70,12 +70,13 @@ export function AuthModal({
       if (mode === "login") {
         const response = await fetch("/api/auth", {
           method: "POST",
+          credentials: "include",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ email, password }),
         });
         const json = await response.json();
         if (!response.ok) throw new Error(json.error || "Could not log in.");
-        const me = await fetch("/api/auth").then((r) => r.json());
+        const me = await fetch("/api/auth", { credentials: "include" }).then((r) => r.json());
         if (!me.user) throw new Error("Session missing after login.");
         if (!isProfileComplete(me.user)) {
           setProfile({
@@ -98,12 +99,13 @@ export function AuthModal({
 
       const response = await fetch("/api/auth", {
         method: "PUT",
+        credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password, ...profile }),
       });
       const json = await response.json();
       if (!response.ok) throw new Error(json.error || "Could not sign up.");
-      const me = await fetch("/api/auth").then((r) => r.json());
+      const me = await fetch("/api/auth", { credentials: "include" }).then((r) => r.json());
       if (!me.user) throw new Error("Session missing after signup.");
       await onAuthenticated(me.user);
     } catch (err) {
@@ -119,12 +121,12 @@ export function AuthModal({
         role="dialog"
         aria-modal="true"
         aria-labelledby="auth-modal-title"
-        className="max-h-[92vh] w-full max-w-lg overflow-y-auto border-4 border-black bg-[#FFF7D1] shadow-[8px_8px_0_0_#000]"
+        className="max-h-[92vh] w-full max-w-lg overflow-y-auto comic-panel"
       >
-        <div className="sticky top-0 z-10 flex items-start justify-between gap-3 border-b-4 border-black bg-[#FF0000] px-4 py-3 text-white">
+        <div className="sticky top-0 z-10 flex items-start justify-between gap-3 border-b-4 border-black bg-brand-cream px-4 py-3">
           <div>
-            <p className="font-display text-sm tracking-[0.3em]">HOLD IT, PADDLE!</p>
-            <h2 id="auth-modal-title" className="font-display text-4xl leading-none">
+            <p className="font-display text-sm tracking-[0.3em] text-brand-red">HOLD IT, PADDLE!</p>
+            <h2 id="auth-modal-title" className="font-display text-4xl leading-none text-brand-red">
               {mode === "login" ? "Log in to bid" : "Sign up to bid"}
             </h2>
             <p className="mt-1 font-comic text-sm">
@@ -136,7 +138,7 @@ export function AuthModal({
             type="button"
             onClick={goHome}
             aria-label="Close and return to homepage"
-            className="shrink-0 border-4 border-black bg-[#FFF7D1] px-3 py-1 font-display text-3xl leading-none text-black shadow-[4px_4px_0_0_#000] hover:-translate-y-0.5"
+            className="comic-btn-invert shrink-0 !px-3 !py-1 !text-3xl leading-none"
           >
             X
           </button>

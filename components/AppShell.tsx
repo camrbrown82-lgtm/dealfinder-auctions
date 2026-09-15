@@ -14,9 +14,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <>
-      <AppHeader />
-      <main className="mx-auto w-full max-w-[90rem] flex-1 px-4 py-8">{children}</main>
-      <SiteFooter />
+      <div className="print:hidden">
+        <AppHeader />
+      </div>
+      <main className="mx-auto w-full min-w-0 max-w-[90rem] flex-1 overflow-x-clip px-3 py-4 sm:px-4 sm:py-8">
+        {children}
+      </main>
+      <div className="print:hidden">
+        <SiteFooter />
+      </div>
     </>
   );
 }

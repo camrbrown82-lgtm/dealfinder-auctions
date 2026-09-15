@@ -25,6 +25,7 @@ const config: Config = {
         comic: "6px 6px 0 0 #000000",
         "comic-sm": "3px 3px 0 0 #000000",
         "comic-red": "6px 6px 0 0 #FF0000",
+        "comic-red-sm": "3px 3px 0 0 #FF0000",
       },
     },
   },

@@ -1,3 +1,5 @@
+import { uniqueImageUrls } from "@/lib/utils";
+
 export function parsePastedImageUrls(raw: string) {
   const seen = new Set<string>();
   const urls: string[] = [];
@@ -14,6 +16,10 @@ export function parsePastedImageUrls(raw: string) {
     }
   }
   return urls.slice(0, 4);
+}
+
+export function listingImages(studioUrl: string | null | undefined, warehouseUrls: string[]) {
+  return uniqueImageUrls([studioUrl, ...warehouseUrls]).slice(0, 8);
 }
 
 export function canUseNextImage(src: string) {

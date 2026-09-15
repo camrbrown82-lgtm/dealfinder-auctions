@@ -19,6 +19,7 @@ export type MonitorLot = {
   currentBid: number;
   startingBid: number;
   reservePrice: number;
+  buyNowPrice: number;
   endsAt: string;
   bidCount: number;
 };
@@ -29,6 +30,10 @@ export type CustomerRow = {
   fullName: string;
   status: "active" | "suspended";
   phone: string;
+  street?: string;
+  city?: string;
+  province?: string;
+  postalCode?: string;
   paymentMethod: string;
   auctionsWon: number;
   lifetimeSpend: number;

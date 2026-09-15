@@ -1,3 +1,5 @@
+import type { ListingGrade } from "@/lib/listingGrade";
+
 export type AuctionCategory =
   | "All"
   | "Comics"
@@ -32,7 +34,12 @@ export type AuctionLot = {
   auctionNumber?: string | null;
   startingBid?: number | null;
   reservePrice?: number | null;
+  buyNowPrice?: number | null;
   commissionRate?: number | null;
+  listingGrade?: ListingGrade;
+  itemDetails?: string | null;
+  fulfillment?: "unset" | "ship" | "pickup";
+  consignmentId?: string | null;
 };
 
 export type AuctionEvent = {
@@ -41,6 +48,7 @@ export type AuctionEvent = {
   auctionNumber?: string | null;
   startsAt: string;
   endsAt: string;
+  archivedAt?: string | null;
 };
 
 export type PayoutRow = {
@@ -62,13 +70,15 @@ export type Consignment = {
   estimatedLow?: number | null;
   estimatedHigh?: number | null;
   reservePrice?: number | null;
+  buyNowPrice?: number | null;
   startingBid?: number | null;
   commissionRate?: number | null;
   imageUrls: string[];
   status: ConsignmentStatus;
+  listingGrade?: ListingGrade;
 };
 
-export type PipelineStatus = "pending_approval" | "live" | "sold";
+export type PipelineStatus = "pending_approval" | "scheduled" | "live" | "sold";
 
 export type ConsignorItem = {
   id: string;
@@ -76,7 +86,7 @@ export type ConsignorItem = {
   consignor: string;
   pipelineStatus: PipelineStatus;
   startingBid: number;
-  reservePrice: number;
+  buyNowPrice: number;
   commissionRate: number;
 };
 
@@ -94,6 +104,11 @@ export function uniqueImageUrls(urls: Array<string | null | undefined>): string[
 
 export function lotImages(lot: Pick<AuctionLot, "image" | "images">): string[] {
   return uniqueImageUrls([lot.image, ...(lot.images ?? [])]);
+}
+
+export function extraLotImages(lot: Pick<AuctionLot, "image" | "images">): string[] {
+  const cover = lot.image?.trim() ?? "";
+  return uniqueImageUrls(lot.images ?? []).filter((url) => url !== cover);
 }
 
 export const CATEGORIES: AuctionCategory[] = [
@@ -126,6 +141,8 @@ export const MOCK_LOTS: AuctionLot[] = [
     status: "live",
     lotNumber: "LOT-0001",
     auctionNumber: "AU-2026-001",
+    buyNowPrice: 420,
+    reservePrice: 420,
   },
   {
     id: "zap-014",
@@ -147,6 +164,8 @@ export const MOCK_LOTS: AuctionLot[] = [
     status: "live",
     lotNumber: "LOT-0002",
     auctionNumber: "AU-2026-001",
+    buyNowPrice: 150,
+    reservePrice: 150,
   },
   {
     id: "bam-077",
@@ -168,6 +187,8 @@ export const MOCK_LOTS: AuctionLot[] = [
     status: "live",
     lotNumber: "LOT-0003",
     auctionNumber: "AU-2026-001",
+    buyNowPrice: 210,
+    reservePrice: 210,
   },
   {
     id: "wham-003",
@@ -189,6 +210,8 @@ export const MOCK_LOTS: AuctionLot[] = [
     status: "live",
     lotNumber: "LOT-0004",
     auctionNumber: "AU-2026-001",
+    buyNowPrice: 540,
+    reservePrice: 540,
   },
   {
     id: "kapow-9",
@@ -210,6 +233,8 @@ export const MOCK_LOTS: AuctionLot[] = [
     status: "live",
     lotNumber: "LOT-0005",
     auctionNumber: "AU-2026-001",
+    buyNowPrice: 80,
+    reservePrice: 80,
   },
   {
     id: "sold-001",
@@ -226,6 +251,8 @@ export const MOCK_LOTS: AuctionLot[] = [
     status: "ended",
     lotNumber: "LOT-0006",
     auctionNumber: "AU-2026-001",
+    buyNowPrice: 175,
+    reservePrice: 175,
   },
 ];
 
@@ -237,6 +264,7 @@ export const MOCK_CONSIGNMENTS: Consignment[] = [
     category: "Comics",
     description: "Awaiting sort and pull.",
     startingBid: 40,
+    buyNowPrice: 80,
     imageUrls: [],
     status: "pending",
   },
@@ -247,6 +275,7 @@ export const MOCK_CONSIGNMENTS: Consignment[] = [
     category: "Toys",
     description: "Mixed scales, some chrome wear.",
     startingBid: 25,
+    buyNowPrice: 50,
     imageUrls: [],
     status: "pending",
   },
@@ -257,6 +286,7 @@ export const MOCK_CONSIGNMENTS: Consignment[] = [
     category: "Vinyl",
     description: "Hold for grading.",
     startingBid: 30,
+    buyNowPrice: 60,
     imageUrls: [],
     status: "held",
   },
@@ -281,11 +311,7 @@ export function getLotById(id: string) {
 
 export function filterLots(lots: AuctionLot[], category: AuctionCategory) {
   const live = lots.filter(
-    (lot) =>
-      lot.status !== "paused" &&
-      lot.status !== "draft" &&
-      lot.status !== "ended" &&
-      lot.status !== "removed",
+    (lot) => lot.status !== "draft" && lot.status !== "ended" && lot.status !== "removed",
   );
   if (category === "All") return live;
   return live.filter((lot) => lot.category === category);
@@ -300,6 +326,7 @@ export function searchLots(lots: AuctionLot[], query: string) {
       lot.title,
       lot.description,
       lot.category,
+      lot.listingGrade,
       lot.consignor,
       lot.lotNumber,
       lot.auctionNumber,
@@ -313,32 +340,54 @@ export function searchLots(lots: AuctionLot[], query: string) {
   });
 }
 
+export function parseLotEndMs(endsAt: string | null | undefined, now = Date.now()) {
+  if (endsAt == null || endsAt === "") return NaN;
+  const raw = String(endsAt).trim();
+  const asNumber = Number(raw);
+  if (Number.isFinite(asNumber) && asNumber > 0 && !/[T:\-]/.test(raw)) {
+    return asNumber < 1e12 ? asNumber * 1000 : asNumber;
+  }
+  let normalized = raw.includes("T") ? raw : raw.replace(" ", "T");
+  normalized = normalized.replace(/([+-]\d{2})$/, "$1:00");
+  normalized = normalized.replace(/([+-]\d{2})(\d{2})$/, "$1:$2");
+  const ms = Date.parse(normalized);
+  if (Number.isFinite(ms)) return ms;
+  const fallback = Date.parse(raw);
+  return Number.isFinite(fallback) ? fallback : NaN;
+}
+
 export function formatCountdown(endsAt: string, now = Date.now()) {
-  const remaining = new Date(endsAt).getTime() - now;
+  const end = parseLotEndMs(endsAt, now);
+  if (!Number.isFinite(end)) return "ENDED";
+  const remaining = end - now;
   if (remaining <= 0) return "ENDED";
 
   const totalSeconds = Math.floor(remaining / 1000);
-  const hours = Math.floor(totalSeconds / 3600);
+  const days = Math.floor(totalSeconds / 86400);
+  const hours = Math.floor((totalSeconds % 86400) / 3600);
   const minutes = Math.floor((totalSeconds % 3600) / 60);
   const seconds = totalSeconds % 60;
-
   const pad = (n: number) => String(n).padStart(2, "0");
-  return `${pad(hours)}:${pad(minutes)}:${pad(seconds)}`;
+
+  if (days > 0) return `${days}d ${pad(hours)}h ${pad(minutes)}m`;
+  return `${pad(hours)}h ${pad(minutes)}m ${pad(seconds)}s`;
 }
 
-export function isLotOpen(lot: Pick<AuctionLot, "endsAt" | "status">, now = Date.now()) {
-  return lot.status !== "paused" && lot.status !== "ended" && new Date(lot.endsAt).getTime() > now;
+export function isLotOpen(lot: Pick<AuctionLot, "endsAt" | "status">) {
+  if (lot.status === "removed" || lot.status === "ended") return false;
+  return true;
 }
 
 export const DEFAULT_COMMISSION_RATE = 0.2;
 
 export function pipelineLabel(status: PipelineStatus) {
   if (status === "pending_approval") return "Pending approval";
+  if (status === "scheduled") return "Scheduled by DealFinder";
   if (status === "live") return "Live auction";
   return "Sold";
 }
 
 export function consignmentToPipeline(status: ConsignmentStatus): PipelineStatus {
-  if (status === "approved") return "live";
+  if (status === "approved") return "scheduled";
   return "pending_approval";
 }

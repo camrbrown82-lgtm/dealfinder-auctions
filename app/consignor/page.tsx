@@ -4,8 +4,17 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import { ImageUrlPaste } from "@/components/ImageUrlPaste";
 import { PhotoDropzone } from "@/components/PhotoDropzone";
 import { moneySplit } from "@/lib/commission";
+import { ConsignmentTermsModal } from "@/components/ConsignmentTermsModal";
+import { AiFeedback } from "@/components/AiFeedback";
+import { ConsignorNameField } from "@/components/ConsignorNameField";
 import { collectItemImageUrls } from "@/lib/files";
-import { parsePastedImageUrls } from "@/lib/imageUrls";
+import { listingImages, parsePastedImageUrls } from "@/lib/imageUrls";
+import { requestCatalog } from "@/lib/aiIntakeClient";
+import { parseApiJson } from "@/lib/apiJson";
+import { requestStudioImage } from "@/lib/studioClient";
+import { mergeAiRuns, type AiRun } from "@/lib/aiRuns";
+import { ListingGradeFields } from "@/components/ListingGradeFields";
+import { type ListingGrade } from "@/lib/listingGrade";
 import {
   DEFAULT_COMMISSION_RATE,
   formatCurrency,
@@ -17,12 +26,13 @@ const LOCAL_KEY = "dealfinder-consignor-items";
 
 export default function ConsignorPage() {
   const [consignorName, setConsignorName] = useState("");
+  const [savedConsignors, setSavedConsignors] = useState<string[]>([]);
   const [files, setFiles] = useState<File[]>([]);
   const [imageUrlText, setImageUrlText] = useState("");
+  const [resolvedImageUrls, setResolvedImageUrls] = useState<string[]>([]);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
-  const [startingBid, setStartingBid] = useState("");
-  const [reservePrice, setReservePrice] = useState("");
+  const [buyNowPrice, setBuyNowPrice] = useState("");
   const [marketValue, setMarketValue] = useState("");
   const [commissionPercent, setCommissionPercent] = useState("20");
   const [error, setError] = useState<string | null>(null);
@@ -30,31 +40,40 @@ export default function ConsignorPage() {
   const [generating, setGenerating] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [items, setItems] = useState<ConsignorItem[]>([]);
+  const [compsNote, setCompsNote] = useState<string | null>(null);
+  const [studioImageUrl, setStudioImageUrl] = useState<string | null>(null);
+  const [aiRun, setAiRun] = useState<AiRun | null>(null);
+  const [termsOpen, setTermsOpen] = useState(false);
+  const [itemDetails, setItemDetails] = useState("");
+  const [listingGrade, setListingGrade] = useState<ListingGrade>("Used");
 
   const commissionRate = Number(commissionPercent) / 100 || DEFAULT_COMMISSION_RATE;
-  const start = Number(startingBid) || 0;
-  const reserve = Number(reservePrice) || 0;
+  const buyNow = Number(buyNowPrice) || 0;
   const market = Number(marketValue) || 0;
 
   const breakdown = useMemo(
     () => ({
-      start: moneySplit(start, commissionRate),
-      reserve: moneySplit(reserve, commissionRate),
+      buyNow: moneySplit(buyNow, commissionRate),
       market: moneySplit(market, commissionRate),
     }),
-    [start, reserve, market, commissionRate],
+    [buyNow, market, commissionRate],
   );
 
   async function loadItems(name: string) {
-    const query = name.trim() ? `?consignor=${encodeURIComponent(name.trim())}` : "";
+    const local = readLocal(name);
+    if (!name.trim()) {
+      setItems(local);
+      return;
+    }
+    const query = `?consignor=${encodeURIComponent(name.trim())}`;
     const response = await fetch(`/api/consignments${query}`);
-    const json = await response.json();
+    const json = await parseApiJson<{ items?: ConsignorItem[]; error?: string }>(response);
     if (!response.ok) {
       setError(json.error || "Could not load status table");
+      setItems(local);
       return;
     }
     const remote = (json.items ?? []) as ConsignorItem[];
-    const local = readLocal(name);
     const merged = [...local, ...remote].filter(
       (item, index, list) => list.findIndex((row) => row.id === item.id) === index,
     );
@@ -62,42 +81,74 @@ export default function ConsignorPage() {
   }
 
   useEffect(() => {
-    void loadItems("");
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    setItems(readLocal(""));
+    void fetch("/api/consignors")
+      .then((response) => parseApiJson<{ consignors?: string[] }>(response))
+      .then((json) => {
+        if (Array.isArray(json.consignors)) setSavedConsignors(json.consignors);
+      })
+      .catch(() => undefined);
   }, []);
 
-  async function autoGenerate() {
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      void loadItems(consignorName);
+    }, 350);
+    return () => window.clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [consignorName]);
+
+  useEffect(() => {
+    setResolvedImageUrls([]);
+    setStudioImageUrl(null);
+    setAiRun(null);
+  }, [files, imageUrlText]);
+
+  async function autoGenerate(fromFiles?: File[]) {
     setError(null);
     setNotice(null);
-    if (files.length === 0 && parsePastedImageUrls(imageUrlText).length === 0) {
+    const photos = fromFiles ?? files;
+    if (photos.length === 0 && parsePastedImageUrls(imageUrlText).length === 0) {
       setError("Add a photo or paste an image URL first.");
       return;
     }
 
     setGenerating(true);
     try {
-      const imageUrls = await collectItemImageUrls(files, imageUrlText, { fallbackDataUrl: true });
-      const response = await fetch("/api/ai-intake", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ imageUrls }),
+      const catalog = await requestCatalog(photos, imageUrlText, {
+        itemDetails,
+        listingGrade,
       });
-      const json = await response.json();
-      if (!response.ok) {
-        throw new Error(json.error || "AI intake failed");
+      setResolvedImageUrls(catalog.imageUrls);
+      setTitle(String(catalog.title ?? ""));
+      setDescription(String(catalog.description ?? ""));
+      if (catalog.estimated_market_value) {
+        setMarketValue(String(catalog.estimated_market_value));
       }
-      setTitle(String(json.title ?? ""));
-      setDescription(String(json.description ?? ""));
-      if (json.suggested_starting_bid) {
-        setStartingBid(String(json.suggested_starting_bid));
+      setCompsNote(catalog.comps_note ? String(catalog.comps_note) : null);
+      let run = catalog.ai ?? null;
+      setNotice("Catalog ready. Creating the AI listing photo…");
+      try {
+        const studio = await requestStudioImage({
+          imageUrls: catalog.imageUrls,
+          files: photos,
+          title: String(catalog.title ?? ""),
+          objectType: String(catalog.object_type ?? ""),
+          materials: Array.isArray(catalog.materials) ? catalog.materials.map(String) : [],
+          condition: String(catalog.condition ?? ""),
+          itemDetails,
+          listingGrade,
+          displaySetting: String(catalog.display_setting ?? ""),
+          photoBrief: String(catalog.photo_brief ?? ""),
+        });
+        setStudioImageUrl(studio.url);
+        run = mergeAiRuns(run, studio.ai);
+        setNotice("Listing photo ready. Review, then submit.");
+      } catch (studioErr) {
+        setStudioImageUrl(null);
+        setError(studioErr instanceof Error ? studioErr.message : "Listing photo failed.");
       }
-      if (json.estimated_market_value) {
-        setMarketValue(String(json.estimated_market_value));
-        if (!reservePrice) {
-          setReservePrice(String(json.estimated_market_value));
-        }
-      }
-      setNotice("Details generated. Review, then submit to the approval queue.");
+      setAiRun(run);
     } catch (err) {
       setError(err instanceof Error ? err.message : "AI intake failed");
     } finally {
@@ -105,14 +156,19 @@ export default function ConsignorPage() {
     }
   }
 
-  async function onSubmit(event: FormEvent) {
+  function onSubmit(event: FormEvent) {
     event.preventDefault();
     setError(null);
     setNotice(null);
-    setSubmitting(true);
+    setTermsOpen(true);
+  }
 
+  async function submitAfterAccept() {
+    setError(null);
+    setSubmitting(true);
     try {
-      const imageUrls = await collectItemImageUrls(files, imageUrlText);
+      const warehouse = await collectItemImageUrls(files, imageUrlText);
+      const imageUrls = listingImages(studioImageUrl, warehouse);
       const response = await fetch("/api/consignments", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -120,28 +176,35 @@ export default function ConsignorPage() {
           consignorName,
           title,
           description,
-          startingBid: start,
-          reservePrice: reserve,
+          buyNowPrice: buyNow,
           commissionRate,
           estimatedMarketValue: market,
+          listingGrade,
+          itemDetails,
           imageUrls,
+          termsAccepted: true,
         }),
       });
-      const json = await response.json();
+      const json = await parseApiJson<{ item?: ConsignorItem; error?: string }>(response);
       if (!response.ok) {
         throw new Error(json.error || "Submit failed");
       }
       const item = json.item as ConsignorItem;
       writeLocal(item);
       setItems((current) => [item, ...current.filter((row) => row.id !== item.id)]);
-      setNotice("Submitted for pending approval.");
+      setTermsOpen(false);
+      setNotice("Submitted for pending approval. DealFinder will assign lot # and sale date.");
       setTitle("");
       setDescription("");
-      setStartingBid("");
-      setReservePrice("");
+      setBuyNowPrice("");
       setMarketValue("");
       setFiles([]);
       setImageUrlText("");
+      setCompsNote(null);
+      setStudioImageUrl(null);
+      setAiRun(null);
+      setItemDetails("");
+      setListingGrade("Used");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Submit failed");
     } finally {
@@ -152,39 +215,60 @@ export default function ConsignorPage() {
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="font-display text-5xl">Consignor dashboard</h1>
+        <h1 className="font-display text-5xl text-brand-red">Consignor dashboard</h1>
         <p className="mt-2 max-w-2xl font-comic text-lg">
-          Drop photos, auto-generate catalog copy with GPT-4o, set reserve and starting
-          bid, then track pending / live / sold lots.
+          Drop up to 4 warehouse photos, auto-generate catalog copy, and we build a studio
+          listing photo for the live sale. After we approve the item, DealFinder assigns the
+          lot number and sale date.
         </p>
       </div>
 
       <form onSubmit={onSubmit} className="grid gap-6 lg:grid-cols-2">
-        <div className="comic-panel space-y-4 bg-white p-6">
-          <label className="block font-comic font-bold">
-            Your name / shop
-            <input
-              value={consignorName}
-              onChange={(e) => setConsignorName(e.target.value)}
-              onBlur={() => void loadItems(consignorName)}
-              required
-              className="mt-2 w-full border-4 border-black px-3 py-2 font-normal"
-              placeholder="Vault Comics Co."
-            />
-          </label>
-          <PhotoDropzone files={files} onChange={setFiles} />
+        <div className="comic-panel space-y-4 p-6">
+          <ConsignorNameField
+            value={consignorName}
+            savedNames={savedConsignors}
+            onChange={setConsignorName}
+          />
+          {studioImageUrl && (
+            <div className="relative min-h-[16rem] overflow-hidden border-4 border-black bg-black">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={studioImageUrl}
+                alt="AI listing photo"
+                className="absolute inset-0 h-full w-full object-contain"
+              />
+              <p className="absolute bottom-2 left-2 border-4 border-black bg-white px-2 py-1 font-comic text-xs">
+                AI listing photo
+              </p>
+            </div>
+          )}
+          <PhotoDropzone
+            files={files}
+            onChange={setFiles}
+            maxFiles={4}
+            onCameraFinished={(photos) => {
+              if (photos.length > 0) void autoGenerate(photos);
+            }}
+          />
           <ImageUrlPaste value={imageUrlText} onChange={setImageUrlText} />
+          <ListingGradeFields
+            details={itemDetails}
+            grade={listingGrade}
+            onDetails={setItemDetails}
+            onGrade={setListingGrade}
+          />
           <button
             type="button"
             className="comic-btn w-full"
             onClick={() => void autoGenerate()}
             disabled={generating}
           >
-            {generating ? "Generating…" : "Auto-Generate Details"}
+            {generating ? "Cataloging + studio photo…" : "Auto-Generate Details"}
           </button>
         </div>
 
-        <div className="comic-panel space-y-4 bg-white p-6">
+        <div className="comic-panel space-y-4 p-6">
           <label className="block font-comic font-bold">
             Title
             <input
@@ -204,30 +288,18 @@ export default function ConsignorPage() {
               className="mt-2 w-full border-4 border-black px-3 py-2 font-normal"
             />
           </label>
-          <div className="grid gap-3 sm:grid-cols-2">
-            <label className="block font-comic font-bold">
-              Starting bid ($)
-              <input
-                type="number"
-                min={0}
-                value={startingBid}
-                onChange={(e) => setStartingBid(e.target.value)}
-                required
-                className="mt-2 w-full border-4 border-black px-3 py-2 font-normal"
-              />
-            </label>
-            <label className="block font-comic font-bold">
-              Reserve price ($)
-              <input
-                type="number"
-                min={0}
-                value={reservePrice}
-                onChange={(e) => setReservePrice(e.target.value)}
-                required
-                className="mt-2 w-full border-4 border-black px-3 py-2 font-normal"
-              />
-            </label>
-          </div>
+          <label className="block font-comic font-bold">
+            Buy now ($)
+            <span className="block font-normal">You set this — Auto-Generate does not fill buy now.</span>
+            <input
+              type="number"
+              min={1}
+              value={buyNowPrice}
+              onChange={(e) => setBuyNowPrice(e.target.value)}
+              required
+              className="mt-2 w-full border-4 border-black px-3 py-2 font-normal"
+            />
+          </label>
           <label className="block font-comic font-bold">
             Estimated market value ($)
             <input
@@ -238,6 +310,9 @@ export default function ConsignorPage() {
               className="mt-2 w-full border-4 border-black px-3 py-2 font-normal"
             />
           </label>
+          {compsNote && (
+            <p className="border-4 border-black bg-brand-cream p-3 font-comic text-sm">{compsNote}</p>
+          )}
           <label className="block font-comic font-bold">
             House commission ({commissionPercent}%)
             <input
@@ -253,10 +328,16 @@ export default function ConsignorPage() {
 
           <div className="border-4 border-black bg-brand-cream p-3 font-comic text-sm">
             <p className="font-display text-lg">Commission breakdown</p>
-            <Row label="At starting bid" split={breakdown.start} />
-            <Row label="At reserve" split={breakdown.reserve} />
+            <Row label="At buy now" split={breakdown.buyNow} />
             <Row label="At market value" split={breakdown.market} />
           </div>
+
+          {aiRun && !generating ? (
+            <AiFeedback
+              run={aiRun}
+              summary={[title, description, compsNote].filter(Boolean).join(" · ")}
+            />
+          ) : null}
 
           <button type="submit" className="comic-btn w-full" disabled={submitting}>
             {submitting ? "Submitting…" : "Submit for approval"}
@@ -264,43 +345,104 @@ export default function ConsignorPage() {
         </div>
       </form>
 
-      {error && (
+      {error && !termsOpen && (
         <p className="comic-panel bg-brand-red p-4 font-display text-2xl text-white">{error}</p>
       )}
       {notice && (
-        <p className="comic-panel bg-white p-4 font-display text-2xl">{notice}</p>
+        <p className="comic-panel p-4 font-display text-2xl">{notice}</p>
       )}
 
+      <ConsignmentTermsModal
+        open={termsOpen}
+        consignorName={consignorName}
+        busy={submitting}
+        error={error}
+        onClose={() => {
+          if (submitting) return;
+          setTermsOpen(false);
+          setError(null);
+        }}
+        onAccept={() => void submitAfterAccept()}
+      />
+
       <section className="space-y-3">
-        <h2 className="font-display text-3xl">Item status</h2>
-        <div className="overflow-x-auto comic-panel">
-          <table className="w-full min-w-[720px] border-collapse font-comic">
-            <thead className="bg-brand-red text-left text-white">
-              <tr>
-                <th className="border-b-4 border-black p-3">Lot</th>
-                <th className="border-b-4 border-black p-3">Consignor</th>
-                <th className="border-b-4 border-black p-3">Status</th>
-                <th className="border-b-4 border-black p-3">Start / Reserve</th>
+        <h2 className="font-display text-3xl text-brand-red">Waiting on DealFinder</h2>
+        <p className="font-comic text-sm">
+          Only items still in the approval queue. Once we accept a lot it leaves this list
+          and moves into that week&apos;s auction inventory.
+        </p>
+        <StatusTable
+          items={items.filter((item) => item.pipelineStatus === "pending_approval")}
+          empty="Nothing waiting on approval."
+        />
+      </section>
+
+      <section className="space-y-3">
+        <h2 className="font-display text-3xl text-brand-red">Accepted lots</h2>
+        <p className="font-comic text-sm">
+          Filed into a sale by DealFinder. Check here for scheduled, live, or sold status.
+        </p>
+        <StatusTable
+          items={items.filter((item) => item.pipelineStatus !== "pending_approval")}
+          empty="No accepted lots yet."
+        />
+      </section>
+    </div>
+  );
+}
+
+function StatusTable({ items, empty }: { items: ConsignorItem[]; empty: string }) {
+  return (
+    <>
+      <div className="space-y-3 md:hidden">
+        {items.length === 0 ? (
+          <p className="comic-panel p-3 font-comic">{empty}</p>
+        ) : (
+          items.map((item) => (
+            <article key={item.id} className="comic-panel space-y-1 p-3 font-comic">
+              <p className="font-display text-lg leading-5">{item.title}</p>
+              <p>{item.consignor}</p>
+              <p className="font-bold uppercase">{pipelineLabel(item.pipelineStatus)}</p>
+              <p>Buy now {formatCurrency(item.buyNowPrice || 0)}</p>
+            </article>
+          ))
+        )}
+      </div>
+      <div className="hidden md:block comic-panel">
+        <table className="w-full border-collapse font-comic">
+          <thead className="bg-brand-red text-left text-white">
+            <tr>
+              <th className="border-b-4 border-black p-3">Lot</th>
+              <th className="border-b-4 border-black p-3">Consignor</th>
+              <th className="border-b-4 border-black p-3">Status</th>
+              <th className="border-b-4 border-black p-3">Buy now</th>
+            </tr>
+          </thead>
+          <tbody>
+            {items.length === 0 ? (
+              <tr className="bg-brand-cream">
+                <td className="p-3" colSpan={4}>
+                  {empty}
+                </td>
               </tr>
-            </thead>
-            <tbody>
-              {items.map((item) => (
-                <tr key={item.id} className="bg-white">
+            ) : (
+              items.map((item) => (
+                <tr key={item.id} className="bg-brand-cream">
                   <td className="border-b-2 border-black p-3">{item.title}</td>
                   <td className="border-b-2 border-black p-3">{item.consignor}</td>
                   <td className="border-b-2 border-black p-3 font-bold uppercase">
                     {pipelineLabel(item.pipelineStatus)}
                   </td>
                   <td className="border-b-2 border-black p-3">
-                    {formatCurrency(item.startingBid)} / {formatCurrency(item.reservePrice)}
+                    {formatCurrency(item.buyNowPrice || 0)}
                   </td>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </section>
-    </div>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+    </>
   );
 }
 

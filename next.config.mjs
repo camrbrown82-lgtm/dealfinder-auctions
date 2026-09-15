@@ -8,8 +8,18 @@ const nextConfig = {
   },
   experimental: {
     serverActions: {
-      bodySizeLimit: "10mb",
+      bodySizeLimit: "12mb",
     },
+  },
+  async headers() {
+    return [
+      {
+        source: "/:path*",
+        headers: [
+          { key: "Permissions-Policy", value: "camera=(self)" },
+        ],
+      },
+    ];
   },
 };
 

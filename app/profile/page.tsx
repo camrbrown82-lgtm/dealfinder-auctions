@@ -51,7 +51,7 @@ export default function ProfilePage() {
 
   if (!user) {
     return (
-      <div className="border-4 border-black bg-[#FFF7D1] p-6 shadow-[6px_6px_0_0_#000]">
+      <div className="comic-panel p-6">
         <h1 className="font-display text-5xl text-[#FF0000]">Bidder profile</h1>
         <p className="mt-2 font-comic">Log in to edit shipping and payment prefs.</p>
         <button
@@ -67,13 +67,13 @@ export default function ProfilePage() {
 
   return (
     <div className="space-y-4">
-      <div className="border-4 border-black bg-[#FF0000] p-4 text-white shadow-[6px_6px_0_0_#000]">
-        <h1 className="font-display text-5xl">Bidder profile</h1>
+      <div className="comic-panel p-4">
+        <h1 className="font-display text-5xl text-brand-red">Bidder profile</h1>
         <p className="font-comic text-sm">{user.email}</p>
       </div>
       <form
         onSubmit={onSubmit}
-        className="space-y-4 border-4 border-black bg-[#FFF7D1] p-5 shadow-[6px_6px_0_0_#000]"
+        className="comic-panel space-y-4 p-5"
       >
         <ProfileFields value={form} onChange={setForm} />
         <p className="border-4 border-black bg-white px-3 py-2 font-comic text-sm">

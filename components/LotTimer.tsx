@@ -3,9 +3,10 @@
 import { useEffect, useState } from "react";
 import { formatCountdown } from "@/lib/utils";
 
+const PLACEHOLDER = "--:--:--";
+
 export function LotTimer({
   endsAt,
-  fallback,
   extended = false,
   compact = false,
 }: {
@@ -14,7 +15,7 @@ export function LotTimer({
   extended?: boolean;
   compact?: boolean;
 }) {
-  const [label, setLabel] = useState(fallback ?? formatCountdown(endsAt));
+  const [label, setLabel] = useState(PLACEHOLDER);
 
   useEffect(() => {
     const tick = () => setLabel(formatCountdown(endsAt));
@@ -28,17 +29,14 @@ export function LotTimer({
   return (
     <div className="text-center">
       <div
+        suppressHydrationWarning
         className={`border-4 border-black font-display ${
-          compact ? "px-1.5 py-0.5 text-sm sm:text-base" : "px-4 py-2 text-3xl"
-        } ${
-          ended
-            ? "bg-black text-white"
-            : "bg-[#FFF7D1] text-[#FF0000]"
-        }`}
+          compact ? "whitespace-nowrap px-1 py-0.5 text-[10px] sm:text-xs" : "px-3 py-2 text-2xl sm:text-3xl"
+        } ${ended ? "bg-black text-white" : "bg-[#FFF7D1] text-[#FF0000]"}`}
       >
         {label}
       </div>
-      {extended && !ended && (
+      {extended && !ended && label !== PLACEHOLDER && (
         <p className="mt-1 font-comic text-xs font-bold uppercase">
           Anti-snipe: +2 minutes
         </p>

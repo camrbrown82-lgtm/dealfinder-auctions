@@ -31,7 +31,7 @@ export default function RootLayout({
     <html lang="en">
       <body className={`${bangers.variable} ${comicNeue.variable}`}>
         <BidderProvider>
-          <div className="flex min-h-screen flex-col">
+          <div className="flex min-h-screen max-w-full flex-col overflow-x-clip">
             <AppShell>{children}</AppShell>
           </div>
         </BidderProvider>
