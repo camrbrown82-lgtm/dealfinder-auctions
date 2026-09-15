@@ -166,8 +166,8 @@ export function LiveGrid({
         <div className="comic-panel p-4">
           <p className="font-display text-lg">Auctions</p>
           <p className="font-comic text-sm">
-            Live now through <strong>Sep 20</strong>. Next hammers: <strong>Sep 27</strong>, then{" "}
-            <strong>Oct 4</strong>. Bid on the selected week until that hammer.
+            Live now through <strong>Sep 20</strong>. Later weeks are Sep 27, Oct 4, Oct 11, and Oct
+            18.
           </p>
           <div className="mt-3 flex flex-wrap gap-2">
             {sales.map((item) => {

@@ -13,9 +13,13 @@ function restConfig() {
 }
 
 export async function patchLotRow(id: string, patch: Record<string, unknown>) {
+  return patchTableRow("lots", id, patch);
+}
+
+export async function patchTableRow(table: string, id: string, patch: Record<string, unknown>) {
   const { url, key } = restConfig();
   if (!url || !key) return { ok: false, status: 0, body: "missing supabase env", data: null as Record<string, unknown>[] | null };
-  const response = await fetch(`${url}/rest/v1/lots?id=eq.${encodeURIComponent(id)}`, {
+  const response = await fetch(`${url}/rest/v1/${table}?id=eq.${encodeURIComponent(id)}`, {
     method: "PATCH",
     headers: {
       apikey: key,

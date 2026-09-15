@@ -16,10 +16,16 @@ export function AuctionInventories({
   onMoveToSale: (lot: AuctionLot) => void;
   onRemove: (lot: AuctionLot) => void;
 }) {
-  const orderedEvents = [...events].sort(
-    (a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime(),
+  const orderedEvents = [...events]
+    .filter((event) => !event.archivedAt)
+    .sort((a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime());
+  const openIds = new Set(orderedEvents.map((event) => event.id));
+  const unassigned = sortLotsByNumber(
+    lots.filter((lot) => {
+      if (lotWasSold(lot) || lot.status === "removed" || lot.status === "ended") return false;
+      return !lot.eventId || !openIds.has(lot.eventId);
+    }),
   );
-  const unassigned = sortLotsByNumber(lots.filter((lot) => !lot.eventId));
 
   return (
     <div className="space-y-8">

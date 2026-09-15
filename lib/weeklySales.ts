@@ -1,44 +1,51 @@
-import type { AuctionEvent, AuctionLot } from "@/lib/utils";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { patchLotRow, patchTableRow } from "@/lib/openFloor";
+import type { AuctionEvent, AuctionLot } from "@/lib/utils";
 
 export type WeeklySalePlan = {
   auctionNumber: string;
   name: string;
   startsAt: string;
   endsAt: string;
-  legacyNumber: string;
+  legacyNumber?: string;
 };
 
-/**
- * Hammer Sundays in Airdrie (MDT). Bidding is open through the hammer:
- * this week through Sep 20, then the 27th, then Oct 4.
- */
-export const WEEKLY_SALES: WeeklySalePlan[] = [
-  {
-    auctionNumber: "AU-2026-0920",
-    legacyNumber: "AU-2026-001",
-    name: "Weekly sale · Sep 20",
-    startsAt: "2026-09-14T10:00:00-06:00",
-    endsAt: "2026-09-20T18:00:00-06:00",
-  },
-  {
-    auctionNumber: "AU-2026-0927",
-    legacyNumber: "AU-2026-002",
-    name: "Weekly sale · Sep 27",
-    startsAt: "2026-09-20T18:00:00-06:00",
-    endsAt: "2026-09-27T18:00:00-06:00",
-  },
-  {
-    auctionNumber: "AU-2026-1004",
-    legacyNumber: "AU-2026-003",
-    name: "Weekly sale · Oct 4",
-    startsAt: "2026-09-27T18:00:00-06:00",
-    endsAt: "2026-10-04T18:00:00-06:00",
-  },
-];
+const LEGACY = ["AU-2026-001", "AU-2026-002", "AU-2026-003"];
+
+const HAMMERS = [
+  { y: 2026, m: 9, d: 20, month: "Sep" },
+  { y: 2026, m: 9, d: 27, month: "Sep" },
+  { y: 2026, m: 10, d: 4, month: "Oct" },
+  { y: 2026, m: 10, d: 11, month: "Oct" },
+  { y: 2026, m: 10, d: 18, month: "Oct" },
+] as const;
+
+function pad(n: number) {
+  return String(n).padStart(2, "0");
+}
+
+function isoDay(y: number, m: number, d: number, time: string) {
+  return `${y}-${pad(m)}-${pad(d)}T${time}-06:00`;
+}
+
+/** Five weekly hammers starting Sunday Sep 20, 2026 (Airdrie 18:00 MDT). */
+export const WEEKLY_SALES: WeeklySalePlan[] = HAMMERS.map((hammer, index) => {
+  const prev = index === 0 ? null : HAMMERS[index - 1];
+  return {
+    auctionNumber: `AU-${hammer.y}-${pad(hammer.m)}${pad(hammer.d)}`,
+    legacyNumber: LEGACY[index],
+    name: `Weekly sale · ${hammer.month} ${hammer.d}`,
+    startsAt: prev
+      ? isoDay(prev.y, prev.m, prev.d, "18:00:00")
+      : isoDay(2026, 9, 14, "10:00:00"),
+    endsAt: isoDay(hammer.y, hammer.m, hammer.d, "18:00:00"),
+  };
+});
+
+export const FIRST_WEEKLY_SALE = WEEKLY_SALES[0];
 
 const WEEKLY_NUMBERS = new Set(
-  WEEKLY_SALES.flatMap((sale) => [sale.auctionNumber, sale.legacyNumber]),
+  WEEKLY_SALES.flatMap((sale) => [sale.auctionNumber, sale.legacyNumber].filter(Boolean) as string[]),
 );
 
 let lastEnsure = 0;
@@ -55,6 +62,16 @@ export function nextWeeklySale(events: AuctionEvent[], now = Date.now()) {
     .sort((a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime());
   const live = open.find((event) => new Date(event.startsAt).getTime() <= now);
   return live ?? open[0] ?? null;
+}
+
+export function firstWeeklyEvent(events: AuctionEvent[]) {
+  const open = events.filter((event) => !event.archivedAt);
+  return (
+    open.find((event) => event.auctionNumber === FIRST_WEEKLY_SALE.auctionNumber) ??
+    open.find((event) => event.auctionNumber === FIRST_WEEKLY_SALE.legacyNumber) ??
+    open.find((event) => event.name === FIRST_WEEKLY_SALE.name) ??
+    nextWeeklySale(events)
+  );
 }
 
 function mapEventRow(row: {
@@ -90,6 +107,18 @@ function saleFields(sale: WeeklySalePlan) {
   };
 }
 
+function isSold(row: { status?: string | null; high_bidder?: string | null; high_bidder_id?: string | null }) {
+  return row.status === "ended" && Boolean(row.high_bidder || row.high_bidder_id);
+}
+
+async function placeLotOnSale(lotId: string, sale: AuctionEvent) {
+  return patchLotRow(lotId, {
+    event_id: sale.id,
+    ends_at: sale.endsAt,
+    status: "live",
+  });
+}
+
 export async function ensureWeeklySales(supabase: SupabaseClient | null) {
   if (!supabase) {
     return WEEKLY_SALES.map((sale) => ({
@@ -109,18 +138,20 @@ export async function ensureWeeklySales(supabase: SupabaseClient | null) {
 
     for (const sale of WEEKLY_SALES) {
       const available = events.filter((event) => !claimed.has(event.id) && !event.archivedAt);
+      const isFirst = sale.auctionNumber === FIRST_WEEKLY_SALE.auctionNumber;
       const match =
         available.find((event) => event.auctionNumber === sale.auctionNumber) ??
-        available.find((event) => event.auctionNumber === sale.legacyNumber) ??
         available.find((event) => event.name === sale.name) ??
-        available.sort((a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime())[0];
+        (isFirst
+          ? available.find((event) => event.auctionNumber === FIRST_WEEKLY_SALE.legacyNumber)
+          : undefined);
 
       if (match) {
         claimed.add(match.id);
-        const { error } = await supabase.from("auction_events").update(saleFields(sale)).eq("id", match.id);
-        if (error && /archived_at/i.test(error.message)) {
+        const patched = await patchTableRow("auction_events", match.id, saleFields(sale));
+        if (!patched.ok && /archived_at/i.test(patched.body)) {
           const { archived_at: _a, ...rest } = saleFields(sale);
-          await supabase.from("auction_events").update(rest).eq("id", match.id);
+          await patchTableRow("auction_events", match.id, rest);
         }
       } else {
         const inserted = await supabase.from("auction_events").insert(saleFields(sale)).select("id").maybeSingle();
@@ -135,68 +166,34 @@ export async function ensureWeeklySales(supabase: SupabaseClient | null) {
     }
 
     events = await listEvents(supabase);
-    const keep = new Set(
-      events.filter((event) => isWeeklySale(event) && !event.archivedAt).map((event) => event.id),
-    );
-    const extras = events.filter((event) => !keep.has(event.id) && !event.archivedAt);
-    const dest = nextWeeklySale(events.filter((event) => keep.has(event.id))) ?? events.find((event) => keep.has(event.id));
-    if (extras.length && dest) {
-      const { data: extraLots } = await supabase
-        .from("lots")
-        .select("id, status, high_bidder, high_bidder_id")
-        .in(
-          "event_id",
-          extras.map((event) => event.id),
-        );
-      for (const row of extraLots ?? []) {
-        const sold = row.status === "ended" && (row.high_bidder || row.high_bidder_id);
-        if (row.status === "removed" || sold) continue;
-        await supabase
-          .from("lots")
-          .update({ event_id: dest.id, ends_at: dest.endsAt, status: "live" })
-          .eq("id", row.id);
-      }
-      const archivedAt = new Date().toISOString();
-      await supabase
-        .from("auction_events")
-        .update({ archived_at: archivedAt })
-        .in(
-          "id",
-          extras.map((event) => event.id),
-        );
-    }
+    const weeklyOpen = events.filter((event) => isWeeklySale(event) && !event.archivedAt);
+    const keep = new Set(weeklyOpen.map((event) => event.id));
+    const floor = firstWeeklyEvent(weeklyOpen);
+    const staleIds = events.filter((event) => !keep.has(event.id)).map((event) => event.id);
 
-    events = await listEvents(supabase);
-    const weekly = events.filter((event) => isWeeklySale(event) && !event.archivedAt);
-    for (const event of weekly) {
+    if (floor) {
       const { data: lots } = await supabase
         .from("lots")
-        .select("id, status, high_bidder, high_bidder_id")
-        .eq("event_id", event.id);
+        .select("id, event_id, status, high_bidder, high_bidder_id");
+      const laterNumbers = new Set(WEEKLY_SALES.slice(1).map((sale) => sale.auctionNumber));
+      const laterWeeks = new Set(
+        weeklyOpen
+          .filter((event) => event.auctionNumber && laterNumbers.has(event.auctionNumber))
+          .map((event) => event.id),
+      );
       for (const row of lots ?? []) {
-        const sold = row.status === "ended" && (row.high_bidder || row.high_bidder_id);
-        if (row.status === "removed" || sold) continue;
-        await supabase
-          .from("lots")
-          .update({ ends_at: event.endsAt, status: "live" })
-          .eq("id", row.id);
+        if (row.status === "removed" || isSold(row)) continue;
+        const eventId = (row.event_id as string | null) ?? null;
+        if (eventId && laterWeeks.has(eventId)) continue;
+        await placeLotOnSale(String(row.id), floor);
       }
     }
 
-    const next = nextWeeklySale(weekly);
-    if (next) {
-      const { data: orphans } = await supabase
-        .from("lots")
-        .select("id, event_id, status, high_bidder, high_bidder_id")
-        .is("event_id", null)
-        .not("status", "in", "(removed)");
-      for (const row of orphans ?? []) {
-        const sold = row.status === "ended" && (row.high_bidder || row.high_bidder_id);
-        if (sold) continue;
-        await supabase
-          .from("lots")
-          .update({ event_id: next.id, ends_at: next.endsAt, status: "live" })
-          .eq("id", row.id);
+    const extras = events.filter((event) => staleIds.includes(event.id) && !event.archivedAt);
+    if (extras.length) {
+      const archivedAt = new Date().toISOString();
+      for (const extra of extras) {
+        await patchTableRow("auction_events", extra.id, { archived_at: archivedAt });
       }
     }
 

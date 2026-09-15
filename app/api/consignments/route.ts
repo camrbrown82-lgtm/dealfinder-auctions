@@ -69,6 +69,7 @@ export async function GET(request: NextRequest) {
   const items: ConsignorItem[] = (queueRes.data ?? []).map((row) => {
     const lot = lotByConsignment.get(row.id);
     let pipelineStatus: ConsignorItem["pipelineStatus"] = consignmentToPipeline(row.status);
+    if (row.status === "approved" && !lot) pipelineStatus = "pending_approval";
     if (lot?.status === "paused" || lot?.status === "draft") pipelineStatus = "scheduled";
     if (lot?.status === "live") pipelineStatus = "live";
     if (lot?.status === "ended") pipelineStatus = "sold";
@@ -83,6 +84,23 @@ export async function GET(request: NextRequest) {
       commissionRate: Number(row.commission_rate ?? DEFAULT_COMMISSION_RATE),
     };
   });
+
+  const seen = new Set(items.map((item) => item.id));
+  for (const lot of lotsRes.data ?? []) {
+    const cid = lot.consignment_id as string | null;
+    if (cid && seen.has(cid)) continue;
+    if (seen.has(lot.id as string)) continue;
+    seen.add(String(lot.id));
+    items.push({
+      id: String(lot.id),
+      title: String(lot.title ?? "Lot"),
+      consignor: String(lot.consignor_name ?? ""),
+      pipelineStatus: lot.status === "ended" ? "sold" : lot.status === "live" ? "live" : "scheduled",
+      startingBid: Number(lot.starting_bid ?? lot.current_bid ?? 0),
+      buyNowPrice: Number(lot.buy_now_price ?? lot.reserve_price ?? 0),
+      commissionRate: DEFAULT_COMMISSION_RATE,
+    });
+  }
 
   const filtered = consignor
     ? items.filter((item) => item.consignor.toLowerCase().includes(consignor))

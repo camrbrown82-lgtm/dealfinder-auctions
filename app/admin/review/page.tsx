@@ -5,11 +5,10 @@ import { useAdminDesk } from "@/components/admin/AdminDesk";
 import { AdminShell } from "@/components/admin/AdminShell";
 import { AuctionCalendarModal } from "@/components/admin/AuctionCalendar";
 import { ReviewQueue, type ReviewDraft } from "@/components/admin/ReviewQueue";
-import { openAuctionEvents, weeklySaleName, weeklySaleTimes } from "@/lib/auctionCalendar";
 import type { Consignment } from "@/lib/utils";
 
 export default function AdminReviewPage() {
-  const { data, setNotice, setError, mutate } = useAdminDesk();
+  const { data, setNotice, mutate } = useAdminDesk();
   const [drafts, setDrafts] = useState<Record<string, ReviewDraft>>({});
   const [picking, setPicking] = useState<{ item: Consignment; draft: ReviewDraft } | null>(null);
   const pickingRef = useRef(picking);
@@ -54,12 +53,12 @@ export default function AdminReviewPage() {
     setNotice(`Approved ${lotNo} into ${json.auctionLabel ?? "the selected sale"}.`);
   }
 
-  const openEvents = openAuctionEvents(data.events);
+  const openEvents = data.events.filter((event) => !event.archivedAt);
 
   return (
     <AdminShell
       title="Consignment review"
-      subtitle="Approve into an upcoming sale. August and other ended weeks are hidden here."
+      subtitle="Approve into a weekly sale from the Sep 20 dropdown (five weeks out)."
     >
       <ReviewQueue
         queue={data.queue}
@@ -107,27 +106,6 @@ export default function AdminReviewPage() {
         events={openEvents}
         onClose={() => setPicking(null)}
         onSelect={(eventId) => void approveIntoSale(eventId)}
-        onScheduleDay={(day) => {
-          const times = weeklySaleTimes(day);
-          void mutate("/api/admin", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              action: "createEvent",
-              name: weeklySaleName(day),
-              auctionNumber: data.suggestedAuctionNumber,
-              startsAt: times.startsAt,
-              endsAt: times.endsAt,
-            }),
-          }).then((json) => {
-            const createdId = json?.event?.id as string | undefined;
-            if (createdId) {
-              void approveIntoSale(createdId);
-              return;
-            }
-            setError("Could not create that sale week. Try another day.");
-          });
-        }}
       />
     </AdminShell>
   );

@@ -14,7 +14,7 @@ import { uniqueImageUrls } from "@/lib/utils";
 import { startingBidFromBuyNow } from "@/lib/buyNow";
 import { patchLotRow } from "@/lib/openFloor";
 import { recordSoldLotSettlement } from "@/lib/recordSale";
-import { attachLotToSale, ensureWeeklySales, isWeeklySale, nextWeeklySale } from "@/lib/weeklySales";
+import { attachLotToSale, ensureWeeklySales, firstWeeklyEvent, isWeeklySale, nextWeeklySale } from "@/lib/weeklySales";
 import {
   allocateLotNumber,
   normalizeHouseSettings,
@@ -162,8 +162,18 @@ async function insertLotRow(
   return { data, error };
 }
 
-function reviewQueue<T extends { status: string }>(items: T[]) {
-  return items.filter((item) => item.status === "pending" || item.status === "held");
+function reviewQueue<T extends { id: string; status: string }>(
+  items: T[],
+  inventory: Array<{ consignmentId?: string | null }>,
+) {
+  const posted = new Set(
+    inventory.map((lot) => lot.consignmentId).filter((id): id is string => Boolean(id)),
+  );
+  return items.filter((item) => {
+    if (item.status === "pending" || item.status === "held") return true;
+    if (item.status === "approved" && !posted.has(item.id)) return true;
+    return false;
+  });
 }
 
 function databaseError(message?: string) {
@@ -178,7 +188,7 @@ function payloadFromDemo() {
   stampAuctionNumbers(demo);
   return {
     source: "demo" as const,
-    queue: reviewQueue(demo.queue),
+    queue: reviewQueue(demo.queue, demo.inventory),
     inventory: sortLotsByNumber(demo.inventory.filter((lot) => lot.status !== "draft")),
     events: demo.events,
     suggestedLotNumber: demo.houseSettings.nextLotNumber,
@@ -231,13 +241,13 @@ async function resolveSaleEvent(
       const match = events.find((row) => row.id === eventId || row.auctionNumber === eventId);
       if (match) return match;
     }
-    return nextWeeklySale(events.filter((row) => isWeeklySale(row))) ?? nextWeeklySale(events);
+    return firstWeeklyEvent(events.filter((row) => isWeeklySale(row))) ?? nextWeeklySale(events);
   }
   if (eventId) {
     const match = demo.events.find((row) => row.id === eventId);
     if (match) return match;
   }
-  return nextWeeklySale(demo.events);
+  return firstWeeklyEvent(demo.events) ?? nextWeeklySale(demo.events);
 }
 
 export async function GET() {
@@ -281,7 +291,7 @@ export async function GET() {
 
   return NextResponse.json({
     source: "supabase",
-    queue: reviewQueue(mappedQueue),
+    queue: reviewQueue(mappedQueue, inventory),
     inventory: sortLotsByNumber(inventory),
     events,
     suggestedLotNumber: houseSettings.nextLotNumber,
@@ -695,7 +705,14 @@ export async function PATCH(request: NextRequest) {
           if (eventId) reopen.event_id = eventId;
           reopen.image_url = image;
           reopen.image_urls = images;
-          await supabase.from("lots").update(reopen).eq("id", existing.id);
+          const patched = await patchLotRow(String(existing.id), reopen);
+          if (!patched.ok || !patched.data?.length) {
+            await supabase.from("consignments").update({ status: "pending" }).eq("id", row.id);
+            return NextResponse.json(
+              { error: patched.body || "Could not file this item into the live sale." },
+              { status: 400 },
+            );
+          }
           const lot = mapLot({ ...existing, ...reopen } as LotRow);
           lot.auctionNumber = event?.auctionNumber ?? lot.auctionNumber;
           lot.eventId = eventId ?? lot.eventId;
@@ -732,16 +749,23 @@ export async function PATCH(request: NextRequest) {
             listing_grade: parseListingGrade(row.listing_grade ?? row.condition),
             item_details: String(row.notes ?? "").trim() || null,
           };
-          const { data: lotRow, error: lotError } = await insertLotRow(supabase, insertRow);
+          let { data: lotRow, error: lotError } = await insertLotRow(supabase, insertRow);
           if (lotError || !lotRow) {
+            await supabase.from("consignments").update({ status: "pending" }).eq("id", row.id);
             return NextResponse.json(
-              { error: lotError?.message || "Could not file this item into warehouse inventory." },
+              { error: lotError?.message || "Could not file this item into the live sale." },
               { status: 400 },
             );
           }
+          if (eventId) {
+            await patchLotRow(String((lotRow as LotRow).id), {
+              event_id: eventId,
+              ends_at: eventEnds,
+              status: "live",
+            });
+          }
           const lot = mapLot(lotRow as LotRow);
-          lot.auctionNumber = event?.auctionNumber ?? lot.auctionNumber;
-          lot.eventId = eventId ?? lot.eventId;
+          if (event) attachLotToSale(lot, event);
           await commitHouseLot(supabase, demo, claimed.settings, lotNumber, claimed.existing);
           return NextResponse.json({
             ok: true,

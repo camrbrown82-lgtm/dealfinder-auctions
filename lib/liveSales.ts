@@ -1,6 +1,6 @@
 import { lotWasSold } from "@/lib/settlements";
 import type { AuctionEvent, AuctionLot } from "@/lib/utils";
-import { isWeeklySale } from "@/lib/weeklySales";
+import { FIRST_WEEKLY_SALE, isWeeklySale } from "@/lib/weeklySales";
 
 export type SaleKind = "past" | "live" | "upcoming";
 
@@ -23,13 +23,7 @@ export function pickSaleWindow(events: AuctionEvent[], now = Date.now()): SaleWi
   const sorted = (weekly.length ? weekly : events.filter((event) => !event.archivedAt)).sort(
     (a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime(),
   );
-  if (!sorted.length) return [];
-
-  let idx = sorted.findIndex((event) => saleKind(event, now) === "live");
-  if (idx < 0) idx = sorted.findIndex((event) => saleKind(event, now) === "upcoming");
-  if (idx < 0) idx = sorted.length - 1;
-
-  return sorted.slice(Math.max(0, idx - 2), Math.min(sorted.length, idx + 3)).map((event) => ({
+  return sorted.map((event) => ({
     event,
     kind: saleKind(event, now),
   }));
@@ -45,10 +39,15 @@ export function defaultSaleId(window: SaleWindowItem[]) {
 
 export function lotsForSale(lots: AuctionLot[], sale: SaleWindowItem | undefined) {
   if (!sale) return [];
+  const isFirstWeek =
+    sale.event.auctionNumber === FIRST_WEEKLY_SALE.auctionNumber ||
+    sale.event.auctionNumber === FIRST_WEEKLY_SALE.legacyNumber ||
+    sale.event.name === FIRST_WEEKLY_SALE.name;
   return lots.filter((lot) => {
-    if (lot.eventId !== sale.event.id) return false;
     if (lot.status === "removed" || lot.status === "draft" || lot.status === "ended") return false;
     if (lotWasSold(lot)) return false;
-    return true;
+    if (lot.eventId === sale.event.id) return true;
+    if (isFirstWeek && !lot.eventId) return true;
+    return false;
   });
 }

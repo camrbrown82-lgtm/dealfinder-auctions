@@ -39,6 +39,7 @@ export type AuctionLot = {
   listingGrade?: ListingGrade;
   itemDetails?: string | null;
   fulfillment?: "unset" | "ship" | "pickup";
+  consignmentId?: string | null;
 };
 
 export type AuctionEvent = {

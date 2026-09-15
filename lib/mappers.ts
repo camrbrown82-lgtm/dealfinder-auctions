@@ -30,6 +30,7 @@ export type LotRow = {
   listing_grade?: string | null;
   item_details?: string | null;
   fulfillment?: string | null;
+  consignment_id?: string | null;
 };
 
 export type ConsignmentRow = {
@@ -90,6 +91,7 @@ export function mapLot(row: LotRow): AuctionLot {
     itemDetails: row.item_details ?? null,
     fulfillment:
       row.fulfillment === "ship" || row.fulfillment === "pickup" ? row.fulfillment : "unset",
+    consignmentId: row.consignment_id ?? null,
   };
 }
 

@@ -5,7 +5,6 @@ import { AdminAiIntake } from "@/components/AdminAiIntake";
 import { useAdminDesk } from "@/components/admin/AdminDesk";
 import { AdminShell } from "@/components/admin/AdminShell";
 import { AuctionCalendarModal } from "@/components/admin/AuctionCalendar";
-import { openAuctionEvents, weeklySaleName, weeklySaleTimes } from "@/lib/auctionCalendar";
 import { DEFAULT_HOUSE_STARTING_BID } from "@/lib/houseDesk";
 import { HouseCatalogSettings } from "@/components/admin/HouseCatalogSettings";
 
@@ -71,26 +70,9 @@ export default function AdminIntakePage() {
         lotLabel={
           filingLot ? [filingLot.lotNumber, filingLot.title].filter(Boolean).join(" · ") : "this lot"
         }
-        events={openAuctionEvents(data.events)}
+        events={data.events.filter((event) => !event.archivedAt)}
         onClose={() => setFilingLot(null)}
         onSelect={(eventId) => void fileLotIntoSale(eventId)}
-        onScheduleDay={(day) => {
-          const times = weeklySaleTimes(day);
-          void mutate("/api/admin", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              action: "createEvent",
-              name: weeklySaleName(day),
-              auctionNumber: data.suggestedAuctionNumber,
-              startsAt: times.startsAt,
-              endsAt: times.endsAt,
-            }),
-          }).then((json) => {
-            const createdId = json?.event?.id as string | undefined;
-            if (createdId) void fileLotIntoSale(createdId);
-          });
-        }}
       />
     </AdminShell>
   );

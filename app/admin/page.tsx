@@ -10,7 +10,6 @@ import { CustomerDesk } from "@/components/admin/CustomerDesk";
 import { EmailEngine } from "@/components/admin/EmailEngine";
 import { HouseCatalogSettings } from "@/components/admin/HouseCatalogSettings";
 import { LiveMonitor } from "@/components/admin/LiveMonitor";
-import { openAuctionEvents, weeklySaleName, weeklySaleTimes } from "@/lib/auctionCalendar";
 import { DEFAULT_HOUSE_STARTING_BID } from "@/lib/houseDesk";
 import { lotNeedsRelist } from "@/lib/settlements";
 import { listingGradeOf } from "@/lib/listingGrade";
@@ -76,7 +75,7 @@ export default function AdminPage() {
     );
   }, [data, search]);
 
-  const upcomingEvents = openAuctionEvents(data.events);
+  const upcomingEvents = data.events.filter((event) => !event.archivedAt);
   const reviewCount = data.queue.length;
   const visibleLots = filteredInventory;
   const visibleEvents = showArchived
@@ -319,23 +318,6 @@ export default function AdminPage() {
         events={upcomingEvents}
         onClose={() => setFilingLot(null)}
         onSelect={(eventId) => void fileLotIntoSale(eventId)}
-        onScheduleDay={(day) => {
-          const times = weeklySaleTimes(day);
-          void mutate("/api/admin", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              action: "createEvent",
-              name: weeklySaleName(day),
-              auctionNumber: data.suggestedAuctionNumber,
-              startsAt: times.startsAt,
-              endsAt: times.endsAt,
-            }),
-          }).then((json) => {
-            const createdId = json?.event?.id as string | undefined;
-            if (createdId) void fileLotIntoSale(createdId);
-          });
-        }}
       />
     </AdminShell>
   );
