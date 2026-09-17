@@ -116,11 +116,8 @@ function dataUrlFromResponse(json: Record<string, unknown>): string | null {
 }
 
 async function editFromReferences(apiKey: string, prompt: string, sourceUrls: string[]) {
-  const refs: Array<{ blob: Blob; name: string }> = [];
-  for (const url of sourceUrls.slice(0, 4)) {
-    const loaded = await loadImageBlob(url);
-    if (loaded) refs.push(loaded);
-  }
+  const loaded = await Promise.all(sourceUrls.slice(0, 2).map((url) => loadImageBlob(url)));
+  const refs = loaded.filter((item): item is { blob: Blob; name: string } => Boolean(item));
   if (refs.length === 0) return { url: null, error: "Could not read warehouse photos for the studio shot." };
 
   const form = new FormData();

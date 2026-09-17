@@ -9,10 +9,9 @@ import { AiFeedback } from "@/components/AiFeedback";
 import { ConsignorNameField } from "@/components/ConsignorNameField";
 import { collectItemImageUrls } from "@/lib/files";
 import { listingImages, parsePastedImageUrls } from "@/lib/imageUrls";
-import { requestCatalog } from "@/lib/aiIntakeClient";
+import { generateListingFromPhotos } from "@/lib/generateListing";
 import { parseApiJson } from "@/lib/apiJson";
-import { requestStudioImage } from "@/lib/studioClient";
-import { mergeAiRuns, type AiRun } from "@/lib/aiRuns";
+import { type AiRun } from "@/lib/aiRuns";
 import { ListingGradeFields } from "@/components/ListingGradeFields";
 import { type ListingGrade } from "@/lib/listingGrade";
 import {
@@ -115,40 +114,28 @@ export default function ConsignorPage() {
 
     setGenerating(true);
     try {
-      const catalog = await requestCatalog(photos, imageUrlText, {
-        itemDetails,
-        listingGrade,
+      const result = await generateListingFromPhotos(photos, imageUrlText, { itemDetails, listingGrade }, {
+        onCatalog(catalog) {
+          setResolvedImageUrls(catalog.imageUrls);
+          setTitle(String(catalog.title ?? ""));
+          setDescription(String(catalog.description ?? ""));
+          if (catalog.estimated_market_value) {
+            setMarketValue(String(catalog.estimated_market_value));
+          }
+          setCompsNote(catalog.comps_note ? String(catalog.comps_note) : null);
+          setNotice("Catalog ready. Listing photo is still rendering…");
+        },
+        onStudio() {
+          setNotice("Listing photo ready. Review, then submit.");
+        },
       });
-      setResolvedImageUrls(catalog.imageUrls);
-      setTitle(String(catalog.title ?? ""));
-      setDescription(String(catalog.description ?? ""));
-      if (catalog.estimated_market_value) {
-        setMarketValue(String(catalog.estimated_market_value));
-      }
-      setCompsNote(catalog.comps_note ? String(catalog.comps_note) : null);
-      let run = catalog.ai ?? null;
-      setNotice("Catalog ready. Creating the AI listing photo…");
-      try {
-        const studio = await requestStudioImage({
-          imageUrls: catalog.imageUrls,
-          files: photos,
-          title: String(catalog.title ?? ""),
-          objectType: String(catalog.object_type ?? ""),
-          materials: Array.isArray(catalog.materials) ? catalog.materials.map(String) : [],
-          condition: String(catalog.condition ?? ""),
-          itemDetails,
-          listingGrade,
-          displaySetting: String(catalog.display_setting ?? ""),
-          photoBrief: String(catalog.photo_brief ?? ""),
-        });
-        setStudioImageUrl(studio.url);
-        run = mergeAiRuns(run, studio.ai);
-        setNotice("Listing photo ready. Review, then submit.");
-      } catch (studioErr) {
+      setResolvedImageUrls(result.imageUrls);
+      setAiRun(result.run);
+      if (result.studioUrl) setStudioImageUrl(result.studioUrl);
+      if (result.studioError) {
         setStudioImageUrl(null);
-        setError(studioErr instanceof Error ? studioErr.message : "Listing photo failed.");
+        setError(result.studioError);
       }
-      setAiRun(run);
     } catch (err) {
       setError(err instanceof Error ? err.message : "AI intake failed");
     } finally {

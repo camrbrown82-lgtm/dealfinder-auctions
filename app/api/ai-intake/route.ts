@@ -1,9 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import OpenAI from "openai";
 import { priceFromMarketComps } from "@/lib/marketComps";
-import { identifyLotProduct } from "@/lib/identifyProduct";
 import { catalogTitle, resolveModel } from "@/lib/lotIdentity";
-import { readItemLabels } from "@/lib/readItemLabels";
 import { parseListingGrade } from "@/lib/listingGrade";
 
 export const runtime = "nodejs";
@@ -159,23 +157,12 @@ export async function POST(request: NextRequest) {
   }
 
   const openai = new OpenAI({ apiKey });
-  const labels = await readItemLabels(apiKey, imageUrls).catch(() => ({
-    texts: [] as string[],
-    modelLines: [] as string[],
-    brandLines: [] as string[],
-    id: "",
-  }));
-  const labelDump = [...labels.brandLines, ...labels.modelLines, ...labels.texts]
-    .filter(Boolean)
-    .slice(0, 40);
-  const labelBlock = labelDump.length
-    ? `Label OCR (copy these into visible_text; use model_lines as the model if present):\n${labelDump.join("\n")}`
-    : "No separate OCR pass text. Read stickers and rear labels in the photos yourself.";
+  const visionUrls = imageUrls.slice(0, 2);
 
   let completion;
   try {
     completion = await openai.chat.completions.create({
-      model: "gpt-4o",
+      model: "gpt-4o-mini",
       temperature: 0,
       store: true,
       metadata: { feature: "catalog", product: "dealfinder-auctions" },
@@ -186,17 +173,17 @@ export async function POST(request: NextRequest) {
           content: [
             {
               type: "text",
-              text: `Read every label. ${labelBlock}\nListing grade: ${listingGrade}.\nStaff/consignor notes: ${itemDetails || "none"}.\nName the lot from those markings plus the notes. Do not guess a generation that is not printed.`,
+              text: `Read every label on the object. Listing grade: ${listingGrade}.\nStaff/consignor notes: ${itemDetails || "none"}.\nName the lot from those markings plus the notes. Do not guess a generation that is not printed.`,
             },
-            ...imageUrls.map((url) => ({
+            ...visionUrls.map((url, index) => ({
               type: "image_url" as const,
-              image_url: { url, detail: "high" as const },
+              image_url: { url, detail: index === 0 ? ("auto" as const) : ("low" as const) },
             })),
           ],
         },
       ],
       response_format: { type: "json_object" },
-      max_tokens: 900,
+      max_tokens: 700,
     });
   } catch (err) {
     const status =
@@ -221,10 +208,8 @@ export async function POST(request: NextRequest) {
     parsed = { description: raw };
   }
 
-  const visibleText = Array.from(
-    new Set([...labelDump, ...asStringList(parsed.visible_text), ...labels.modelLines]),
-  );
-  let maker = String(parsed.maker ?? labels.brandLines[0] ?? "").trim();
+  const visibleText = asStringList(parsed.visible_text);
+  let maker = String(parsed.maker ?? "").trim();
   let model = resolveModel(String(parsed.model ?? ""), visibleText);
   let objectType = String(parsed.object_type ?? "").trim();
   let color = String(parsed.color ?? "").trim();
@@ -235,53 +220,9 @@ export async function POST(request: NextRequest) {
   let description = composeDescription(parsed, { maker, model, color, itemDetails, listingGrade });
   let displaySetting = String(parsed.display_setting ?? "").trim();
   let photoBrief = String(parsed.photo_brief ?? "").trim();
-  const identifyIds: string[] = [];
-
-  try {
-    const identified = await identifyLotProduct(apiKey, imageUrls, {
-      title,
-      objectType,
-      visibleText,
-      materials: asStringList(parsed.materials),
-      condition: String(parsed.condition ?? "").trim(),
-      itemDetails,
-      listingGrade,
-      uncertainties: asStringList(parsed.uncertainties),
-    });
-    if (identified) {
-      if (identified.openaiId) identifyIds.push(identified.openaiId);
-      if (identified.maker) maker = identified.maker;
-      if (identified.color) color = identified.color;
-      model = resolveModel(identified.model, visibleText);
-      const built = catalogTitle({ maker, model, objectType, color });
-      const named = identified.title.trim();
-      const modelHint = model.split(/\s+/).pop()?.toLowerCase() ?? "";
-      title =
-        named.length > (built?.length ?? 0) &&
-        (!modelHint || named.toLowerCase().includes(modelHint) || named.toLowerCase().includes(maker.toLowerCase()))
-          ? named
-          : built || named || title;
-      if (identified.description && identified.description.split(/\s+/).length >= 28) {
-        description = composeDescription(
-          { ...parsed, description: identified.description },
-          { maker, model, color, itemDetails, listingGrade },
-        );
-      } else {
-        description = composeDescription(
-          { ...parsed, description: identified.description || parsed.description },
-          { maker, model, color, itemDetails, listingGrade },
-        );
-      }
-      if (identified.displaySetting) displaySetting = identified.displaySetting;
-      if (identified.photoBrief) photoBrief = identified.photoBrief;
-    }
-  } catch {
-    /* keep first-pass catalog */
-  }
 
   model = resolveModel(model, visibleText);
   title = catalogTitle({ maker, model, objectType, color }) || title;
-  description = composeDescription({ ...parsed, description }, { maker, model, color, itemDetails, listingGrade });
 
   let pricing = {
     estimated_market_value: 0,
@@ -321,7 +262,7 @@ export async function POST(request: NextRequest) {
     suggested_reserve: 0,
     comps_note: pricing.comps_note,
     ai: {
-      ids: [labels.id, completion.id, ...identifyIds, ...(pricing.openaiIds ?? [])].filter(Boolean),
+      ids: [completion.id, ...(pricing.openaiIds ?? [])].filter(Boolean),
       features: ["catalog", "comps"],
     },
   });

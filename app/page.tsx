@@ -9,7 +9,7 @@ export default function LandingPage() {
     <div className="relative flex min-h-screen flex-col bg-brand-ink">
       <Link
         href="/admin"
-        className="absolute left-3 top-4 z-20 flex items-center justify-center border-4 border-brand-cream bg-black p-1 shadow-comic-sm"
+        className="absolute left-3 top-4 z-10 flex items-center justify-center border-4 border-brand-cream bg-black p-1 shadow-comic-sm"
       >
         <Logo />
       </Link>
@@ -25,7 +25,7 @@ export default function LandingPage() {
 
         <h1 className="relative mx-auto w-full max-w-6xl">
           <span className="sr-only">{SITE.name}</span>
-          <span className="relative mx-auto block h-[min(42vh,22rem)] w-full max-w-5xl">
+          <span className="relative mx-auto block h-[min(42vh,22rem)] w-full max-w-5xl overflow-hidden">
             <Image
               src="/logo.webp"
               alt="DealFinder Auctions"
@@ -41,12 +41,12 @@ export default function LandingPage() {
           The floor is live. The hammer is hot.
         </p>
 
-        <Link
+        <a
           href="/live"
-          className="relative mt-10 inline-flex min-h-[4.5rem] max-w-full items-center border-4 border-brand-cream bg-brand-red px-4 py-4 text-center font-display text-3xl uppercase tracking-wide text-white shadow-comic transition hover:-translate-y-1 hover:shadow-comic-red sm:px-10 sm:text-6xl"
+          className="relative z-30 mt-10 inline-flex min-h-[4.5rem] max-w-full items-center border-4 border-brand-cream bg-brand-red px-4 py-4 text-center font-display text-3xl uppercase tracking-wide text-white shadow-comic transition hover:-translate-y-1 hover:shadow-comic-red sm:px-10 sm:text-6xl"
         >
           Enter the auction
-        </Link>
+        </a>
       </section>
 
       <SiteFooter />

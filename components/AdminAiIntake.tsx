@@ -7,9 +7,8 @@ import { moneySplit } from "@/lib/commission";
 import { OwnerPicker } from "@/components/OwnerPicker";
 import { HOUSE_CONSIGNOR } from "@/lib/consignors";
 import { collectItemImageUrls } from "@/lib/files";
-import { requestStudioImage } from "@/lib/studioClient";
-import { requestCatalog } from "@/lib/aiIntakeClient";
-import { mergeAiRuns, type AiRun } from "@/lib/aiRuns";
+import { generateListingFromPhotos } from "@/lib/generateListing";
+import { type AiRun } from "@/lib/aiRuns";
 import { AiFeedback } from "@/components/AiFeedback";
 import { ListingGradeFields } from "@/components/ListingGradeFields";
 import { type ListingGrade } from "@/lib/listingGrade";
@@ -102,36 +101,24 @@ export function AdminAiIntake({
     }
     setGenerating(true);
     try {
-      const catalog = await requestCatalog(photos, imageUrlText, {
-        itemDetails,
-        listingGrade,
+      const result = await generateListingFromPhotos(photos, imageUrlText, { itemDetails, listingGrade }, {
+        onCatalog(catalog) {
+          setResolvedImageUrls(catalog.imageUrls);
+          setTitle(String(catalog.title ?? ""));
+          setDescription(String(catalog.description ?? ""));
+          if (catalog.estimated_market_value) setMarketValue(String(catalog.estimated_market_value));
+          setCompsNote(catalog.comps_note ? String(catalog.comps_note) : null);
+        },
+        onStudio(url) {
+          setStudioImageUrl(url);
+        },
       });
-      setResolvedImageUrls(catalog.imageUrls);
-      setTitle(String(catalog.title ?? ""));
-      setDescription(String(catalog.description ?? ""));
-      if (catalog.estimated_market_value) setMarketValue(String(catalog.estimated_market_value));
-      setCompsNote(catalog.comps_note ? String(catalog.comps_note) : null);
-      let run = catalog.ai ?? null;
-      try {
-        const studio = await requestStudioImage({
-          imageUrls: catalog.imageUrls,
-          files: photos,
-          title: String(catalog.title ?? ""),
-          objectType: String(catalog.object_type ?? ""),
-          materials: Array.isArray(catalog.materials) ? catalog.materials.map(String) : [],
-          condition: String(catalog.condition ?? ""),
-          itemDetails,
-          listingGrade,
-          displaySetting: String(catalog.display_setting ?? ""),
-          photoBrief: String(catalog.photo_brief ?? ""),
-        });
-        setStudioImageUrl(studio.url);
-        run = mergeAiRuns(run, studio.ai);
-      } catch (studioErr) {
+      setResolvedImageUrls(result.imageUrls);
+      setAiRun(result.run);
+      if (result.studioError) {
         setStudioImageUrl(null);
-        setError(studioErr instanceof Error ? studioErr.message : "Listing photo failed.");
+        setError(result.studioError);
       }
-      setAiRun(run);
     } catch (err) {
       setError(err instanceof Error ? err.message : "AI intake failed");
     } finally {

@@ -26,13 +26,6 @@ const GRID_CLASS: Record<ViewCount, string> = {
   9: "grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-9",
 };
 
-type LotClock = {
-  currentBid: number;
-  endsAt: string;
-  highBidder: string | null;
-  status: AuctionLot["status"];
-};
-
 function normalizeView(value: number): ViewCount {
   if (value === 1 || value === 4 || value === 6 || value === 9) return value;
   if (value <= 3) return 1;
@@ -50,8 +43,10 @@ export function LiveGrid({
 }) {
   const [query, setQuery] = useState("");
   const [view, setView] = useState<ViewCount>(9);
+  const [floorLots, setFloorLots] = useState(lots);
+  const [floorSales, setFloorSales] = useState(sales);
   const [saleId, setSaleId] = useState(() => defaultSaleId(sales) ?? "");
-  const [clocks, setClocks] = useState<Record<string, LotClock> | null>(null);
+  const [floorReady, setFloorReady] = useState(lots.length > 0);
   const [interest, setInterest] = useState<InterestProfile>({
     categories: [],
     consignors: [],
@@ -59,7 +54,18 @@ export function LiveGrid({
     lotIds: [],
   });
 
-  const selected = sales.find((item) => item.event.id === saleId) ?? sales[0];
+  useEffect(() => {
+    if (lots.length) setFloorLots(lots);
+    if (sales.length) setFloorSales(sales);
+  }, [lots, sales]);
+
+  const selected = floorSales.find((item) => item.event.id === saleId) ?? floorSales[0];
+
+  useEffect(() => {
+    if (saleId && floorSales.some((item) => item.event.id === saleId)) return;
+    const next = defaultSaleId(floorSales) ?? "";
+    if (next && next !== saleId) setSaleId(next);
+  }, [floorSales, saleId]);
 
   useEffect(() => {
     try {
@@ -88,27 +94,22 @@ export function LiveGrid({
 
   useEffect(() => {
     let cancelled = false;
-    async function pullClocks() {
+    async function pullFloor() {
       try {
-        const response = await fetch("/api/live-clock", { cache: "no-store" });
+        const response = await fetch("/api/live", { cache: "no-store" });
         const json = await response.json();
         if (cancelled || !Array.isArray(json.lots)) return;
-        const next: Record<string, LotClock> = {};
-        for (const row of json.lots as Array<LotClock & { id: string }>) {
-          next[row.id] = {
-            currentBid: row.currentBid,
-            endsAt: row.endsAt,
-            highBidder: row.highBidder,
-            status: row.status,
-          };
+        setFloorLots(json.lots as AuctionLot[]);
+        if (Array.isArray(json.sales) && json.sales.length) {
+          setFloorSales(json.sales as SaleWindowItem[]);
         }
-        setClocks(next);
+        setFloorReady(true);
       } catch {
-        /* keep last clocks */
+        if (!cancelled) setFloorReady(true);
       }
     }
-    void pullClocks();
-    const id = window.setInterval(() => void pullClocks(), 4000);
+    void pullFloor();
+    const id = window.setInterval(() => void pullFloor(), 12000);
     return () => {
       cancelled = true;
       window.clearInterval(id);
@@ -116,30 +117,13 @@ export function LiveGrid({
   }, []);
 
   const visible = useMemo(() => {
-    const clockMap = clocks ?? {};
-    const clockReady = clocks !== null;
-    const merged = lots
-      .map((lot) => {
-        const clock = clockMap[lot.id];
-        if (!clock) return lot;
-        return {
-          ...lot,
-          currentBid: clock.currentBid,
-          endsAt: clock.endsAt,
-          highBidder: clock.highBidder,
-          status: clock.status ?? lot.status,
-        };
-      })
-      .filter((lot) => {
-        if (lot.status === "removed" || lot.status === "draft" || lot.status === "ended") return false;
-        if (lotWasSold(lot)) return false;
-        if (clockReady && clockMap[lot.id] && (clockMap[lot.id].status === "ended" || clockMap[lot.id].status === "removed")) {
-          return false;
-        }
-        if (clockReady && !clockMap[lot.id]) return false;
-        return true;
-      });
-    const pool = lotsForSale(merged, selected);
+    const onFloor = floorLots.filter((lot) => {
+      if (lot.status === "removed" || lot.status === "draft" || lot.status === "ended") return false;
+      if (lotWasSold(lot)) return false;
+      return true;
+    });
+    let pool = lotsForSale(onFloor, selected, floorSales);
+    if (!pool.length && onFloor.length) pool = onFloor;
     const q = query.trim().toLowerCase();
     const filtered = q
       ? pool.filter((lot) => {
@@ -158,11 +142,15 @@ export function LiveGrid({
         })
       : pool;
     return rankLotsByInterest(filtered, interest);
-  }, [lots, selected, query, interest, clocks]);
+  }, [floorLots, floorSales, selected, query, interest]);
 
   return (
     <div className="min-w-0 max-w-full space-y-4 overflow-x-clip">
-      {sales.length > 0 && (
+      {!floorReady ? (
+        <p className="comic-panel p-8 text-center font-display text-2xl">Opening the live floor…</p>
+      ) : (
+        <>
+      {floorSales.length > 0 && (
         <div className="comic-panel p-4">
           <p className="font-display text-lg">Auctions</p>
           <p className="font-comic text-sm">
@@ -170,7 +158,7 @@ export function LiveGrid({
             18.
           </p>
           <div className="mt-3 flex flex-wrap gap-2">
-            {sales.map((item) => {
+            {floorSales.map((item) => {
               const active = item.event.id === selected?.event.id;
               const label =
                 item.kind === "past" ? "Previous" : item.kind === "live" ? "Live now" : "Upcoming";
@@ -251,6 +239,8 @@ export function LiveGrid({
           ))}
         </section>
       )}
+        </>
+      )}
     </div>
   );
 }
@@ -264,7 +254,7 @@ function LotCard({
   forYou: boolean;
   view: ViewCount;
 }) {
-  const href = `/auctions/${lot.id}`;
+  const href = `/auctions/${encodeURIComponent(lot.slug || lot.id)}`;
   const open = isLotOpen(lot);
   const bidLabel = open ? "Bid now" : "View lot";
   const catalogLine = [lot.auctionNumber, lot.lotNumber].filter(Boolean).join(" · ");
