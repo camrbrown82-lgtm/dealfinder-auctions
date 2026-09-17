@@ -12,7 +12,8 @@ export default function AdminExportsPage() {
         <p className="font-comic text-sm">
           House export covers auctions, inventory, settlements, payouts, and customers. Per-sale
           export (sold lots, buyers, pre-auth) lives on Auction desk. Settlements can download as
-          grouped buyer invoices or itemized lot lines.
+          grouped buyer invoices or itemized lot lines. Master reports include lot status, consignor
+          payouts, 15% premium, 5% GST, and $10 shipping handling.
         </p>
         <div className="flex flex-wrap gap-2">
           <a className="comic-btn" href="/api/admin/export?view=grouped">
@@ -22,7 +23,7 @@ export default function AdminExportsPage() {
             House workbook · itemized sales
           </a>
           <a className="comic-btn-invert" href="/admin/auctions">
-            Per-auction .xlsx
+            Per-auction .xlsx / master report
           </a>
           <a className="comic-btn-invert" href="/admin/settlements">
             Settlements hub

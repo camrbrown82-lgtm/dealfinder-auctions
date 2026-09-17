@@ -123,6 +123,12 @@ export function AuctionDesk() {
     params.set("view", salesView);
     return `/api/admin/export?${params.toString()}`;
   }, [eventId, query, salesView]);
+  const masterHref = useMemo(() => {
+    const params = new URLSearchParams();
+    if (eventId) params.set("eventId", eventId);
+    params.set("master", "1");
+    return `/api/admin/export?${params.toString()}`;
+  }, [eventId]);
 
   async function adminJson(method: "POST" | "PATCH", body: Record<string, unknown>) {
     setBusy(true);
@@ -243,6 +249,9 @@ export function AuctionDesk() {
         </label>
         <a className="comic-btn-invert" href={exportHref}>
           Export {salesViewLabel(salesView)}
+        </a>
+        <a className={`comic-btn-invert ${eventId ? "" : "pointer-events-none opacity-50"}`} href={masterHref}>
+          Export Master Auction Report
         </a>
         <button
           type="button"

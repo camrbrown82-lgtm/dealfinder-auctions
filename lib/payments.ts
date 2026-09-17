@@ -72,8 +72,8 @@ export function fulfillmentInstructions(
 ) {
   if (choice === "ship") {
     return address
-      ? `We will ship to ${address}. Staff confirms postage before it leaves the desk.`
-      : "Add your shipping address on your bidder card, then we can mail this lot.";
+      ? `We will ship to ${address}. A $10 shipping handling fee is added automatically, plus carrier postage quoted from weight and dimensions, then 5% GST.`
+      : "Add your shipping address on your bidder card. Shipped lots include a $10 handling fee plus carrier postage and GST.";
   }
   if (choice === "pickup") {
     return PICKUP_INSTRUCTIONS;

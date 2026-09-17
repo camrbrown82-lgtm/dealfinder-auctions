@@ -13,8 +13,8 @@ This auction runs on a standard weekly schedule from Monday to Sunday. By placin
 2. PRE-AUTHORIZATION & DEPOSIT
 A $50 pre-authorization charge will be placed on your registered credit/debit card upon placing your first bid for this auction. This pre-authorization verifies your payment method and reserves funds toward your final invoice. Charges are settled at the close of the auction on Sunday.
 
-3. PAYMENT & BUYER'S PREMIUM
-All winning bids are subject to applicable taxes and standard buyer fees. Full payment must be settled upon auction close via the pre-authorized card on file or approved secondary payment methods.
+3. PAYMENT, BUYER'S PREMIUM, TAX & SHIPPING
+A 15% house buyer's premium is added to every winning hammer. Alberta 5% GST is charged on the taxable subtotal. Pickup invoices equal Hammer + 15% premium + GST. Shipped invoices also include a $10 automatic shipping handling fee (itemized separately) plus the actual carrier postage quoted from weight and dimensions, then GST. Full payment must be settled upon auction close via the pre-authorized card on file or Helcim checkout.
 
 4. ITEM CONDITION & "AS-IS" SALE
 All items are sold "AS-IS, WHERE-IS" with all faults, known or unknown. DealFinder Auctions makes no warranties or guarantees regarding item condition, functionality, or completeness unless explicitly stated in the lot description.
@@ -32,7 +32,7 @@ Bidders are strongly advised to monitor their active bids or set maximum auto-bi
 A $50 pre-authorization hold is required upon your first bid for this specific auction. This pre-authorization remains active throughout the duration of all extended bidding periods until final settlement on the Sunday ending cycle.
 
 4. ALL STANDARD SALES TERMS APPLY
-All standard payment deadlines, "AS-IS" item condition disclosures, buyer fees, and pickup/removal schedules remain in full effect following the close of the extended bidding period.`;
+All standard payment deadlines, "AS-IS" item condition disclosures, 15% buyer's premium, 5% GST, $10 shipping handling fee plus carrier postage on shipped lots, and pickup/removal schedules remain in full effect following the close of the extended bidding period.`;
 
 export const TC_TEMPLATE_CHARITY = `1. CHARITABLE PROCEEDS & PURPOSE
 This auction is conducted on behalf of designated charity and fundraising partners. Net proceeds from winning bids are allocated directly to the designated cause/organization specified in the auction details.
@@ -44,7 +44,7 @@ All bids placed are final. Due to the charitable nature of this event, no refund
 Tax receipts (if applicable) will be issued solely by the beneficiary organization in accordance with local tax laws. DealFinder Auctions does not issue tax receipts directly unless explicitly noted in the lot invoice.
 
 4. PRE-AUTHORIZATION & PAYMENT
-A $50 pre-authorization hold is processed upon placing your first bid to verify account authenticity. Full payment for winning lots will be charged automatically at the conclusion of the auction.`;
+A $50 pre-authorization hold is processed upon placing your first bid to verify account authenticity. Full payment for winning lots will be charged automatically at the conclusion of the auction, including the 15% buyer's premium, 5% GST, and — if you choose shipping — a $10 handling fee plus actual carrier postage.`;
 
 const BY_TYPE: Record<TcTemplateType, string> = {
   standard: TC_TEMPLATE_STANDARD,

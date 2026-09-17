@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getBidderSession } from "@/lib/bidderAuth";
 import { getDemoLot } from "@/lib/demoAuctionStore";
 import { mapLot, type LotRow } from "@/lib/mappers";
+import { invoiceFees } from "@/lib/invoiceFees";
 import {
   invoiceNumber,
   isFulfillmentChoice,
@@ -66,18 +67,33 @@ export async function GET() {
   }
 
   const address = profileAddress(session);
+  const handlingClaimed = new Set<string>();
   const wins: WinInvoice[] = lots.map((lot) => {
     const invoice = invoiceNumber(lot.id, session.id);
     const memory = lotPaidRecord(lot.id);
     const paid = isLotPaid(lot) || Boolean(memory);
+    const groupKey = lot.eventId || "house";
+    const includeHandling = lot.fulfillment === "ship" && !handlingClaimed.has(groupKey);
+    if (includeHandling) handlingClaimed.add(groupKey);
+    const fees = invoiceFees({
+      hammer: lot.currentBid,
+      fulfillment: lot.fulfillment ?? "unset",
+      shippingCost: lot.shippingCost ?? 0,
+      includeHandling,
+    });
     return {
       lotId: lot.id,
       title: lot.title,
       slug: lot.slug,
-      currentBid: lot.currentBid,
+      currentBid: fees.hammer,
+      premium: fees.premium,
+      handling: fees.handling,
+      shippingCost: fees.shipping,
+      gst: fees.gst,
+      total: fees.total,
       status: lot.status,
       invoice,
-      paymentMethodKey: "helcim_card",
+      paymentMethodKey: "helcim_card" as const,
       paymentMethod: paymentMethodLabel("helcim_card"),
       instructions: paymentInstructions("helcim_card", invoice),
       winning: lot.status === "ended",

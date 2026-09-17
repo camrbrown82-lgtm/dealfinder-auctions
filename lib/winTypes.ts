@@ -3,6 +3,11 @@ export type WinInvoice = {
   title: string;
   slug?: string | null;
   currentBid: number;
+  premium: number;
+  handling: number;
+  shippingCost: number;
+  gst: number;
+  total: number;
   status?: string;
   invoice: string;
   paymentMethod: string;

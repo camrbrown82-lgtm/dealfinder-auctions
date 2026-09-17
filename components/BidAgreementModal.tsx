@@ -60,6 +60,10 @@ export function BidAgreementModal({
 
         <div className="min-h-0 flex-1 overflow-y-auto bg-white p-4 font-comic text-sm leading-relaxed">
           <pre className="whitespace-pre-wrap font-comic text-sm leading-relaxed">{terms.termsText}</pre>
+          <p className="mt-4 border-4 border-black bg-brand-cream p-3 font-comic text-sm font-bold">
+            15% buyer&apos;s premium + 5% GST apply to every winning invoice. Shipped orders add a $10
+            handling fee (itemized) plus actual carrier postage from weight/dimensions.
+          </p>
         </div>
 
         <div className="shrink-0 space-y-3 border-t-4 border-black bg-brand-cream p-4">

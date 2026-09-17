@@ -27,7 +27,7 @@ export function InvoicePanel({
           <h2 className="font-display text-3xl leading-none">{win.title}</h2>
         </div>
         <p className="font-display text-3xl text-[#FF0000]">
-          {formatCurrency(win.currentBid)}
+          {formatCurrency(win.total)}
         </p>
       </div>
       <p className="mt-2 font-comic text-sm">
@@ -63,6 +63,38 @@ export function InvoicePanel({
         {fulfillmentLabel(win.fulfillment)}. {fulfillmentInstructions(win.fulfillment, win.address)}
       </p>
 
+      <table className="mt-3 w-full border-collapse border-4 border-black bg-white font-comic text-sm">
+        <tbody>
+          <tr className="border-t-2 border-black">
+            <td className="p-2">Hammer</td>
+            <td className="p-2 text-right">{formatCurrency(win.currentBid)}</td>
+          </tr>
+          <tr className="border-t-2 border-black">
+            <td className="p-2">15% buyer&apos;s premium</td>
+            <td className="p-2 text-right">{formatCurrency(win.premium)}</td>
+          </tr>
+          {win.handling > 0 ? (
+            <tr className="border-t-2 border-black">
+              <td className="p-2">Shipping handling fee</td>
+              <td className="p-2 text-right">{formatCurrency(win.handling)}</td>
+            </tr>
+          ) : null}
+          {win.shippingCost > 0 ? (
+            <tr className="border-t-2 border-black">
+              <td className="p-2">Carrier shipping</td>
+              <td className="p-2 text-right">{formatCurrency(win.shippingCost)}</td>
+            </tr>
+          ) : null}
+          <tr className="border-t-2 border-black">
+            <td className="p-2">5% GST</td>
+            <td className="p-2 text-right">{formatCurrency(win.gst)}</td>
+          </tr>
+          <tr className="border-t-2 border-black font-bold">
+            <td className="p-2">Amount due</td>
+            <td className="p-2 text-right">{formatCurrency(win.total)}</td>
+          </tr>
+        </tbody>
+      </table>
       <p className="mt-3 font-comic text-sm">{win.instructions}</p>
       {win.fulfillment === "pickup" ? (
         <p className="mt-3 border-4 border-black bg-white px-3 py-2 font-comic text-sm">
@@ -76,7 +108,7 @@ export function InvoicePanel({
           disabled={busy}
           onClick={() => onPay(win.lotId)}
         >
-          Pay {formatCurrency(win.currentBid)} with Helcim
+          Pay {formatCurrency(win.total)} with Helcim
         </button>
       ) : null}
       {win.paid ? (

@@ -81,8 +81,9 @@ export default function CheckoutPage() {
         <h1 className="font-display text-5xl text-brand-red">Winning checkout</h1>
         <p className="font-comic text-sm">
           Invoices settle by Helcim card only. After each hammer, pick ship or pick up, then pay
-          the hammer — we reverse the Sunday $50 hold as soon as that sale goes through. If checkout
-          is denied, that bid is forfeited.
+          the invoice (hammer + 15% premium + GST, and $10 handling plus carrier postage if you
+          ship). We reverse the Sunday $50 hold as soon as that sale goes through. If checkout is
+          denied, that bid is forfeited.
         </p>
       </div>
 

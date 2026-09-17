@@ -3,6 +3,7 @@ import { isAdminSession, unauthorized } from "@/lib/adminAuth";
 import type { CustomerRow } from "@/lib/adminTypes";
 import { auctionDeskSheets, filterAuctionDesk, loadAuctionDesk } from "@/lib/auctionDesk";
 import { parseSalesView } from "@/lib/salesView";
+import { masterAuctionSheets } from "@/lib/masterAuctionReport";
 import { buildAuctionSettlements, itemizeAuctionSettlements } from "@/lib/settlements";
 import { mapAuctionEvent } from "@/lib/mapAuctionEvent";
 import { getAdminDemo, stampAuctionNumbers } from "@/lib/demoAdminStore";
@@ -23,14 +24,26 @@ export async function GET(request: NextRequest) {
 
   const eventId = request.nextUrl.searchParams.get("eventId");
   const salesView = parseSalesView(request.nextUrl.searchParams.get("view"));
+  const master = request.nextUrl.searchParams.get("master") === "1";
   if (eventId) {
     const desk = filterAuctionDesk(await loadAuctionDesk(eventId), request.nextUrl.searchParams.get("q") ?? "");
     const stamp = (desk.event?.auctionNumber || eventId).replace(/[^\w.-]+/g, "-");
-    const body = xlsxWorkbook(auctionDeskSheets(desk, salesView));
+    let invoices = demoSettlementInvoices();
+    const supabase = getSupabaseAdmin();
+    if (isSupabaseConfigured && supabase) {
+      try {
+        invoices = await listSettlementInvoices(supabase);
+      } catch {
+        invoices = [];
+      }
+    }
+    const sheets = master ? masterAuctionSheets(desk, invoices) : auctionDeskSheets(desk, salesView);
+    const body = xlsxWorkbook(sheets);
+    const filename = master ? `DealFinder-master-${stamp}.xlsx` : `DealFinder-${stamp}.xlsx`;
     return new NextResponse(body, {
       headers: {
         "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        "Content-Disposition": `attachment; filename="DealFinder-${stamp}.xlsx"`,
+        "Content-Disposition": `attachment; filename="${filename}"`,
       },
     });
   }
@@ -149,14 +162,16 @@ export async function GET(request: NextRequest) {
           "Auction #",
           "Buyer",
           "Email",
-          "Phone",
-          "Address",
-          "Payment method",
+          "Hammer",
+          "15% Premium",
+          "Handling $10",
+          "Carrier shipping",
+          "5% GST",
+          "Total due",
           "Payment status",
           "Shipping",
           "Notes",
           "Lots",
-          "Total",
         ],
         ...invoiceSales.flatMap((sale) =>
           sale.invoices.map((buyer) => {
@@ -166,14 +181,16 @@ export async function GET(request: NextRequest) {
               sale.auctionNumber,
               buyer.name,
               buyer.email,
-              buyer.phone,
-              buyer.address,
-              buyer.paymentMethod,
+              buyer.hammer,
+              buyer.premium,
+              buyer.handling,
+              buyer.shippingCost,
+              buyer.gst,
+              buyer.total,
               mark?.payment ?? "unpaid",
               mark?.shipping ?? "pending",
               mark?.notes ?? "",
               buyer.lots.map((lot) => `${lot.lotNumber ?? lot.id} ${lot.title}`).join("; "),
-              buyer.total,
             ];
           }),
         ),

@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { RelistLotsModal } from "@/components/admin/RelistLotsModal";
 import { formatCurrency, type AuctionEvent, type PayoutRow } from "@/lib/utils";
+import { invoiceFees } from "@/lib/invoiceFees";
 import { paymentMethodLabel, fulfillmentLabel } from "@/lib/payments";
 import {
   itemizeAuctionSettlements,
@@ -388,6 +389,12 @@ function AuctionBlock({
           </p>
         </div>
         <div className="flex flex-wrap gap-2 print:hidden">
+          <a
+            className="comic-btn-invert"
+            href={`/api/admin/export?eventId=${encodeURIComponent(sale.eventId)}&master=1`}
+          >
+            Export Master Auction Report
+          </a>
           <button type="button" className="comic-btn" onClick={onPrint}>
             Print this auction
           </button>
@@ -478,6 +485,11 @@ function InvoiceCard({
   mark: InvoiceMark;
   onMark: (next: InvoiceMark, delay?: number) => void;
 }) {
+  const fees = invoiceFees({
+    hammer: invoice.hammer || invoice.lots.reduce((sum, lot) => sum + lot.hammer, 0),
+    fulfillment: mark.fulfillment ?? invoice.fulfillment ?? "unset",
+    shippingCost: mark.shippingCost ?? invoice.shippingCost ?? 0,
+  });
   return (
     <article className="comic-panel break-inside-avoid p-4">
       <div className="flex flex-wrap items-start justify-between gap-2">
@@ -485,7 +497,7 @@ function InvoiceCard({
           <p className="font-display text-sm tracking-widest text-brand-red">{invoice.invoice}</p>
           <h3 className="font-display text-2xl">{invoice.name}</h3>
         </div>
-        <p className="font-display text-2xl">{formatCurrency(invoice.total)}</p>
+        <p className="font-display text-2xl">{formatCurrency(fees.total)}</p>
       </div>
       <dl className="mt-3 grid gap-1 font-comic text-sm sm:grid-cols-2">
         <div>
@@ -525,9 +537,66 @@ function InvoiceCard({
               <td className="p-2 text-right">{formatCurrency(lot.hammer)}</td>
             </tr>
           ))}
+          <tr className="border-t-2 border-black">
+            <td className="p-2" colSpan={2}>
+              Hammer subtotal
+            </td>
+            <td className="p-2 text-right">{formatCurrency(fees.hammer)}</td>
+          </tr>
+          <tr className="border-t-2 border-black">
+            <td className="p-2" colSpan={2}>
+              15% buyer&apos;s premium
+            </td>
+            <td className="p-2 text-right">{formatCurrency(fees.premium)}</td>
+          </tr>
+          {fees.handling > 0 ? (
+            <tr className="border-t-2 border-black">
+              <td className="p-2" colSpan={2}>
+                Shipping handling fee
+              </td>
+              <td className="p-2 text-right">{formatCurrency(fees.handling)}</td>
+            </tr>
+          ) : null}
+          {fees.shipping > 0 ? (
+            <tr className="border-t-2 border-black">
+              <td className="p-2" colSpan={2}>
+                Carrier shipping
+              </td>
+              <td className="p-2 text-right">{formatCurrency(fees.shipping)}</td>
+            </tr>
+          ) : null}
+          <tr className="border-t-2 border-black">
+            <td className="p-2" colSpan={2}>
+              5% GST
+            </td>
+            <td className="p-2 text-right">{formatCurrency(fees.gst)}</td>
+          </tr>
+          <tr className="border-t-2 border-black font-bold">
+            <td className="p-2" colSpan={2}>
+              Total due
+            </td>
+            <td className="p-2 text-right">{formatCurrency(fees.total)}</td>
+          </tr>
         </tbody>
       </table>
       <div className="mt-3 grid gap-2 print:hidden sm:grid-cols-2">
+        <label className="block font-comic text-sm font-bold">
+          Fulfillment
+          <select
+            value={mark.fulfillment ?? invoice.fulfillment ?? "unset"}
+            onChange={(e) =>
+              onMark({
+                ...mark,
+                fulfillment: e.target.value as "unset" | "ship" | "pickup",
+              })
+            }
+            className="mt-1 w-full border-4 border-black bg-white px-2 py-1 font-normal"
+          >
+            <option value="unset">Unset</option>
+            <option value="pickup">Pickup</option>
+            <option value="ship">Ship</option>
+          </select>
+        </label>
         <label className="block font-comic text-sm font-bold">
           Payment
           <select
@@ -552,6 +621,18 @@ function InvoiceCard({
             <option value="shipped">Shipped</option>
             <option value="picked_up">Picked up</option>
           </select>
+        </label>
+        <label className="block font-comic text-sm font-bold">
+          Actual carrier shipping ($)
+          <input
+            type="number"
+            min="0"
+            step="0.01"
+            value={mark.shippingCost ?? invoice.shippingCost ?? 0}
+            onChange={(e) => onMark({ ...mark, shippingCost: Number(e.target.value) || 0 }, 400)}
+            className="mt-1 w-full border-4 border-black bg-white px-2 py-1 font-normal"
+            disabled={(mark.fulfillment ?? invoice.fulfillment) !== "ship"}
+          />
         </label>
         <label className="block font-comic text-sm font-bold sm:col-span-2">
           Notes
