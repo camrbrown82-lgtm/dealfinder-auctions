@@ -349,7 +349,37 @@ export function filterAuctionDesk(desk: AuctionDeskPayload, query: string): Auct
   return { ...desk, lots, bids, registrations, sales };
 }
 
-export function auctionDeskSheets(desk: AuctionDeskPayload) {
+export function groupDeskSales(sales: AuctionDeskSaleLine[]) {
+  const groups = new Map<
+    string,
+    AuctionDeskSaleLine & { itemCount: number; lotSummary: string }
+  >();
+  for (const row of sales) {
+    const existing = groups.get(row.invoice);
+    const lotLabel = row.lotNumber || row.title;
+    if (!existing) {
+      groups.set(row.invoice, {
+        ...row,
+        itemCount: 1,
+        lotSummary: lotLabel,
+      });
+      continue;
+    }
+    existing.itemCount += 1;
+    existing.hammer += row.hammer;
+    existing.lotSummary = `${existing.lotSummary}; ${lotLabel}`;
+    existing.title = `${existing.itemCount} lots`;
+    existing.lotNumber = existing.lotSummary;
+    if (row.paymentStatus === "unpaid" || existing.paymentStatus === "unpaid") {
+      existing.paymentStatus = existing.paymentStatus === row.paymentStatus ? row.paymentStatus : "partial";
+    } else if (row.paymentStatus === "partial" || existing.paymentStatus === "partial") {
+      existing.paymentStatus = "partial";
+    }
+  }
+  return Array.from(groups.values());
+}
+
+export function auctionDeskSheets(desk: AuctionDeskPayload, view: "itemized" | "grouped" = "itemized") {
   const event = desk.event;
   return [
     {
@@ -372,40 +402,72 @@ export function auctionDeskSheets(desk: AuctionDeskPayload) {
     },
     {
       name: "Sales",
-      rows: [
-        [
-          "Invoice",
-          "Lot #",
-          "Item",
-          "Buyer",
-          "Email",
-          "Phone",
-          "Hammer",
-          "Payment",
-          "Paid at",
-          "Helcim purchase",
-          "Buyer pre-auth",
-          "Card on file",
-          "Auction #",
-          "Auction name",
-        ],
-        ...desk.sales.map((row) => [
-          row.invoice,
-          row.lotNumber,
-          row.title,
-          row.buyerName,
-          row.buyerEmail,
-          row.buyerPhone,
-          row.hammer,
-          row.paymentStatus,
-          row.paidAt,
-          row.helcimPurchaseId,
-          row.buyerPreauthStatus,
-          row.buyerHasCard ? "yes" : "no",
-          event?.auctionNumber ?? "",
-          event?.name ?? "",
-        ]),
-      ],
+      rows:
+        view === "grouped"
+          ? [
+              [
+                "Invoice",
+                "Buyer",
+                "Email",
+                "Phone",
+                "Lots",
+                "Items",
+                "Invoice total",
+                "Payment",
+                "Buyer pre-auth",
+                "Card on file",
+                "Auction #",
+                "Auction name",
+              ],
+              ...groupDeskSales(desk.sales).map((row) => [
+                row.invoice,
+                row.buyerName,
+                row.buyerEmail,
+                row.buyerPhone,
+                row.lotSummary,
+                row.itemCount,
+                row.hammer,
+                row.paymentStatus,
+                row.buyerPreauthStatus,
+                row.buyerHasCard ? "yes" : "no",
+                event?.auctionNumber ?? "",
+                event?.name ?? "",
+              ]),
+            ]
+          : [
+              [
+                "Invoice",
+                "Lot #",
+                "Item",
+                "Buyer",
+                "Email",
+                "Phone",
+                "Hammer",
+                "Payment",
+                "Paid at",
+                "Helcim purchase",
+                "Buyer pre-auth",
+                "Card on file",
+                "Auction #",
+                "Auction name",
+              ],
+              ...desk.sales.map((row) => [
+                row.invoice,
+                row.lotNumber,
+                row.title,
+                row.buyerName,
+                row.buyerEmail,
+                row.buyerPhone,
+                row.hammer,
+                row.paymentStatus,
+                row.paidAt,
+                row.helcimPurchaseId,
+                row.buyerPreauthStatus,
+                row.buyerHasCard ? "yes" : "no",
+                event?.auctionNumber ?? "",
+                event?.name ?? "",
+              ]),
+            ],
     },
     {
       name: "Lots",

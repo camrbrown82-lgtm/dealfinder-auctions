@@ -11,7 +11,7 @@ type HubLens = "all" | "house" | "consignor";
 
 export default function AdminSettlementsPage() {
   const desk = useAdminDesk();
-  const { data } = desk;
+  const { data, mutate, setNotice } = desk;
   const [customers, setCustomers] = useState<CustomerRow[]>([]);
   const [lens, setLens] = useState<HubLens>("all");
 
@@ -60,7 +60,32 @@ export default function AdminSettlementsPage() {
         sales={sales}
         payouts={data.payouts}
         payoutItems={data.payoutItems}
+        events={data.events}
         onArchived={() => void desk.load()}
+        onDeleteLots={async (lotIds) => {
+          if (!lotIds.length) return;
+          if (!window.confirm(`Delete ${lotIds.length} lot${lotIds.length === 1 ? "" : "s"} from inventory?`)) {
+            return;
+          }
+          const json = await mutate("/api/admin", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ action: "deleteLots", lotIds }),
+          });
+          if (json) setNotice(`Deleted ${json.deleted ?? lotIds.length} lots.`);
+        }}
+        onRelistLots={async (lotIds, eventId, lotStart) => {
+          const json = await mutate("/api/admin", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ action: "relistLots", lotIds, eventId, lotStart }),
+          });
+          if (json) {
+            setNotice(
+              `Relisted ${Array.isArray(json.lots) ? json.lots.length : lotIds.length} lots into ${json.auctionNumber ?? "the selected auction"}.`,
+            );
+          }
+        }}
       />
     </AdminShell>
   );

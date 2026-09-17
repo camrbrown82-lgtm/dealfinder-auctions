@@ -1,8 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { addDemoLot, getAdminDemo, seedDemoLots, stampAuctionNumbers } from "@/lib/demoAdminStore";
-import { getDemoLot, registerDemoLot } from "@/lib/demoAuctionStore";
+import { getDemoLot, registerDemoLot, unregisterDemoLot } from "@/lib/demoAuctionStore";
 import { isAdminSession, unauthorized } from "@/lib/adminAuth";
-import { suggestAuctionNumber, sortLotsByNumber } from "@/lib/catalogNumbers";
+import {
+  formatLotNumber,
+  nextFreeLotNumber,
+  parseLotRangeStart,
+  parseLotSeq,
+  suggestAuctionNumber,
+  sortLotsByNumber,
+} from "@/lib/catalogNumbers";
 import { getSupabaseAdmin, isSupabaseConfigured } from "@/lib/supabaseClient";
 import { mapConsignment, mapLot, type ConsignmentRow, type LotRow } from "@/lib/mappers";
 import { parseListingGrade, withListedGrade } from "@/lib/listingGrade";
@@ -319,7 +326,28 @@ type AdminBody = {
   status?: string;
   remove?: boolean;
   relist?: boolean;
+  lotIds?: string[];
+  lotStart?: string | number;
 };
+
+function collectLotIds(body: AdminBody) {
+  const ids = new Set<string>();
+  for (const value of body.lotIds ?? []) {
+    const id = String(value ?? "").trim();
+    if (id) ids.add(id);
+  }
+  if (body.id?.trim()) ids.add(body.id.trim());
+  return Array.from(ids);
+}
+
+async function unlinkLotBids(
+  supabase: NonNullable<ReturnType<typeof getSupabaseAdmin>>,
+  lotIds: string[],
+) {
+  if (!lotIds.length) return;
+  await supabase.from("bids").delete().in("lot_id", lotIds);
+  await supabase.from("absentee_bids").delete().in("lot_id", lotIds);
+}
 
 function applyEventToLot(lot: AuctionLot, event: AuctionEvent, forceLive?: boolean) {
   lot.eventId = event.id;
@@ -427,6 +455,156 @@ export async function POST(request: NextRequest) {
       if (error) return NextResponse.json({ error: error.message }, { status: 400 });
     }
     return NextResponse.json({ ok: true });
+  }
+
+  if (body.action === "deleteLots") {
+    const ids = collectLotIds(body);
+    if (!ids.length) return NextResponse.json({ error: "Select at least one lot." }, { status: 400 });
+
+    const demoDeleted: string[] = [];
+    demo.inventory = demo.inventory.filter((lot) => {
+      const hit = ids.includes(lot.id) || (lot.lotNumber != null && ids.includes(lot.lotNumber));
+      if (hit) {
+        demoDeleted.push(lot.id);
+        unregisterDemoLot(lot.id);
+        if (lot.slug) unregisterDemoLot(lot.slug);
+        return false;
+      }
+      return true;
+    });
+
+    if (isSupabaseConfigured && supabase) {
+      const found = new Map<string, string>();
+      const byId = await supabase.from("lots").select("id").in("id", ids);
+      for (const row of byId.data ?? []) found.set(String(row.id), String(row.id));
+      if (found.size < ids.length) {
+        const byNumber = await supabase.from("lots").select("id, lot_number").in("lot_number", ids);
+        for (const row of byNumber.data ?? []) found.set(String(row.id), String(row.id));
+      }
+      if (found.size < ids.length) {
+        const bySlug = await supabase.from("lots").select("id, slug").in("slug", ids);
+        for (const row of bySlug.data ?? []) found.set(String(row.id), String(row.id));
+      }
+      const resolved = Array.from(found.values());
+      if (!resolved.length) {
+        return NextResponse.json({ error: "No matching lots to delete." }, { status: 404 });
+      }
+      await unlinkLotBids(supabase, resolved);
+      const { error } = await supabase.from("lots").delete().in("id", resolved);
+      if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+      return NextResponse.json({ ok: true, deleted: resolved.length });
+    }
+
+    if (!demoDeleted.length) {
+      return NextResponse.json({ error: "No matching lots to delete." }, { status: 404 });
+    }
+    return NextResponse.json({ ok: true, deleted: demoDeleted.length });
+  }
+
+  if (body.action === "relistLots") {
+    const ids = collectLotIds(body);
+    if (!ids.length) return NextResponse.json({ error: "Select at least one lot." }, { status: 400 });
+    const start = parseLotRangeStart(body.lotStart) ?? 9000;
+    const sale = await resolveSaleEvent(supabase, demo, body.eventId);
+    if (!sale) {
+      return NextResponse.json({ error: "Pick a target auction." }, { status: 400 });
+    }
+
+    const existing = await listLotNumbers(supabase, demo.inventory);
+    const assigned: Array<{ id: string; lotNumber: string }> = [];
+    let cursor = start;
+
+    const demoMatches = demo.inventory.filter(
+      (lot) => ids.includes(lot.id) || (lot.lotNumber != null && ids.includes(lot.lotNumber)),
+    );
+    for (const lot of demoMatches) {
+      const lotNumber = nextFreeLotNumber(cursor, existing);
+      const seq = parseLotSeq(lotNumber) ?? cursor;
+      cursor = seq + 1;
+      existing.push({ lotNumber });
+      applyEventToLot(lot, sale, true);
+      lot.lotNumber = lotNumber;
+      lot.highBidder = null;
+      lot.highBidderId = null;
+      lot.paidAt = null;
+      lot.helcimPurchaseTransactionId = null;
+      lot.fulfillment = "unset";
+      lot.currentBid = lot.startingBid ?? lot.currentBid;
+      lot.status = "live";
+      registerDemoLot(lot);
+      assigned.push({ id: lot.id, lotNumber });
+    }
+
+    if (isSupabaseConfigured && supabase) {
+      const { data: rows, error: lookupError } = await supabase.from("lots").select("*").in("id", ids);
+      let matched = (rows ?? []) as LotRow[];
+      if (lookupError || !matched.length) {
+        const extra = await supabase.from("lots").select("*").in("lot_number", ids);
+        matched = ((extra.data ?? []) as LotRow[]).concat(matched);
+      }
+      const unique = new Map(matched.map((row) => [String(row.id), row]));
+      if (!unique.size) {
+        return NextResponse.json({ error: "No matching lots to relist." }, { status: 404 });
+      }
+      const eventId = asEventUuid(sale.id) ?? sale.id;
+      const numbered: Array<{ id: string; lotNumber: string }> = [];
+      for (const row of Array.from(unique.values())) {
+        const lotNumber = nextFreeLotNumber(cursor, existing);
+        const seq = parseLotSeq(lotNumber) ?? cursor;
+        cursor = seq + 1;
+        existing.push({ lotNumber });
+        numbered.push({ id: String(row.id), lotNumber });
+      }
+      await unlinkLotBids(
+        supabase,
+        numbered.map((row) => row.id),
+      );
+      for (const row of numbered) {
+        const startBid =
+          Number(unique.get(row.id)?.starting_bid ?? unique.get(row.id)?.current_bid ?? 0) || 0;
+        const patch: Record<string, unknown> = {
+          event_id: eventId,
+          lot_number: row.lotNumber,
+          status: "live",
+          ends_at: sale.endsAt,
+          high_bidder: null,
+          high_bidder_id: null,
+          paid_at: null,
+          current_bid: startBid,
+          fulfillment: "unset",
+        };
+        let patched = await patchLotRow(row.id, patch);
+        if (!patched.ok && /paid_at|fulfillment|helcim/i.test(patched.body)) {
+          delete patch.paid_at;
+          delete patch.fulfillment;
+          patched = await patchLotRow(row.id, patch);
+        }
+        if (!patched.ok) {
+          return NextResponse.json(
+            { error: patched.body || `Could not relist ${row.lotNumber}.` },
+            { status: 400 },
+          );
+        }
+      }
+      return NextResponse.json({
+        ok: true,
+        eventId: sale.id,
+        auctionNumber: sale.auctionNumber,
+        lots: numbered,
+        start: formatLotNumber(start),
+      });
+    }
+
+    if (!assigned.length) {
+      return NextResponse.json({ error: "No matching lots to relist." }, { status: 404 });
+    }
+    return NextResponse.json({
+      ok: true,
+      eventId: sale.id,
+      auctionNumber: sale.auctionNumber,
+      lots: assigned,
+      start: formatLotNumber(start),
+    });
   }
 
   if (body.action === "createLot") {

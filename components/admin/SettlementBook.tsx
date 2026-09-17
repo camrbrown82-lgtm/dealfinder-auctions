@@ -1,9 +1,16 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { formatCurrency, type PayoutRow } from "@/lib/utils";
+import { RelistLotsModal } from "@/components/admin/RelistLotsModal";
+import { formatCurrency, type AuctionEvent, type PayoutRow } from "@/lib/utils";
 import { paymentMethodLabel, fulfillmentLabel } from "@/lib/payments";
-import { mergePersistedInvoices, type AuctionSettlement, type BuyerSettlement } from "@/lib/settlements";
+import {
+  itemizeAuctionSettlements,
+  mergePersistedInvoices,
+  type AuctionSettlement,
+  type BuyerSettlement,
+} from "@/lib/settlements";
+import { salesViewLabel, type SalesViewMode } from "@/lib/salesView";
 import type { PayoutItem } from "@/lib/payouts";
 import {
   emptyMark,
@@ -29,12 +36,18 @@ export function SettlementBook({
   payoutItems,
   onArchived,
   lens = "all",
+  events = [],
+  onRelistLots,
+  onDeleteLots,
 }: {
   sales: AuctionSettlement[];
   payouts: PayoutRow[];
   payoutItems?: PayoutItem[];
   onArchived?: () => Promise<void> | void;
   lens?: "all" | "house" | "consignor";
+  events?: AuctionEvent[];
+  onRelistLots?: (lotIds: string[], eventId: string, lotStart: string) => Promise<void> | void;
+  onDeleteLots?: (lotIds: string[]) => Promise<void> | void;
 }) {
   const [marks, setMarks] = useState<Record<string, InvoiceMark>>({});
   const [savedInvoices, setSavedInvoices] = useState<SettlementInvoiceRecord[]>([]);
@@ -42,6 +55,10 @@ export function SettlementBook({
   const [printId, setPrintId] = useState<string | "all" | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [salesView, setSalesView] = useState<SalesViewMode>("grouped");
+  const [unsoldOnly, setUnsoldOnly] = useState(false);
+  const [selectedUnsold, setSelectedUnsold] = useState<Set<string>>(new Set());
+  const [relistOpen, setRelistOpen] = useState(false);
   const noteTimers = useRef<Record<string, number>>({});
 
   async function loadRecords() {
@@ -118,17 +135,58 @@ export function SettlementBook({
 
   const visible = useMemo(() => {
     const merged = mergePersistedInvoices(sales, savedInvoices);
-    if (!printId || printId === "all") return merged;
-    return merged.filter((sale) => sale.eventId === printId);
-  }, [printId, sales, savedInvoices]);
+    const scoped = !printId || printId === "all" ? merged : merged.filter((sale) => sale.eventId === printId);
+    return salesView === "itemized" ? itemizeAuctionSettlements(scoped) : scoped;
+  }, [printId, sales, savedInvoices, salesView]);
 
   return (
+    <>
     <div className="space-y-10">
       {lens !== "consignor" ? (
         <>
       <div className="flex flex-wrap gap-2 print:hidden">
         <button type="button" className="comic-btn" onClick={() => setPrintId("all")}>
           Print all auctions
+        </button>
+        <a className="comic-btn-invert" href={`/api/admin/export?view=${salesView}`}>
+          Excel · {salesViewLabel(salesView)}
+        </a>
+        <button
+          type="button"
+          className={salesView === "itemized" ? "comic-btn" : "comic-btn-invert"}
+          onClick={() => setSalesView("itemized")}
+        >
+          Itemized Sales View
+        </button>
+        <button
+          type="button"
+          className={salesView === "grouped" ? "comic-btn" : "comic-btn-invert"}
+          onClick={() => setSalesView("grouped")}
+        >
+          Grouped Buyer Invoice View
+        </button>
+        <button
+          type="button"
+          className={unsoldOnly ? "comic-btn" : "comic-btn-invert"}
+          onClick={() => setUnsoldOnly((value) => !value)}
+        >
+          Unsold / No-bid items
+        </button>
+        <button
+          type="button"
+          className="comic-btn"
+          disabled={!selectedUnsold.size || !onRelistLots}
+          onClick={() => setRelistOpen(true)}
+        >
+          Relist / Repost selected ({selectedUnsold.size})
+        </button>
+        <button
+          type="button"
+          className="comic-btn-invert"
+          disabled={!selectedUnsold.size || !onDeleteLots}
+          onClick={() => void onDeleteLots?.(Array.from(selectedUnsold))}
+        >
+          Delete selected lots
         </button>
       </div>
       {loadError ? (
@@ -152,6 +210,27 @@ export function SettlementBook({
             sale={sale}
             marks={marks}
             saving={busy === sale.eventId}
+            unsoldOnly={unsoldOnly}
+            selectedUnsold={selectedUnsold}
+            onToggleUnsold={(id, checked) => {
+              setSelectedUnsold((current) => {
+                const next = new Set(current);
+                if (checked) next.add(id);
+                else next.delete(id);
+                return next;
+              });
+            }}
+            onToggleUnsoldGroup={(ids, checked) => {
+              setSelectedUnsold((current) => {
+                const next = new Set(current);
+                for (const id of ids) {
+                  if (checked) next.add(id);
+                  else next.delete(id);
+                }
+                return next;
+              });
+            }}
+            onDeleteLot={(id) => void onDeleteLots?.([id])}
             onMark={(buyer, next, delay) => patchMark(sale, buyer, next, delay)}
             onPrint={() => setPrintId(sale.eventId)}
             onSave={() => void saveSale(sale)}
@@ -252,6 +331,19 @@ export function SettlementBook({
       </section>
       ) : null}
     </div>
+    <RelistLotsModal
+      open={relistOpen}
+      count={selectedUnsold.size}
+      events={events}
+      onClose={() => setRelistOpen(false)}
+      onConfirm={(eventId, lotStart) => {
+        void Promise.resolve(onRelistLots?.(Array.from(selectedUnsold), eventId, lotStart)).then(() => {
+          setRelistOpen(false);
+          setSelectedUnsold(new Set());
+        });
+      }}
+    />
+    </>
   );
 }
 
@@ -259,6 +351,11 @@ function AuctionBlock({
   sale,
   marks,
   saving,
+  unsoldOnly,
+  selectedUnsold,
+  onToggleUnsold,
+  onToggleUnsoldGroup,
+  onDeleteLot,
   onMark,
   onPrint,
   onSave,
@@ -266,11 +363,18 @@ function AuctionBlock({
   sale: AuctionSettlement;
   marks: Record<string, InvoiceMark>;
   saving: boolean;
+  unsoldOnly: boolean;
+  selectedUnsold: Set<string>;
+  onToggleUnsold: (id: string, checked: boolean) => void;
+  onToggleUnsoldGroup: (ids: string[], checked: boolean) => void;
+  onDeleteLot?: (id: string) => void;
   onMark: (buyer: BuyerSettlement, next: InvoiceMark, delay?: number) => void;
   onPrint: () => void;
   onSave: () => void;
 }) {
   const hammer = sale.invoices.reduce((sum, row) => sum + row.total, 0);
+  const unsoldIds = sale.unsold.map((lot) => lot.id);
+  const allUnsoldSelected = unsoldIds.length > 0 && unsoldIds.every((id) => selectedUnsold.has(id));
   return (
     <section className="print-auction space-y-4">
       <div className="flex flex-wrap items-end justify-between gap-2">
@@ -293,20 +397,73 @@ function AuctionBlock({
         </div>
       </div>
 
-      {sale.invoices.map((invoice) => (
-        <InvoiceCard
-          key={invoice.invoice}
-          invoice={invoice}
-          mark={marks[invoice.invoice] ?? emptyMark()}
-          onMark={(next, delay) => onMark(invoice, next, delay)}
-        />
-      ))}
+      {unsoldOnly ? null : (
+        sale.invoices.map((invoice) => (
+          <InvoiceCard
+            key={`${invoice.invoice}-${invoice.lots.map((lot) => lot.id).join(",")}`}
+            invoice={invoice}
+            mark={marks[invoice.invoice] ?? emptyMark()}
+            onMark={(next, delay) => onMark(invoice, next, delay)}
+          />
+        ))
+      )}
 
       {sale.unsold.length > 0 ? (
-        <p className="comic-panel-sm p-3 font-comic text-sm print:hidden">
-          Unsold in this sale: {sale.unsold.map((lot) => lot.lotNumber || lot.title).join(", ")}. Move them
-          from House inventory into an upcoming auction before you archive this sale.
-        </p>
+        <div className="comic-panel p-4 print:hidden">
+          <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+            <h3 className="font-display text-2xl">Unsold / no-bid items</h3>
+            <label className="font-comic text-sm font-bold">
+              <input
+                type="checkbox"
+                className="mr-2"
+                checked={allUnsoldSelected}
+                onChange={(e) => onToggleUnsoldGroup(unsoldIds, e.target.checked)}
+              />
+              Select all
+            </label>
+          </div>
+          <div className="comic-table-wrap">
+            <table className="w-full min-w-[640px] border-collapse font-comic text-sm">
+              <thead className="bg-black text-left text-white">
+                <tr>
+                  <th className="border-b-4 border-black p-2 w-10" />
+                  <th className="border-b-4 border-black p-2">Lot</th>
+                  <th className="border-b-4 border-black p-2">Item</th>
+                  <th className="border-b-4 border-black p-2">Status</th>
+                  <th className="border-b-4 border-black p-2">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {sale.unsold.map((lot) => (
+                  <tr key={lot.id} className="bg-[#FFF7D1]">
+                    <td className="border-b-2 border-black p-2">
+                      <input
+                        type="checkbox"
+                        checked={selectedUnsold.has(lot.id)}
+                        onChange={(e) => onToggleUnsold(lot.id, e.target.checked)}
+                        aria-label={`Select ${lot.lotNumber ?? lot.title}`}
+                      />
+                    </td>
+                    <td className="border-b-2 border-black p-2">{lot.lotNumber ?? "—"}</td>
+                    <td className="border-b-2 border-black p-2">{lot.title}</td>
+                    <td className="border-b-2 border-black p-2">{(lot.status ?? "ended").toUpperCase()}</td>
+                    <td className="border-b-2 border-black p-2">
+                      <button
+                        type="button"
+                        className="comic-btn !px-2 !py-1 !text-sm"
+                        onClick={() => onDeleteLot?.(lot.id)}
+                      >
+                        Delete lot
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      ) : unsoldOnly ? (
+        <p className="comic-panel-sm p-3 font-comic text-sm print:hidden">No unsold lots in this sale.</p>
       ) : null}
     </section>
   );

@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AuctionTermsFields } from "@/components/admin/AuctionTermsFields";
 import type { AuctionDeskPayload } from "@/lib/auctionDesk";
+import { groupDeskSales } from "@/lib/auctionDesk";
+import { salesViewLabel, type SalesViewMode } from "@/lib/salesView";
 import { parseTcTemplateType, resolvedAuctionTerms, termsTextFor, type TcTemplateType } from "@/lib/tcTemplates";
 import { formatCurrency } from "@/lib/utils";
 
@@ -63,6 +65,7 @@ export function AuctionDesk() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+  const [salesView, setSalesView] = useState<SalesViewMode>("grouped");
   const [creating, setCreating] = useState(false);
   const [draft, setDraft] = useState(emptyCreate);
   const [edit, setEdit] = useState({
@@ -117,8 +120,9 @@ export function AuctionDesk() {
     const params = new URLSearchParams();
     if (eventId) params.set("eventId", eventId);
     if (query.trim()) params.set("q", query.trim());
+    params.set("view", salesView);
     return `/api/admin/export?${params.toString()}`;
-  }, [eventId, query]);
+  }, [eventId, query, salesView]);
 
   async function adminJson(method: "POST" | "PATCH", body: Record<string, unknown>) {
     setBusy(true);
@@ -196,6 +200,7 @@ export function AuctionDesk() {
     }
   }
 
+  const groupedSales = useMemo(() => groupDeskSales(desk.sales), [desk.sales]);
   const stats = [
     ["Lots", String(desk.stats.lots)],
     ["Live", String(desk.stats.live)],
@@ -237,7 +242,7 @@ export function AuctionDesk() {
           />
         </label>
         <a className="comic-btn-invert" href={exportHref}>
-          Export to Excel
+          Export {salesViewLabel(salesView)}
         </a>
         <button
           type="button"
@@ -472,9 +477,59 @@ export function AuctionDesk() {
       </section>
 
       <section className="space-y-2">
-        <h2 className="font-display text-3xl">Completed sales</h2>
+        <div className="flex flex-wrap items-end justify-between gap-2">
+          <h2 className="font-display text-3xl">Completed sales</h2>
+          <div className="flex flex-wrap gap-2 print:hidden">
+            <button
+              type="button"
+              className={salesView === "itemized" ? "comic-btn" : "comic-btn-invert"}
+              onClick={() => setSalesView("itemized")}
+            >
+              Itemized Sales View
+            </button>
+            <button
+              type="button"
+              className={salesView === "grouped" ? "comic-btn" : "comic-btn-invert"}
+              onClick={() => setSalesView("grouped")}
+            >
+              Grouped Buyer Invoice View
+            </button>
+          </div>
+        </div>
         {desk.sales.length === 0 ? (
           <p className="comic-panel-sm p-3 font-comic text-sm">No sold lots in this auction yet.</p>
+        ) : salesView === "grouped" ? (
+          <div className="comic-table-wrap">
+            <table className="w-full min-w-[800px] border-collapse font-comic text-sm">
+              <thead className="bg-brand-red text-left text-white">
+                <tr>
+                  <th className="border-b-4 border-black p-3">Invoice</th>
+                  <th className="border-b-4 border-black p-3">Buyer</th>
+                  <th className="border-b-4 border-black p-3">Lots</th>
+                  <th className="border-b-4 border-black p-3">Items</th>
+                  <th className="border-b-4 border-black p-3">Invoice total</th>
+                  <th className="border-b-4 border-black p-3">Payment</th>
+                  <th className="border-b-4 border-black p-3">Pre-auth</th>
+                </tr>
+              </thead>
+              <tbody>
+                {groupedSales.map((row) => (
+                  <tr key={row.invoice} className="bg-[#FFF7D1]">
+                    <td className="border-b-2 border-black p-3">{row.invoice}</td>
+                    <td className="border-b-2 border-black p-3">
+                      {row.buyerName}
+                      {row.buyerEmail ? ` · ${row.buyerEmail}` : ""}
+                    </td>
+                    <td className="border-b-2 border-black p-3">{row.lotSummary}</td>
+                    <td className="border-b-2 border-black p-3">{row.itemCount}</td>
+                    <td className="border-b-2 border-black p-3">{formatCurrency(row.hammer)}</td>
+                    <td className="border-b-2 border-black p-3">{row.paymentStatus}</td>
+                    <td className="border-b-2 border-black p-3">{preauthLabel(row.buyerPreauthStatus)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         ) : (
           <div className="comic-table-wrap">
             <table className="w-full min-w-[800px] border-collapse font-comic text-sm">

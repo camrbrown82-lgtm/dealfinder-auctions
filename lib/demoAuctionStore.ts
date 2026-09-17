@@ -74,6 +74,13 @@ export function getDemoLot(id: string) {
   return map().get(id);
 }
 
+export function unregisterDemoLot(id: string) {
+  const target = map();
+  for (const [key, row] of Array.from(target.entries())) {
+    if (row.id === id || key === id) target.delete(key);
+  }
+}
+
 export function registerDemoLot(lot: AuctionLot) {
   put(map(), lot);
 }

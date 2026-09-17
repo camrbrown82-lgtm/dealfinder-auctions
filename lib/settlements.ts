@@ -45,6 +45,27 @@ export function lotNeedsRelist(lot: AuctionLot) {
   return lot.status === "ended";
 }
 
+export function lotIsUnsoldOrNoBid(lot: AuctionLot) {
+  if (lot.status === "draft") return false;
+  if (lotWasSold(lot)) return false;
+  if (lotNeedsRelist(lot)) return true;
+  const noBidder = !lot.highBidder && !lot.highBidderId;
+  return noBidder && (lot.status === "ended" || lot.status === "removed");
+}
+
+export function itemizeAuctionSettlements(sales: AuctionSettlement[]): AuctionSettlement[] {
+  return sales.map((sale) => ({
+    ...sale,
+    invoices: sale.invoices.flatMap((invoice) =>
+      invoice.lots.map((lot) => ({
+        ...invoice,
+        lots: [lot],
+        total: lot.hammer,
+      })),
+    ),
+  }));
+}
+
 function invoicesForSale(
   sold: AuctionLot[],
   auctionNumber: string | null | undefined,

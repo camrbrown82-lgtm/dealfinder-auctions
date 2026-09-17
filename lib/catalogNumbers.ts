@@ -13,6 +13,13 @@ export function suggestAuctionNumber(existing: Array<{ auctionNumber?: string | 
   return `${prefix}${String(max + 1).padStart(3, "0")}`;
 }
 
+export function parseLotRangeStart(value?: string | number | null) {
+  if (typeof value === "number" && Number.isFinite(value)) return Math.max(1, Math.floor(value));
+  const raw = String(value ?? "").trim();
+  if (!raw) return null;
+  return parseLotSeq(raw) ?? (Number.isFinite(Number(raw)) ? Math.max(1, Math.floor(Number(raw))) : null);
+}
+
 export function parseLotSeq(value?: string | null) {
   const match = (value ?? "").trim().toUpperCase().match(/^(?:LOT-)?(\d+)$/);
   if (!match) return null;

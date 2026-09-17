@@ -2,12 +2,13 @@ import { NextRequest, NextResponse } from "next/server";
 import { isAdminSession, unauthorized } from "@/lib/adminAuth";
 import type { CustomerRow } from "@/lib/adminTypes";
 import { auctionDeskSheets, filterAuctionDesk, loadAuctionDesk } from "@/lib/auctionDesk";
+import { parseSalesView } from "@/lib/salesView";
+import { buildAuctionSettlements, itemizeAuctionSettlements } from "@/lib/settlements";
 import { mapAuctionEvent } from "@/lib/mapAuctionEvent";
 import { getAdminDemo, stampAuctionNumbers } from "@/lib/demoAdminStore";
 import { buildPayoutItems, buildPayoutReport } from "@/lib/payouts";
 import { spreadsheetXml } from "@/lib/spreadsheet";
 import { xlsxWorkbook } from "@/lib/xlsxWorkbook";
-import { buildAuctionSettlements } from "@/lib/settlements";
 import { listSettlementArchives, listSettlementInvoices } from "@/lib/settlementDb";
 import { demoSettlementArchives, demoSettlementInvoices } from "@/lib/demoSettlementStore";
 import { getSupabaseAdmin, isSupabaseConfigured } from "@/lib/supabaseClient";
@@ -21,10 +22,11 @@ export async function GET(request: NextRequest) {
   if (!isAdminSession()) return unauthorized();
 
   const eventId = request.nextUrl.searchParams.get("eventId");
+  const salesView = parseSalesView(request.nextUrl.searchParams.get("view"));
   if (eventId) {
     const desk = filterAuctionDesk(await loadAuctionDesk(eventId), request.nextUrl.searchParams.get("q") ?? "");
     const stamp = (desk.event?.auctionNumber || eventId).replace(/[^\w.-]+/g, "-");
-    const body = xlsxWorkbook(auctionDeskSheets(desk));
+    const body = xlsxWorkbook(auctionDeskSheets(desk, salesView));
     return new NextResponse(body, {
       headers: {
         "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -95,6 +97,7 @@ export async function GET(request: NextRequest) {
   }
 
   const sales = buildAuctionSettlements(events, inventory, customers);
+  const invoiceSales = salesView === "itemized" ? itemizeAuctionSettlements(sales) : sales;
   const payouts = buildPayoutReport(inventory);
   const payoutItems = buildPayoutItems(inventory);
   const marks = new Map(invoices.map((row) => [row.invoice, row]));
@@ -155,7 +158,7 @@ export async function GET(request: NextRequest) {
           "Lots",
           "Total",
         ],
-        ...sales.flatMap((sale) =>
+        ...invoiceSales.flatMap((sale) =>
           sale.invoices.map((buyer) => {
             const mark = marks.get(buyer.invoice);
             return [
