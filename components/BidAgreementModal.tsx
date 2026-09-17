@@ -1,0 +1,105 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import type { AuctionTermsPack } from "@/lib/auctionTerms";
+import { formatCurrency } from "@/lib/utils";
+import { BID_PREAUTH_AMOUNT } from "@/lib/helcimCopy";
+
+export function BidAgreementModal({
+  open,
+  busy,
+  error,
+  terms,
+  onClose,
+  onConfirm,
+}: {
+  open: boolean;
+  busy: boolean;
+  error: string | null;
+  terms: AuctionTermsPack | null;
+  onClose: () => void;
+  onConfirm: () => void;
+}) {
+  const [termsAgreed, setTermsAgreed] = useState(false);
+  const [preauthAgreed, setPreauthAgreed] = useState(false);
+
+  useEffect(() => {
+    if (open) {
+      setTermsAgreed(false);
+      setPreauthAgreed(false);
+    }
+  }, [open, terms?.auctionNumber]);
+
+  useEffect(() => {
+    if (!open) return;
+    function onKey(event: KeyboardEvent) {
+      if (event.key === "Escape" && !busy) onClose();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, busy, onClose]);
+
+  if (!open || !terms) return null;
+  const ready = termsAgreed && preauthAgreed && !busy;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="bid-terms-title"
+        className="flex max-h-[92vh] w-full max-w-3xl flex-col overflow-hidden comic-panel"
+      >
+        <div className="shrink-0 border-b-4 border-black bg-brand-cream px-4 py-3">
+          <p className="font-display text-sm tracking-[0.25em] text-brand-red">BEFORE YOU BID</p>
+          <h2 id="bid-terms-title" className="font-display text-3xl leading-none text-brand-red sm:text-4xl">
+            {terms.title}
+          </h2>
+          <p className="mt-2 font-comic text-sm">{terms.intro}</p>
+        </div>
+
+        <div className="min-h-0 flex-1 overflow-y-auto bg-white p-4 font-comic text-sm leading-relaxed">
+          <pre className="whitespace-pre-wrap font-comic text-sm leading-relaxed">{terms.termsText}</pre>
+        </div>
+
+        <div className="shrink-0 space-y-3 border-t-4 border-black bg-brand-cream p-4">
+          {error ? (
+            <p className="border-4 border-black bg-brand-red p-2 font-comic text-sm text-white">{error}</p>
+          ) : null}
+          <label className="flex items-start gap-3 font-comic text-sm font-bold">
+            <input
+              type="checkbox"
+              checked={termsAgreed}
+              onChange={(e) => setTermsAgreed(e.target.checked)}
+              disabled={busy}
+              className="mt-1 h-5 w-5 shrink-0"
+            />
+            <span>{terms.termsCheckbox}</span>
+          </label>
+          <label className="flex items-start gap-3 font-comic text-sm font-bold">
+            <input
+              type="checkbox"
+              checked={preauthAgreed}
+              onChange={(e) => setPreauthAgreed(e.target.checked)}
+              disabled={busy}
+              className="mt-1 h-5 w-5 shrink-0"
+            />
+            <span>{terms.preauthCheckbox}</span>
+          </label>
+          <p className="font-comic text-xs">
+            Confirming places your paddle. The {formatCurrency(BID_PREAUTH_AMOUNT)} Sunday hold is for this
+            auction only. You are not charged the hammer until Helcim checkout.
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <button type="button" className="comic-btn" disabled={!ready} onClick={onConfirm}>
+              {busy ? "Confirming…" : "Confirm and place bid"}
+            </button>
+            <button type="button" className="comic-btn-invert" disabled={busy} onClick={onClose}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}

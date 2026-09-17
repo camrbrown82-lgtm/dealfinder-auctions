@@ -208,7 +208,7 @@ export function AuthModal({
             <button
               type="submit"
               className="comic-btn"
-              disabled={busy || (needsProfile && !profile.preauthTermsAgreed)}
+              disabled={busy}
             >
               {busy
                 ? "Working…"

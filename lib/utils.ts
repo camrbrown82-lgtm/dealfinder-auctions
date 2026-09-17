@@ -51,6 +51,9 @@ export type AuctionEvent = {
   startsAt: string;
   endsAt: string;
   archivedAt?: string | null;
+  tcTemplateType?: "standard" | "high_bid" | "charity" | "custom" | null;
+  termsAndConditions?: string | null;
+  bidderTerms?: string | null;
 };
 
 export type PayoutRow = {

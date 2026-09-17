@@ -8,6 +8,7 @@ import { mapConsignment, mapLot, type ConsignmentRow, type LotRow } from "@/lib/
 import { parseListingGrade, withListedGrade } from "@/lib/listingGrade";
 import { buildPayoutItems, buildPayoutReport } from "@/lib/payouts";
 import type { AuctionEvent, AuctionLot, ConsignmentStatus, LotCategory, LotStatus } from "@/lib/utils";
+import { auctionTermsColumns, mapAuctionEvent } from "@/lib/mapAuctionEvent";
 import { persistPublicImageUrls } from "@/lib/consignmentStorage";
 import { uniqueConsignorNames } from "@/lib/consignors";
 import { uniqueImageUrls } from "@/lib/utils";
@@ -200,24 +201,6 @@ function payloadFromDemo() {
   };
 }
 
-function mapEvent(row: {
-  id: string;
-  name: string;
-  auction_number?: string | null;
-  starts_at: string;
-  ends_at: string;
-  archived_at?: string | null;
-}): AuctionEvent {
-  return {
-    id: row.id,
-    name: row.name,
-    auctionNumber: row.auction_number ?? null,
-    startsAt: row.starts_at,
-    endsAt: row.ends_at,
-    archivedAt: row.archived_at ?? null,
-  };
-}
-
 function lotHref(lot: AuctionLot) {
   return `/auctions/${lot.slug || lot.id}`;
 }
@@ -277,7 +260,9 @@ export async function GET() {
     return NextResponse.json({ error: databaseError(lotsRes.error.message) }, { status: 500 });
   }
 
-  const events: AuctionEvent[] = (eventsRes.data ?? []).map(mapEvent);
+  const events: AuctionEvent[] = (eventsRes.data ?? []).map((row) =>
+    mapAuctionEvent(row as Parameters<typeof mapAuctionEvent>[0]),
+  );
   const numbers = new Map(events.map((event) => [event.id, event.auctionNumber ?? null]));
   const inventory = (lotsRes.data as LotRow[])
     .map(mapLot)
@@ -329,6 +314,8 @@ type AdminBody = {
   postLive?: boolean;
   listingGrade?: string;
   itemDetails?: string;
+  tcTemplateType?: string;
+  termsAndConditions?: string;
   status?: string;
   remove?: boolean;
   relist?: boolean;
@@ -373,6 +360,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Event name, start, and end are required." }, { status: 400 });
     }
     const auctionNumber = body.auctionNumber?.trim() || suggestAuctionNumber(demo.events);
+    const termsCols = auctionTermsColumns({
+      tcTemplateType: body.tcTemplateType,
+      termsAndConditions: body.termsAndConditions,
+    });
     if (isSupabaseConfigured && supabase) {
       const { data, error } = await supabase
         .from("auction_events")
@@ -381,16 +372,30 @@ export async function POST(request: NextRequest) {
           auction_number: auctionNumber,
           starts_at: body.startsAt,
           ends_at: body.endsAt,
+          ...termsCols,
         })
         .select("*")
         .single();
       if (error || !data) {
-        return NextResponse.json(
-          { error: error?.message || "Could not create that sale week." },
-          { status: 400 },
-        );
+        const { data: retry, error: retryError } = await supabase
+          .from("auction_events")
+          .insert({
+            name: body.name,
+            auction_number: auctionNumber,
+            starts_at: body.startsAt,
+            ends_at: body.endsAt,
+          })
+          .select("*")
+          .single();
+        if (retryError || !retry) {
+          return NextResponse.json(
+            { error: error?.message || retryError?.message || "Could not create that sale week." },
+            { status: 400 },
+          );
+        }
+        return NextResponse.json({ ok: true, event: mapAuctionEvent(retry) });
       }
-      return NextResponse.json({ ok: true, event: mapEvent(data) });
+      return NextResponse.json({ ok: true, event: mapAuctionEvent(data) });
     }
     const event: AuctionEvent = {
       id: crypto.randomUUID(),
@@ -398,9 +403,30 @@ export async function POST(request: NextRequest) {
       auctionNumber,
       startsAt: body.startsAt,
       endsAt: body.endsAt,
+      tcTemplateType: termsCols.tc_template_type,
+      termsAndConditions: termsCols.terms_and_conditions,
+      bidderTerms: termsCols.bidder_terms,
     };
     demo.events.unshift(event);
     return NextResponse.json({ ok: true, event });
+  }
+
+  if (body.action === "deleteEvent") {
+    const id = body.id?.trim();
+    if (!id) return NextResponse.json({ error: "Event id required." }, { status: 400 });
+    demo.events = demo.events.filter((row) => row.id !== id);
+    for (const lot of demo.inventory) {
+      if (lot.eventId === id) {
+        lot.eventId = null;
+        lot.auctionNumber = null;
+      }
+    }
+    if (isSupabaseConfigured && supabase) {
+      await supabase.from("lots").update({ event_id: null }).eq("event_id", id);
+      const { error } = await supabase.from("auction_events").delete().eq("id", id);
+      if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+    }
+    return NextResponse.json({ ok: true });
   }
 
   if (body.action === "createLot") {
@@ -549,6 +575,15 @@ export async function PATCH(request: NextRequest) {
       if (body.startsAt) event.startsAt = body.startsAt;
       if (body.endsAt) event.endsAt = body.endsAt;
       if (body.archivedAt !== undefined) event.archivedAt = body.archivedAt;
+      if (body.tcTemplateType != null || body.termsAndConditions != null) {
+        const cols = auctionTermsColumns({
+          tcTemplateType: body.tcTemplateType ?? event.tcTemplateType,
+          termsAndConditions: body.termsAndConditions ?? event.termsAndConditions,
+        });
+        event.tcTemplateType = cols.tc_template_type;
+        event.termsAndConditions = cols.terms_and_conditions;
+        event.bidderTerms = cols.bidder_terms;
+      }
       stampAuctionNumbers(demo);
       for (const lot of demo.inventory) {
         if (lot.eventId === event.id) {
@@ -564,8 +599,29 @@ export async function PATCH(request: NextRequest) {
       if (body.startsAt) updates.starts_at = body.startsAt;
       if (body.endsAt) updates.ends_at = body.endsAt;
       if (body.archivedAt !== undefined) updates.archived_at = body.archivedAt;
+      if (body.tcTemplateType != null || body.termsAndConditions != null) {
+        Object.assign(
+          updates,
+          auctionTermsColumns({
+            tcTemplateType: body.tcTemplateType,
+            termsAndConditions: body.termsAndConditions,
+          }),
+        );
+      }
       const { error } = await supabase.from("auction_events").update(updates).eq("id", body.id);
-      if (error && /archived_at/i.test(error.message)) {
+      if (error && /tc_template|terms_and_conditions|bidder_terms/i.test(error.message)) {
+        delete updates.tc_template_type;
+        delete updates.terms_and_conditions;
+        delete updates.bidder_terms;
+        const retryTerms = await supabase.from("auction_events").update(updates).eq("id", body.id);
+        if (retryTerms.error && /archived_at/i.test(retryTerms.error.message)) {
+          delete updates.archived_at;
+          const retry = await supabase.from("auction_events").update(updates).eq("id", body.id);
+          if (retry.error) return NextResponse.json({ error: retry.error.message }, { status: 400 });
+        } else if (retryTerms.error) {
+          return NextResponse.json({ error: retryTerms.error.message }, { status: 400 });
+        }
+      } else if (error && /archived_at/i.test(error.message)) {
         delete updates.archived_at;
         const retry = await supabase.from("auction_events").update(updates).eq("id", body.id);
         if (retry.error) return NextResponse.json({ error: retry.error.message }, { status: 400 });

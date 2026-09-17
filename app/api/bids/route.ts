@@ -12,8 +12,30 @@ import { isProfileComplete, type BidderProfile } from "@/lib/profileTypes";
 import { openUnsoldFloors, patchLotRow, weekFromNow } from "@/lib/openFloor";
 import { recordSoldLotSettlement } from "@/lib/recordSale";
 import { mapLot, type LotRow } from "@/lib/mappers";
+import { hasAuctionRegistration } from "@/lib/auctionRegistrations";
 
 export const dynamic = "force-dynamic";
+
+function auctionTermsRequired() {
+  return NextResponse.json(
+    {
+      error: "Agree to this auction's terms and the Sunday $50 pre-authorization before placing a paddle.",
+      code: "AUCTION_TERMS_REQUIRED",
+    },
+    { status: 402 },
+  );
+}
+
+async function requireAuctionRegistration(userId: string, eventId: string | null | undefined) {
+  if (!eventId) {
+    return NextResponse.json(
+      { error: "This lot is not filed in an auction yet." },
+      { status: 400 },
+    );
+  }
+  if (!(await hasAuctionRegistration(userId, eventId))) return auctionTermsRequired();
+  return null;
+}
 
 function isUuid(value: string) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
@@ -165,15 +187,6 @@ export async function POST(request: NextRequest) {
       { status: 400 },
     );
   }
-  if (!session.preauthTermsAgreed) {
-    return NextResponse.json(
-      {
-        error: "Agree to the Sunday $50 pre-authorization before placing a paddle.",
-        code: "PREAUTH_TERMS_REQUIRED",
-      },
-      { status: 402 },
-    );
-  }
 
   const body = (await request.json()) as {
     lotId?: string;
@@ -207,6 +220,9 @@ async function persistDemo(
   if (!demo) {
     return NextResponse.json({ error: "Lot not found" }, { status: 404 });
   }
+  const catalog = getAdminDemo().inventory.find((row) => row.id === lotId || row.slug === lotId);
+  const blocked = await requireAuctionRegistration(session.id, catalog?.eventId ?? null);
+  if (blocked) return blocked;
   if (demo.status === "removed") {
     return NextResponse.json({ error: "This lot was removed from the sale." }, { status: 400 });
   }
@@ -346,6 +362,8 @@ async function persistSupabase(
   if (lotError || !lot) {
     return NextResponse.json({ error: lotError?.message || "Lot not found" }, { status: 404 });
   }
+  const blocked = await requireAuctionRegistration(session.id, (lot.event_id as string | null) ?? null);
+  if (blocked) return blocked;
   const resolvedId = String(lot.id);
   if (lot.status === "removed") {
     return NextResponse.json({ error: "This lot was removed from the sale." }, { status: 400 });

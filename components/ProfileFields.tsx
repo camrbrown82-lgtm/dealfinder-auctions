@@ -2,7 +2,6 @@
 
 import { CANADIAN_PROVINCES } from "@/lib/payments";
 import type { ProfileInput } from "@/lib/profileTypes";
-import { PreauthDisclaimer } from "@/components/PreauthDisclaimer";
 
 const inputClass =
   "comic-field mt-1 w-full px-3 py-2 font-normal";
@@ -98,18 +97,12 @@ export function ProfileFields({
 
       <p className="font-display text-xl">Payment</p>
       <p className="font-comic text-xs">
-        Helcim is the house processor. Cash and e-Transfer are retired. Cards are taken through
-        HelcimPay.js — we do not store full card numbers.
+        Helcim is the house processor. The Sunday $50 pre-authorization and auction terms are
+        agreed per sale when you place a bid — not here on the profile form.
       </p>
       <div className="border-4 border-black bg-[#FF0000] px-3 py-3 text-left font-comic text-sm font-bold text-white shadow-comic-red-sm">
         Helcim card
       </div>
-      <PreauthDisclaimer
-        compact
-        agreed={value.preauthTermsAgreed}
-        onAgree={(next) => patch("preauthTermsAgreed", next)}
-        id={`${idPrefix}-preauth-agree`}
-      />
     </div>
   );
 }

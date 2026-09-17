@@ -28,11 +28,13 @@ export function SettlementBook({
   payouts,
   payoutItems,
   onArchived,
+  lens = "all",
 }: {
   sales: AuctionSettlement[];
   payouts: PayoutRow[];
   payoutItems?: PayoutItem[];
   onArchived?: () => Promise<void> | void;
+  lens?: "all" | "house" | "consignor";
 }) {
   const [marks, setMarks] = useState<Record<string, InvoiceMark>>({});
   const [savedInvoices, setSavedInvoices] = useState<SettlementInvoiceRecord[]>([]);
@@ -122,10 +124,9 @@ export function SettlementBook({
 
   return (
     <div className="space-y-10">
+      {lens !== "consignor" ? (
+        <>
       <div className="flex flex-wrap gap-2 print:hidden">
-        <a className="comic-btn-invert" href="/api/admin/export">
-          Export Excel / Sheets
-        </a>
         <button type="button" className="comic-btn" onClick={() => setPrintId("all")}>
           Print all auctions
         </button>
@@ -157,7 +158,10 @@ export function SettlementBook({
           />
         ))
       )}
+        </>
+      ) : null}
 
+      {lens !== "house" ? (
       <section className="space-y-3 print:hidden">
         <h2 className="font-display text-3xl">Consignor payouts</h2>
         <p className="font-comic text-sm">House take 20% on hammer. Ended lots only.</p>
@@ -215,29 +219,38 @@ export function SettlementBook({
           </div>
         )}
       </section>
+      ) : null}
 
+      {lens !== "consignor" ? (
       <section className="space-y-3 print:hidden">
         <h2 className="font-display text-3xl">Saved auction records</h2>
+        <p className="font-comic text-sm">
+          Open the dedicated auction desk for stats, paddles, Sunday pre-auth status, and Excel
+          export — one sale at a time.
+        </p>
+        <a className="comic-btn inline-block" href="/admin/auctions">
+          Open saved auctions
+        </a>
         {archives.length === 0 ? (
           <p className="comic-panel-sm p-3 font-comic text-sm">
-            Save an auction to keep a snapshot in Supabase and pull it out of live inventory.
+            Save an auction from a printed settlement to keep a snapshot in Supabase.
           </p>
         ) : (
           <ul className="space-y-2">
-            {archives.map((row) => (
+            {archives.slice(0, 6).map((row) => (
               <li key={`${row.eventId}-${row.savedAt}`} className="comic-panel-sm p-3">
                 <p className="font-display text-xl">
                   {row.auctionNumber} · {row.name}
                 </p>
                 <p className="font-comic text-sm">
-                  Saved {new Date(row.savedAt).toLocaleString()} · {row.snapshot.invoices.length} invoices ·{" "}
-                  {formatCurrency(row.snapshot.invoices.reduce((sum, invoice) => sum + invoice.total, 0))}
+                  Saved {new Date(row.savedAt).toLocaleString()} · {row.snapshot.invoices.length} invoices
                 </p>
               </li>
             ))}
           </ul>
         )}
       </section>
+      ) : null}
     </div>
   );
 }

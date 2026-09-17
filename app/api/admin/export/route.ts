@@ -1,9 +1,12 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { isAdminSession, unauthorized } from "@/lib/adminAuth";
 import type { CustomerRow } from "@/lib/adminTypes";
+import { auctionDeskSheets, filterAuctionDesk, loadAuctionDesk } from "@/lib/auctionDesk";
+import { mapAuctionEvent } from "@/lib/mapAuctionEvent";
 import { getAdminDemo, stampAuctionNumbers } from "@/lib/demoAdminStore";
 import { buildPayoutItems, buildPayoutReport } from "@/lib/payouts";
 import { spreadsheetXml } from "@/lib/spreadsheet";
+import { xlsxWorkbook } from "@/lib/xlsxWorkbook";
 import { buildAuctionSettlements } from "@/lib/settlements";
 import { listSettlementArchives, listSettlementInvoices } from "@/lib/settlementDb";
 import { demoSettlementArchives, demoSettlementInvoices } from "@/lib/demoSettlementStore";
@@ -14,26 +17,21 @@ import type { AuctionEvent, AuctionLot, Consignment } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
-function mapEvent(row: {
-  id: string;
-  name: string;
-  auction_number?: string | null;
-  starts_at: string;
-  ends_at: string;
-  archived_at?: string | null;
-}): AuctionEvent {
-  return {
-    id: row.id,
-    name: row.name,
-    auctionNumber: row.auction_number ?? null,
-    startsAt: row.starts_at,
-    endsAt: row.ends_at,
-    archivedAt: row.archived_at ?? null,
-  };
-}
-
-export async function GET() {
+export async function GET(request: NextRequest) {
   if (!isAdminSession()) return unauthorized();
+
+  const eventId = request.nextUrl.searchParams.get("eventId");
+  if (eventId) {
+    const desk = filterAuctionDesk(await loadAuctionDesk(eventId), request.nextUrl.searchParams.get("q") ?? "");
+    const stamp = (desk.event?.auctionNumber || eventId).replace(/[^\w.-]+/g, "-");
+    const body = xlsxWorkbook(auctionDeskSheets(desk));
+    return new NextResponse(body, {
+      headers: {
+        "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "Content-Disposition": `attachment; filename="DealFinder-${stamp}.xlsx"`,
+      },
+    });
+  }
 
   let inventory: AuctionLot[] = [];
   let events: AuctionEvent[] = [];
@@ -54,7 +52,7 @@ export async function GET() {
     inventory = ((lots.data ?? []) as LotRow[])
       .map(mapLot)
       .filter((lot) => lot.status !== "draft");
-    events = (eventRows.data ?? []).map((row) => mapEvent(row as Parameters<typeof mapEvent>[0]));
+    events = (eventRows.data ?? []).map((row) => mapAuctionEvent(row as Parameters<typeof mapAuctionEvent>[0]));
     const eventNumbers = new Map(events.map((event) => [event.id, event.auctionNumber ?? null]));
     for (const lot of inventory) {
       if (lot.eventId) lot.auctionNumber = eventNumbers.get(lot.eventId) ?? lot.auctionNumber;

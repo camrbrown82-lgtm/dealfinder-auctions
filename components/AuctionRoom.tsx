@@ -4,10 +4,10 @@ import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useBidder } from "@/components/BidderProvider";
+import { BidAgreementModal } from "@/components/BidAgreementModal";
 import { LotTimer } from "@/components/LotTimer";
 import { nextLiveAmount } from "@/lib/bidding";
 import { isProfileComplete } from "@/lib/profileTypes";
-import { PreauthDisclaimer } from "@/components/PreauthDisclaimer";
 import { fulfillmentInstructions } from "@/lib/payments";
 import type { FulfillmentChoice } from "@/lib/payments";
 import { profileAddress } from "@/lib/profileTypes";
@@ -15,6 +15,7 @@ import { getSupabaseClient, isSupabaseConfigured } from "@/lib/supabaseClient";
 import { buyNowPriceOf, canBuyNow } from "@/lib/buyNow";
 import { recordInterest } from "@/lib/interest";
 import { LotImage } from "@/components/LotImage";
+import { auctionTermsPack, type AuctionTermsPack } from "@/lib/auctionTerms";
 import {
   extraLotImages,
   formatCurrency,
@@ -43,7 +44,11 @@ export function AuctionRoom({ lot }: { lot: AuctionLot }) {
   const [busy, setBusy] = useState(false);
   const [feed, setFeed] = useState<BidRow[]>([]);
   const [fulfillment, setFulfillment] = useState<FulfillmentChoice>(lot.fulfillment ?? "unset");
-  const [agreed, setAgreed] = useState(false);
+  const [registered, setRegistered] = useState(false);
+  const [terms, setTerms] = useState<AuctionTermsPack | null>(null);
+  const [agreeOpen, setAgreeOpen] = useState(false);
+  const [agreeBusy, setAgreeBusy] = useState(false);
+  const [agreeError, setAgreeError] = useState<string | null>(null);
   const pendingBid = useRef<{
     mode: "live" | "absentee" | "buy_now";
     amount: number;
@@ -51,7 +56,7 @@ export function AuctionRoom({ lot }: { lot: AuctionLot }) {
   } | null>(null);
   const openRef = useRef(false);
   const placeBidRef = useRef<() => Promise<void>>(async () => undefined);
-  const ensureAgreementRef = useRef<() => Promise<void>>(async () => undefined);
+  const ensureBidRef = useRef<() => Promise<void>>(async () => undefined);
 
   const nextBid = useMemo(
     () => nextLiveAmount(currentBid, lot.minIncrement),
@@ -74,8 +79,25 @@ export function AuctionRoom({ lot }: { lot: AuctionLot }) {
   const showBuyNow = open && canBuyNow(currentBid, buyNow);
 
   useEffect(() => {
-    if (user?.preauthTermsAgreed) setAgreed(true);
-  }, [user?.preauthTermsAgreed]);
+    if (!user || !lot.eventId) {
+      setRegistered(false);
+      return;
+    }
+    let cancelled = false;
+    void fetch(`/api/auctions/register?eventId=${encodeURIComponent(lot.eventId)}`, {
+      credentials: "include",
+    })
+      .then((res) => res.json())
+      .then((json) => {
+        if (cancelled) return;
+        if (json.terms) setTerms(json.terms as AuctionTermsPack);
+        setRegistered(Boolean(json.registered));
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [user, lot.eventId]);
 
   useEffect(() => {
     void fetch(`/api/bids?lotId=${encodeURIComponent(lot.id)}`, { credentials: "include" })
@@ -230,8 +252,10 @@ export function AuctionRoom({ lot }: { lot: AuctionLot }) {
             : err && typeof err === "object" && "message" in err
               ? String((err as { message: string }).message)
               : "Bid failed";
-        if (response.status === 402 || json.code === "PREAUTH_TERMS_REQUIRED") {
-          throw new Error("Agree to the Sunday $50 pre-authorization, then we drop the paddle.");
+        if (response.status === 402 || json.code === "AUCTION_TERMS_REQUIRED" || json.code === "PREAUTH_TERMS_REQUIRED") {
+          setRegistered(false);
+          setAgreeOpen(true);
+          throw new Error("Agree to this auction's terms and the Sunday $50 pre-authorization, then confirm the bid.");
         }
         throw new Error(text);
       }
@@ -266,40 +290,63 @@ export function AuctionRoom({ lot }: { lot: AuctionLot }) {
   }
   placeBidRef.current = placeBid;
 
-  async function ensureAgreementAndBid() {
+  async function ensureBid() {
     if (!user || !isProfileComplete(user)) {
-      requestAuth(() => ensureAgreementRef.current(), "login");
+      requestAuth(() => ensureBidRef.current(), "login");
       return;
     }
-    if (!agreed) {
-      setMessage("Check the Sunday $50 pre-authorization box to bid.");
+    if (!lot.eventId) {
+      setMessage("This lot is not filed in an auction yet.");
       return;
     }
-    if (!user.preauthTermsAgreed) {
-      const response = await fetch("/api/profile", {
-        method: "PATCH",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          fullName: user.fullName,
-          phone: user.phone,
-          street: user.street,
-          city: user.city,
-          province: user.province,
-          postalCode: user.postalCode,
-          paymentMethod: "helcim_card",
-          preauthTermsAgreed: true,
-        }),
-      });
-      if (!response.ok) {
-        setMessage("Could not save the Sunday pre-authorization agreement.");
-        return;
+    if (!registered) {
+      if (!terms) {
+        setTerms(
+          auctionTermsPack({
+            name: lot.auctionNumber ? `Weekly sale · ${lot.auctionNumber}` : "This auction",
+            auctionNumber: lot.auctionNumber,
+            startsAt: lot.endsAt,
+            endsAt: lot.endsAt,
+          }),
+        );
       }
-      await refresh();
+      setAgreeError(null);
+      setAgreeOpen(true);
+      return;
     }
     await placeBid();
   }
-  ensureAgreementRef.current = ensureAgreementAndBid;
+  ensureBidRef.current = ensureBid;
+
+  async function confirmAgreementAndBid() {
+    if (!lot.eventId) return;
+    setAgreeBusy(true);
+    setAgreeError(null);
+    try {
+      const response = await fetch("/api/auctions/register", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          eventId: lot.eventId,
+          termsAgreed: true,
+          preauthAgreed: true,
+        }),
+      });
+      const json = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(typeof json.error === "string" ? json.error : "Could not save auction agreement.");
+      }
+      setRegistered(true);
+      setAgreeOpen(false);
+      await refresh();
+      await placeBid();
+    } catch (error) {
+      setAgreeError(error instanceof Error ? error.message : "Could not save auction agreement.");
+    } finally {
+      setAgreeBusy(false);
+    }
+  }
 
   async function onSubmit(event: FormEvent) {
     event.preventDefault();
@@ -308,7 +355,7 @@ export function AuctionRoom({ lot }: { lot: AuctionLot }) {
       amount: nextBid,
       maxAmount: Number(maxAmount),
     };
-    await ensureAgreementAndBid();
+    await ensureBid();
   }
 
   async function chooseFulfillment(next: FulfillmentChoice) {
@@ -427,10 +474,10 @@ export function AuctionRoom({ lot }: { lot: AuctionLot }) {
           <button
             type="button"
             className="comic-btn w-full"
-            disabled={busy || !agreed}
+            disabled={busy}
             onClick={() => {
               pendingBid.current = { mode: "buy_now", amount: buyNow, maxAmount: buyNow };
-              void ensureAgreementAndBid();
+              void ensureBid();
             }}
           >
             Buy now {formatCurrency(buyNow)}
@@ -441,18 +488,17 @@ export function AuctionRoom({ lot }: { lot: AuctionLot }) {
           {user ? (
             <>
               Paddle: <strong>{user.fullName}</strong> — guests can watch the tape;
-              placing a bid uses this account. The $50 Helcim hold runs Sunday, when the sale ends.
+              placing a bid uses this account. Terms and the $50 Sunday hold are confirmed for
+              this auction when you bid.
             </>
           ) : (
             <>
               Watch the room free. <strong>Place Bid</strong> or{" "}
-              <strong>Set Absentee Bid</strong> opens the paddle gate — we keep your
-              amount and submit it after you log in. Agree to the Sunday $50 hold first;
-              you are not charged until checkout.
+              <strong>Set Absentee Bid</strong> opens the paddle gate — log in first, then agree to
+              this auction&apos;s terms and the Sunday $50 hold before the bid is submitted.
             </>
           )}
         </p>
-        <PreauthDisclaimer compact agreed={agreed} onAgree={setAgreed} />
 
         {mode === "live" ? (
           <p className="font-comic text-sm">
@@ -479,7 +525,7 @@ export function AuctionRoom({ lot }: { lot: AuctionLot }) {
           </label>
         )}
 
-        <button type="submit" className="comic-btn w-full" disabled={busy || !agreed}>
+        <button type="submit" className="comic-btn w-full" disabled={busy}>
           {busy
             ? "Placing…"
             : !open
@@ -488,14 +534,6 @@ export function AuctionRoom({ lot }: { lot: AuctionLot }) {
                 ? `Place Bid ${formatCurrency(nextBid)}`
                 : "Set Absentee Bid"}
         </button>
-        {!agreed ? (
-          <p className="font-comic text-sm">
-            Check the Sunday $50 pre-authorization box above. You can bid all week after that —
-            nothing is charged until checkout. If Sunday&apos;s hold or checkout is denied, the bid
-            is forfeited.
-          </p>
-        ) : null}
-
         {!isSupabaseConfigured && (
           <p className="font-comic text-xs">
             Demo mode: highest bid updates here; connect Supabase for multi-browser
@@ -505,6 +543,15 @@ export function AuctionRoom({ lot }: { lot: AuctionLot }) {
         {message && <p className="font-display text-xl">{message}</p>}
       </form>
         )}
+
+      <BidAgreementModal
+        open={agreeOpen}
+        busy={agreeBusy}
+        error={agreeError}
+        terms={terms}
+        onClose={() => setAgreeOpen(false)}
+        onConfirm={() => void confirmAgreementAndBid()}
+      />
 
       <div className="comic-panel p-4">
         <p className="font-display text-2xl">Bid tape</p>

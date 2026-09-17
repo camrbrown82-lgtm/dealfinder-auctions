@@ -11,7 +11,6 @@ import {
   type ReactNode,
 } from "react";
 import { AuthModal } from "@/components/AuthModal";
-import { HelcimPayModal } from "@/components/HelcimPayModal";
 import { type BidderProfile } from "@/lib/profileTypes";
 
 type AuthMode = "login" | "signup";
@@ -32,7 +31,6 @@ export function BidderProvider({ children }: { children: ReactNode }) {
   const [modalOpen, setModalOpen] = useState(false);
   const [mode, setMode] = useState<AuthMode>("signup");
   const [resumeBid, setResumeBid] = useState(false);
-  const [sundayOpen, setSundayOpen] = useState(false);
   const pendingRef = useRef<(() => void | Promise<void>) | null>(null);
 
   const refresh = useCallback(async () => {
@@ -53,23 +51,6 @@ export function BidderProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     void refresh();
   }, [refresh]);
-
-  useEffect(() => {
-    if (!user) {
-      setSundayOpen(false);
-      return;
-    }
-    let cancelled = false;
-    void fetch("/api/payments/helcim/sunday", { credentials: "include" })
-      .then((res) => res.json())
-      .then((json) => {
-        if (!cancelled && json.needed) setSundayOpen(true);
-      })
-      .catch(() => undefined);
-    return () => {
-      cancelled = true;
-    };
-  }, [user]);
 
   const requestAuth = useCallback((after?: () => void | Promise<void>, preferred?: AuthMode) => {
     pendingRef.current = after ?? null;
@@ -113,26 +94,6 @@ export function BidderProvider({ children }: { children: ReactNode }) {
           pendingRef.current = null;
         }}
         onAuthenticated={finishAuth}
-      />
-      <HelcimPayModal
-        open={sundayOpen}
-        purpose="bid_preauth"
-        onClose={() => setSundayOpen(false)}
-        onComplete={() => {
-          setSundayOpen(false);
-          void refresh();
-        }}
-        onDeclined={() => {
-          void fetch("/api/payments/helcim/denied", {
-            method: "POST",
-            credentials: "include",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({}),
-          }).then(() => {
-            setSundayOpen(false);
-            void refresh();
-          });
-        }}
       />
     </BidderContext.Provider>
   );

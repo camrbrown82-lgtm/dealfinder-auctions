@@ -1,5 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { mapAuctionEvent } from "@/lib/mapAuctionEvent";
 import { patchLotRow, patchTableRow } from "@/lib/openFloor";
+import { termsTextFor } from "@/lib/tcTemplates";
 import type { AuctionEvent, AuctionLot } from "@/lib/utils";
 
 export type WeeklySalePlan = {
@@ -74,22 +76,8 @@ export function firstWeeklyEvent(events: AuctionEvent[]) {
   );
 }
 
-function mapEventRow(row: {
-  id: string;
-  name: string;
-  auction_number?: string | null;
-  starts_at: string;
-  ends_at: string;
-  archived_at?: string | null;
-}): AuctionEvent {
-  return {
-    id: row.id,
-    name: row.name,
-    auctionNumber: row.auction_number ?? null,
-    startsAt: row.starts_at,
-    endsAt: row.ends_at,
-    archivedAt: row.archived_at ?? null,
-  };
+function mapEventRow(row: Parameters<typeof mapAuctionEvent>[0]): AuctionEvent {
+  return mapAuctionEvent(row);
 }
 
 async function listEvents(supabase: SupabaseClient) {
@@ -97,14 +85,21 @@ async function listEvents(supabase: SupabaseClient) {
   return (data ?? []).map((row) => mapEventRow(row as Parameters<typeof mapEventRow>[0]));
 }
 
-function saleFields(sale: WeeklySalePlan) {
-  return {
+function saleFields(sale: WeeklySalePlan, withTerms = false) {
+  const row: Record<string, unknown> = {
     name: sale.name,
     auction_number: sale.auctionNumber,
     starts_at: sale.startsAt,
     ends_at: sale.endsAt,
     archived_at: null,
   };
+  if (withTerms) {
+    const terms = termsTextFor("standard");
+    row.tc_template_type = "standard";
+    row.terms_and_conditions = terms;
+    row.bidder_terms = terms;
+  }
+  return row;
 }
 
 function isSold(row: { status?: string | null; high_bidder?: string | null; high_bidder_id?: string | null }) {
@@ -154,9 +149,10 @@ export async function ensureWeeklySales(supabase: SupabaseClient | null) {
           await patchTableRow("auction_events", match.id, rest);
         }
       } else {
-        const inserted = await supabase.from("auction_events").insert(saleFields(sale)).select("id").maybeSingle();
-        if (inserted.error && /archived_at/i.test(inserted.error.message)) {
-          const { archived_at: _a, ...rest } = saleFields(sale);
+        const inserted = await supabase.from("auction_events").insert(saleFields(sale, true)).select("id").maybeSingle();
+        if (inserted.error && /archived_at|tc_template|terms_and|bidder_terms/i.test(inserted.error.message)) {
+          const { archived_at: _a, tc_template_type: _t, terms_and_conditions: _c, bidder_terms: _b, ...rest } =
+            saleFields(sale, true);
           await supabase.from("auction_events").insert(rest);
         } else if (inserted.data?.id) {
           claimed.add(inserted.data.id);
