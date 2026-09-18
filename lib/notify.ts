@@ -68,6 +68,8 @@ export async function sendWelcomeEmail(to: string, name: string, verifyHref?: st
   return sendTransactionalEmail({
     templateId: "welcome",
     to,
+    forceDeliver: true,
+    skipLogo: true,
     vars: {
       customer_name: displayName,
       item_title: "",

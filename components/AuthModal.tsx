@@ -113,7 +113,11 @@ export function AuthModal({
       const json = await response.json();
       if (json.needsVerification) {
         setNeedsVerification(true);
-        setError("Check your inbox to verify your email before you can bid.");
+        setError(
+          json.mailSent === false
+            ? json.mailError || "We could not send the confirmation email. Tap resend, or ask the desk to check Resend."
+            : "Check your inbox to verify your email before you can bid.",
+        );
         return;
       }
       if (!response.ok) throw new Error(json.error || "Could not sign up.");
@@ -182,7 +186,11 @@ export function AuthModal({
                     });
                     const json = await response.json();
                     if (!response.ok) throw new Error(json.error || "Could not resend.");
-                    setError("We sent another confirmation link.");
+                    setError(
+                      json.mailSent === false
+                        ? json.mailError || "Resend did not deliver. Ask the desk to check the sender domain."
+                        : "We sent another confirmation email.",
+                    );
                   } catch (err) {
                     setError(err instanceof Error ? err.message : "Could not resend.");
                   } finally {

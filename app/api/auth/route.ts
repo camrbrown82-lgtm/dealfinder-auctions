@@ -14,6 +14,7 @@ import { normalizePaymentMethod, type PaymentMethod } from "@/lib/profileTypes";
 import { persistTermsAgreement } from "@/lib/helcim";
 import { sendWelcomeEmail } from "@/lib/notify";
 import {
+  fallbackSupabaseConfirmEmail,
   generateSignupConfirmation,
   generateVerifyLink,
   isAuthEmailConfirmed,
@@ -71,6 +72,16 @@ async function sendWelcomeOnce(
   if (await welcomeAlreadySent(supabase, userId)) return;
   await sendWelcomeEmail(email, name);
   await markWelcomeSent(supabase, userId);
+}
+
+async function deliverSignupConfirmation(email: string, name: string, verifyHref: string | null) {
+  const mail = await sendWelcomeEmail(email, name, verifyHref || undefined);
+  if (mail.ok) return { ...mail, fallback: false as const };
+  const fallback = await fallbackSupabaseConfirmEmail(email);
+  if (fallback.ok) {
+    return { ok: true, mode: "supabase" as const, fallback: true as const, error: mail.error };
+  }
+  return { ok: false, mode: mail.mode, fallback: false as const, error: mail.error || fallback.error };
 }
 
 type AuthBody = {
@@ -203,15 +214,22 @@ export async function PUT(request: NextRequest) {
         return setBidderCookie(response, userId);
       }
 
-      if (created.verifyHref) {
-        await sendWelcomeEmail(email, fields.fullName, created.verifyHref);
-        await markWelcomeSent(supabase, userId);
+      let verifyHref = created.verifyHref;
+      if (!verifyHref) {
+        const extra = await generateVerifyLink(supabase, email);
+        verifyHref = extra.verifyHref;
       }
+
+      const mail = await deliverSignupConfirmation(email, fields.fullName, verifyHref);
+      if (mail.ok) await markWelcomeSent(supabase, userId);
+      else console.error("signup_mail_failed", mail.error);
 
       return NextResponse.json({
         ok: true,
         needsVerification: true,
         verifyHref: verifyEmailHref(),
+        mailSent: mail.ok,
+        mailError: mail.ok ? undefined : mail.error,
       });
     }
   }
@@ -244,12 +262,18 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({ error: "Auth is not configured." }, { status: 400 });
   }
   const link = await generateVerifyLink(admin, email);
-  if (link.error || !link.verifyHref) {
-    return NextResponse.json({ ok: true, needsVerification: true });
-  }
   const profile = await admin.from("profiles").select("full_name").eq("email", email).maybeSingle();
-  await sendWelcomeEmail(email, String(profile.data?.full_name || email), link.verifyHref);
-  return NextResponse.json({ ok: true, needsVerification: true });
+  const mail = await deliverSignupConfirmation(
+    email,
+    String(profile.data?.full_name || email),
+    link.verifyHref,
+  );
+  return NextResponse.json({
+    ok: true,
+    needsVerification: true,
+    mailSent: mail.ok,
+    mailError: mail.ok ? undefined : mail.error,
+  });
 }
 
 export async function DELETE() {

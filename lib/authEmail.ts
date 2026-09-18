@@ -1,6 +1,7 @@
 import type { EmailOtpType, User } from "@supabase/supabase-js";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { publicAppUrl } from "@/lib/appUrl";
+import { getSupabaseAuthClient } from "@/lib/supabaseClient";
 
 export function isAuthEmailConfirmed(user: User | null | undefined) {
   return Boolean(user?.email_confirmed_at || user?.confirmed_at);
@@ -55,10 +56,19 @@ type LinkProperties = {
   redirect_to?: string;
 };
 
-function hrefFromGeneratedLink(properties: LinkProperties | undefined) {
-  const hash = properties?.hashed_token?.trim();
-  if (hash) return confirmationPageHref(hash, properties?.verification_type || "signup");
-  const action = properties?.action_link?.trim();
+function hrefFromGeneratedLink(properties: LinkProperties | undefined, raw?: unknown) {
+  const extra = raw && typeof raw === "object" ? (raw as LinkProperties) : {};
+  const bag: LinkProperties = { ...extra, ...properties };
+  let hash = bag.hashed_token?.trim();
+  if (!hash && bag.action_link) {
+    try {
+      hash = new URL(bag.action_link).searchParams.get("token") ?? undefined;
+    } catch {
+      hash = undefined;
+    }
+  }
+  if (hash) return confirmationPageHref(hash, bag.verification_type || extra.verification_type || "signup");
+  const action = bag.action_link?.trim();
   if (!action) return null;
   try {
     const url = new URL(action);
@@ -87,7 +97,7 @@ export async function generateSignupConfirmation(
   }
   return {
     user: data.user,
-    verifyHref: hrefFromGeneratedLink(data.properties),
+    verifyHref: hrefFromGeneratedLink(data.properties, data),
     error: null as string | null,
   };
 }
@@ -99,5 +109,17 @@ export async function generateVerifyLink(supabase: SupabaseClient, email: string
     options: { redirectTo: verifyEmailHref() },
   });
   if (error) return { verifyHref: null as string | null, error: error.message };
-  return { verifyHref: hrefFromGeneratedLink(data.properties), error: null as string | null };
+  return { verifyHref: hrefFromGeneratedLink(data.properties, data), error: null as string | null };
+}
+
+export async function fallbackSupabaseConfirmEmail(email: string) {
+  const authClient = getSupabaseAuthClient();
+  if (!authClient) return { ok: false, error: "Auth client missing" };
+  const { error } = await authClient.auth.resend({
+    type: "signup",
+    email,
+    options: { emailRedirectTo: verifyEmailHref() },
+  });
+  if (error) return { ok: false, error: error.message };
+  return { ok: true, error: null as string | null };
 }

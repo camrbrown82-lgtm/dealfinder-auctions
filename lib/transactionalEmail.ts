@@ -16,6 +16,8 @@ export async function sendTransactionalEmail(input: {
   to: string;
   vars: Record<string, string>;
   htmlOverride?: string;
+  forceDeliver?: boolean;
+  skipLogo?: boolean;
 }) {
   const to = input.to.trim().toLowerCase();
   if (!to || !to.includes("@")) {
@@ -23,45 +25,54 @@ export async function sendTransactionalEmail(input: {
   }
 
   const templates = await loadLiveEmailTemplates();
-  const template = templates.find((row) => row.id === input.templateId);
+  const template = templates.find((row) => row.id === input.templateId) ?? templates.find((row) => row.id === "welcome");
   if (!template) {
     return { ok: false, mode: "demo-outbox", error: "Unknown template" } satisfies MailResult;
   }
 
   const rendered = renderTemplate(template, input.vars);
   const key = (process.env.RESEND_API_KEY || "").trim();
-  const from = process.env.RESEND_FROM || "DealFinder Auctions <onboarding@resend.dev>";
-  const logo = await resolveEmailLogo();
+  const from = (process.env.RESEND_FROM || "DealFinder Auctions <onboarding@resend.dev>").trim();
+  const logo = input.skipLogo ? null : await resolveEmailLogo();
   const body = input.htmlOverride || rendered.body;
   const html = buildEmailHtml(body, logo ? `cid:${EMAIL_LOGO_CID}` : "/logo.webp");
   const text = looksLikeHtml(body) ? htmlToText(html) : body.replaceAll("{{logo}}", "");
   const test = isPaymentTestMode();
-  const useResend = Boolean(key) && !test;
+  const useResend = Boolean(key) && (input.forceDeliver || !test);
 
-  if (useResend) {
+  async function deliver(withLogo: boolean) {
     const resend = new Resend(key);
-    const { error } = await resend.emails.send({
+    return resend.emails.send({
       from,
       to,
       subject: rendered.subject,
       text,
-      html,
-      attachments: logo
-        ? [
-            {
-              filename: logo.filename,
-              content: logo.buffer,
-              contentType: logo.contentType,
-              contentId: EMAIL_LOGO_CID,
-            },
-          ]
-        : undefined,
+      html: withLogo ? html : buildEmailHtml(body, "/logo.webp"),
+      attachments:
+        withLogo && logo
+          ? [
+              {
+                filename: logo.filename,
+                content: logo.buffer,
+                contentType: logo.contentType,
+                contentId: EMAIL_LOGO_CID,
+              },
+            ]
+          : undefined,
     });
+  }
+
+  if (useResend) {
+    let { error } = await deliver(Boolean(logo));
+    if (error && logo) {
+      ({ error } = await deliver(false));
+    }
     if (error) {
       const message =
         typeof error === "object" && error && "message" in error
           ? String((error as { message: string }).message)
           : "Resend failed";
+      console.error("resend_send_failed", { templateId: input.templateId, to, message });
       getOutbox().unshift({
         to,
         subject: rendered.subject,
@@ -73,6 +84,8 @@ export async function sendTransactionalEmail(input: {
       });
       return { ok: false, mode: "demo-outbox", error: message } satisfies MailResult;
     }
+  } else if (!key) {
+    console.error("resend_missing_api_key", { templateId: input.templateId });
   }
 
   getOutbox().unshift({
