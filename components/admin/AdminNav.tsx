@@ -23,14 +23,6 @@ const GROUPS: NavGroup[] = [
     ],
   },
   {
-    id: "finance",
-    label: "Financials & Settlements",
-    items: [
-      { href: "/admin/settlements", label: "Settlements hub" },
-      { href: "/admin/exports", label: "Excel exports" },
-    ],
-  },
-  {
     id: "customers",
     label: "Customers & Marketing",
     items: [

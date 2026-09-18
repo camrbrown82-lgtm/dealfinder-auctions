@@ -6,6 +6,7 @@ import type { AuctionDeskPayload } from "@/lib/auctionDesk";
 import { groupDeskSales } from "@/lib/auctionDesk";
 import { salesViewLabel, type SalesViewMode } from "@/lib/salesView";
 import { parseTcTemplateType, resolvedAuctionTerms, termsTextFor, type TcTemplateType } from "@/lib/tcTemplates";
+import { auctionIsClosed } from "@/lib/auctionStatus";
 import { formatCurrency } from "@/lib/utils";
 
 const EMPTY: AuctionDeskPayload = {
@@ -116,19 +117,10 @@ export function AuctionDesk() {
     return () => window.clearTimeout(handle);
   }, [query, eventId, load]);
 
-  const exportHref = useMemo(() => {
-    const params = new URLSearchParams();
-    if (eventId) params.set("eventId", eventId);
-    if (query.trim()) params.set("q", query.trim());
-    params.set("view", salesView);
-    return `/api/admin/export?${params.toString()}`;
-  }, [eventId, query, salesView]);
-  const masterHref = useMemo(() => {
-    const params = new URLSearchParams();
-    if (eventId) params.set("eventId", eventId);
-    params.set("master", "1");
-    return `/api/admin/export?${params.toString()}`;
-  }, [eventId]);
+  const auctionClosed = auctionIsClosed(desk.event);
+  const masterHref = eventId
+    ? `/api/admin/export?eventId=${encodeURIComponent(eventId)}`
+    : "/api/admin/export";
 
   async function adminJson(method: "POST" | "PATCH", body: Record<string, unknown>) {
     setBusy(true);
@@ -247,12 +239,6 @@ export function AuctionDesk() {
             className="mt-1 w-full border-4 border-black bg-white px-3 py-2 font-normal"
           />
         </label>
-        <a className="comic-btn-invert" href={exportHref}>
-          Export {salesViewLabel(salesView)}
-        </a>
-        <a className={`comic-btn-invert ${eventId ? "" : "pointer-events-none opacity-50"}`} href={masterHref}>
-          Export Master Auction Report
-        </a>
         <button
           type="button"
           className="comic-btn"
@@ -386,6 +372,15 @@ export function AuctionDesk() {
           <button type="button" className="comic-btn" disabled={busy} onClick={() => void saveAuction()}>
             {busy ? "Saving…" : "Save auction & terms"}
           </button>
+          {auctionClosed ? (
+            <a className="comic-btn inline-flex" href={masterHref}>
+              Export Master Auction Report (.xlsx)
+            </a>
+          ) : (
+            <p className="font-comic text-sm text-black/70">
+              Master Excel export unlocks after this auction ends or is closed.
+            </p>
+          )}
         </section>
       ) : null}
 

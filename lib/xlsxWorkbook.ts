@@ -92,6 +92,10 @@ function xmlText(value: string) {
     .replace(/"/g, "&quot;");
 }
 
+function sheetTitle(value: string, index: number) {
+  return xmlText((value || `Sheet${index + 1}`).replace(/[:\\/?*\[\]]/g, " ").trim().slice(0, 31) || `Sheet${index + 1}`);
+}
+
 function colLetter(index: number) {
   let n = index;
   let out = "";
@@ -102,17 +106,36 @@ function colLetter(index: number) {
   return out;
 }
 
+function columnWidths(sheet: SpreadsheetSheet) {
+  const cols = Math.max(1, ...sheet.rows.map((row) => row.length));
+  const widths: number[] = [];
+  for (let col = 0; col < cols; col += 1) {
+    let max = 12;
+    for (const row of sheet.rows) {
+      const text = row[col] == null ? "" : String(row[col]);
+      max = Math.max(max, Math.min(48, text.length + 2));
+    }
+    widths.push(max);
+  }
+  return widths;
+}
+
 function sheetXml(sheet: SpreadsheetSheet) {
+  const widths = columnWidths(sheet);
+  const cols = widths
+    .map((width, index) => `<col min="${index + 1}" max="${index + 1}" width="${width}" customWidth="1"/>`)
+    .join("");
   const rows = sheet.rows
     .map((row, rowIndex) => {
       const cells = row
         .map((value, colIndex) => {
           const ref = `${colLetter(colIndex)}${rowIndex + 1}`;
+          const style = rowIndex === 0 ? ' s="1"' : "";
           if (typeof value === "number" && Number.isFinite(value)) {
-            return `<c r="${ref}"><v>${value}</v></c>`;
+            return `<c r="${ref}"${style}><v>${value}</v></c>`;
           }
           const text = value == null ? "" : String(value);
-          return `<c r="${ref}" t="inlineStr"><is><t>${xmlText(text)}</t></is></c>`;
+          return `<c r="${ref}"${style} t="inlineStr"><is><t>${xmlText(text)}</t></is></c>`;
         })
         .join("");
       return `<row r="${rowIndex + 1}">${cells}</row>`;
@@ -120,23 +143,45 @@ function sheetXml(sheet: SpreadsheetSheet) {
     .join("");
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+<sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>
+<cols>${cols}</cols>
 <sheetData>${rows}</sheetData>
 </worksheet>`;
 }
+
+const STYLES_XML = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+<fonts count="2">
+<font><sz val="11"/><name val="Calibri"/></font>
+<font><b/><sz val="11"/><name val="Calibri"/></font>
+</fonts>
+<fills count="2">
+<fill><patternFill patternType="none"/></fill>
+<fill><patternFill patternType="gray125"/></fill>
+</fills>
+<borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders>
+<cellStyleXfs count="1"><xf/></cellStyleXfs>
+<cellXfs count="2">
+<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>
+<xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1"/>
+</cellXfs>
+</styleSheet>`;
 
 export function xlsxWorkbook(sheets: SpreadsheetSheet[]) {
   const safe = sheets.length ? sheets : [{ name: "Sheet1", rows: [["Empty"]] }];
   const workbookSheets = safe
     .map((sheet, index) => {
-      const name = xmlText((sheet.name || `Sheet${index + 1}`).slice(0, 31));
+      const name = sheetTitle(sheet.name, index);
       return `<sheet name="${name}" sheetId="${index + 1}" r:id="rId${index + 1}"/>`;
     })
     .join("");
-  const rels = safe
-    .map((_, index) =>
-      `<Relationship Id="rId${index + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${index + 1}.xml"/>`,
-    )
-    .join("");
+  const rels = [
+    ...safe.map(
+      (_, index) =>
+        `<Relationship Id="rId${index + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${index + 1}.xml"/>`,
+    ),
+    `<Relationship Id="rIdStyles" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>`,
+  ].join("");
   const overrides = safe
     .map(
       (_, index) =>
@@ -152,6 +197,7 @@ export function xlsxWorkbook(sheets: SpreadsheetSheet[]) {
 <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
 <Default Extension="xml" ContentType="application/xml"/>
 <Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
+<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>
 ${overrides}
 </Types>`,
     },
@@ -175,6 +221,10 @@ ${overrides}
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
 ${rels}
 </Relationships>`,
+    },
+    {
+      name: "xl/styles.xml",
+      body: STYLES_XML,
     },
     ...safe.map((sheet, index) => ({
       name: `xl/worksheets/sheet${index + 1}.xml`,
