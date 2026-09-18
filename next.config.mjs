@@ -14,7 +14,6 @@ const nextConfig = {
   async redirects() {
     return [
       { source: "/admin/review", destination: "/admin/consignments", permanent: false },
-      { source: "/admin/intake", destination: "/admin/consignments", permanent: false },
     ];
   },
   async headers() {
