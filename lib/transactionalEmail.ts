@@ -1,7 +1,8 @@
+import { publicEmailLogoUrl } from "@/lib/appUrl";
 import { Resend } from "resend";
 import { getOutbox } from "@/lib/demoEmailStore";
-import { buildEmailHtml, EMAIL_LOGO_CID, htmlToText, looksLikeHtml } from "@/lib/emailHtml";
-import { loadLiveEmailTemplates, resolveEmailLogo } from "@/lib/emailService";
+import { buildEmailHtml, htmlToText, looksLikeHtml } from "@/lib/emailHtml";
+import { loadLiveEmailTemplates } from "@/lib/emailService";
 import { renderTemplate } from "@/lib/emailTemplates";
 import { isPaymentTestMode } from "@/lib/paymentMode";
 
@@ -33,40 +34,21 @@ export async function sendTransactionalEmail(input: {
   const rendered = renderTemplate(template, input.vars);
   const key = (process.env.RESEND_API_KEY || "").trim();
   const from = (process.env.RESEND_FROM || "DealFinder Auctions <onboarding@resend.dev>").trim();
-  const logo = input.skipLogo ? null : await resolveEmailLogo();
   const body = input.htmlOverride || rendered.body;
-  const html = buildEmailHtml(body, logo ? `cid:${EMAIL_LOGO_CID}` : "/logo.webp");
+  const html = buildEmailHtml(body, publicEmailLogoUrl());
   const text = looksLikeHtml(body) ? htmlToText(html) : body.replaceAll("{{logo}}", "");
   const test = isPaymentTestMode();
   const useResend = Boolean(key) && (input.forceDeliver || !test);
 
-  async function deliver(withLogo: boolean) {
+  if (useResend) {
     const resend = new Resend(key);
-    return resend.emails.send({
+    const { error } = await resend.emails.send({
       from,
       to,
       subject: rendered.subject,
       text,
-      html: withLogo ? html : buildEmailHtml(body, "/logo.webp"),
-      attachments:
-        withLogo && logo
-          ? [
-              {
-                filename: logo.filename,
-                content: logo.buffer,
-                contentType: logo.contentType,
-                contentId: EMAIL_LOGO_CID,
-              },
-            ]
-          : undefined,
+      html,
     });
-  }
-
-  if (useResend) {
-    let { error } = await deliver(Boolean(logo));
-    if (error && logo) {
-      ({ error } = await deliver(false));
-    }
     if (error) {
       const message =
         typeof error === "object" && error && "message" in error

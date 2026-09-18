@@ -26,3 +26,7 @@ export function checkoutHref(lotId?: string) {
   if (!lotId) return base;
   return `${base}?lot=${encodeURIComponent(lotId)}`;
 }
+
+export function publicEmailLogoUrl() {
+  return `${publicAppUrl()}/api/email-logo`;
+}

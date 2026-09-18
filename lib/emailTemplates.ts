@@ -84,8 +84,6 @@ Welcome to DealFinder Auctions. Your bidder account is ready.
 
 Verify Account: {{verify_link}}
 
-Nothing is charged for signing up. After you confirm, you can browse live lots and bid when you are ready.
-
 Live lots: {{lot_link}}
 
 DealFinder Auctions`,
@@ -137,7 +135,8 @@ export function mergeEmailTemplates(
       row &&
       !(
         base.id === "welcome" &&
-        (/helcim|payment_link|checkout/i.test(row.body) || !/verify_link|Verify Account/i.test(row.body))
+        (/helcim|payment_link|checkout|Nothing is charged|paste this link/i.test(row.body) ||
+          !/verify_link|Verify Account/i.test(row.body))
       )
         ? row.body
         : base.body;
