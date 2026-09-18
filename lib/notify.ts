@@ -47,18 +47,36 @@ ${ship ? "" : `<p>${escapeHtml(PICKUP_INSTRUCTIONS)}</p>`}
 <p><a href="${escapeHtml(input.lotHref)}">View lot</a> · <a href="${escapeHtml(publicAppUrl() + "/checkout")}">My won items / invoices</a></p>`;
 }
 
-export async function sendWelcomeEmail(to: string, name: string) {
+export function welcomeEmailHtml(input: { name: string; liveHref: string; verifyHref?: string }) {
+  const name = escapeHtml(input.name || "Bidder");
+  const verify = input.verifyHref
+    ? `<p style="text-align:center;margin:28px 0;">
+  <a href="${escapeHtml(input.verifyHref)}" style="display:inline-block;background:#FF0000;color:#FFFFFF;padding:14px 22px;border:4px solid #000000;font-weight:bold;text-decoration:none;">Verify Account</a>
+</p>
+<p>If the button does not work, paste this link:<br/>${escapeHtml(input.verifyHref)}</p>`
+    : "";
+  return `<p>Hey ${name},</p>
+<p>Welcome to DealFinder Auctions. Your bidder account is ready.</p>
+${verify}
+<p>Nothing is charged for signing up. After you confirm this email, you can browse the live floor and bid when you are ready.</p>
+<p><a href="${escapeHtml(input.liveHref)}">Browse live lots</a></p>`;
+}
+
+export async function sendWelcomeEmail(to: string, name: string, verifyHref?: string) {
   const live = `${publicAppUrl()}/live`;
+  const displayName = name || "Bidder";
   return sendTransactionalEmail({
     templateId: "welcome",
     to,
     vars: {
-      customer_name: name || "Bidder",
+      customer_name: displayName,
       item_title: "",
       winning_bid: "",
       payment_link: live,
       lot_link: live,
+      verify_link: verifyHref || live,
     },
+    htmlOverride: welcomeEmailHtml({ name: displayName, liveHref: live, verifyHref }),
   });
 }
 

@@ -14,6 +14,8 @@ import { normalizePaymentMethod, type PaymentMethod } from "@/lib/profileTypes";
 import { persistTermsAgreement } from "@/lib/helcim";
 import { sendWelcomeEmail } from "@/lib/notify";
 import {
+  generateSignupConfirmation,
+  generateVerifyLink,
   isAuthEmailConfirmed,
   markWelcomeSent,
   verifyEmailHref,
@@ -176,39 +178,34 @@ export async function PUT(request: NextRequest) {
 
   if (isSupabaseConfigured) {
     const supabase = getSupabaseAdmin();
-    const authClient = getSupabaseAuthClient();
-    if (supabase && authClient) {
-      const created = await authClient.auth.signUp({
+    if (supabase) {
+      const created = await generateSignupConfirmation(supabase, {
         email,
         password,
-        options: {
-          data: { full_name: fields.fullName },
-          emailRedirectTo: verifyEmailHref(),
-        },
+        fullName: fields.fullName,
       });
-      if (created.error || !created.data.user) {
+      if (created.error || !created.user) {
         return NextResponse.json(
-          { error: created.error?.message || "Could not sign up." },
+          { error: created.error || "Could not sign up." },
           { status: 400 },
         );
       }
-      if ((created.data.user.identities ?? []).length === 0) {
-        return NextResponse.json(
-          { error: "An account with that email already exists. Log in, or check your inbox to verify." },
-          { status: 400 },
-        );
-      }
-      const userId = created.data.user.id;
+      const userId = created.user.id;
       const error = await upsertBidderProfile(supabase, userId, email, fields);
       if (error) {
         return NextResponse.json({ error: error.message }, { status: 400 });
       }
       await persistTermsAgreement(userId, fields.preauthTermsAgreed);
 
-      if (isAuthEmailConfirmed(created.data.user) && created.data.session) {
+      if (isAuthEmailConfirmed(created.user)) {
         await sendWelcomeOnce(supabase, userId, email, fields.fullName);
         const response = NextResponse.json({ ok: true, verified: true });
         return setBidderCookie(response, userId);
+      }
+
+      if (created.verifyHref) {
+        await sendWelcomeEmail(email, fields.fullName, created.verifyHref);
+        await markWelcomeSent(supabase, userId);
       }
 
       return NextResponse.json({
@@ -242,18 +239,16 @@ export async function PATCH(request: NextRequest) {
   if (!email) {
     return NextResponse.json({ error: "Email is required." }, { status: 400 });
   }
-  const authClient = getSupabaseAuthClient();
-  if (!authClient) {
+  const admin = getSupabaseAdmin();
+  if (!admin) {
     return NextResponse.json({ error: "Auth is not configured." }, { status: 400 });
   }
-  const { error } = await authClient.auth.resend({
-    type: "signup",
-    email,
-    options: { emailRedirectTo: verifyEmailHref() },
-  });
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 400 });
+  const link = await generateVerifyLink(admin, email);
+  if (link.error || !link.verifyHref) {
+    return NextResponse.json({ ok: true, needsVerification: true });
   }
+  const profile = await admin.from("profiles").select("full_name").eq("email", email).maybeSingle();
+  await sendWelcomeEmail(email, String(profile.data?.full_name || email), link.verifyHref);
   return NextResponse.json({ ok: true, needsVerification: true });
 }
 

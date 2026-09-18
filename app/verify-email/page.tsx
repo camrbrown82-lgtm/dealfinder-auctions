@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { createClient } from "@supabase/supabase-js";
 
 function browserAuth() {
@@ -14,27 +15,25 @@ function browserAuth() {
 }
 
 export default function VerifyEmailPage() {
+  const router = useRouter();
   const [status, setStatus] = useState<"working" | "ok" | "pending" | "error">("working");
   const [message, setMessage] = useState("Confirming your email…");
   const [email, setEmail] = useState("");
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const tokenHash = params.get("token_hash") || params.get("token") || "";
+    const type = params.get("type") || "signup";
     const supabase = browserAuth();
-    if (!supabase) {
-      setStatus("pending");
-      setMessage("Check your inbox and tap the confirmation link we sent.");
-      return;
-    }
-
     let cancelled = false;
 
-    async function finish(accessToken: string) {
+    async function finish(payload: { accessToken?: string; tokenHash?: string; type?: string }) {
       const response = await fetch("/api/auth/verify", {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ accessToken }),
+        body: JSON.stringify(payload),
       });
       const json = await response.json();
       if (cancelled) return;
@@ -44,27 +43,41 @@ export default function VerifyEmailPage() {
         return;
       }
       setStatus("ok");
-      setMessage("Email confirmed. You can bid on the live floor.");
+      setMessage("Email confirmed. Taking you to the live floor…");
+      router.replace(json.redirect || "/live");
+    }
+
+    if (tokenHash) {
+      void finish({ tokenHash, type });
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    if (!supabase) {
+      setStatus("pending");
+      setMessage("Check your inbox and tap Verify Account in the welcome email.");
+      return;
     }
 
     supabase.auth.getSession().then(({ data }) => {
       const token = data.session?.access_token;
-      if (token) void finish(token);
+      if (token) void finish({ accessToken: token });
       else {
         setStatus("pending");
-        setMessage("Check your inbox and tap the confirmation link. Then come back here to log in.");
+        setMessage("Check your inbox and tap Verify Account. Then you will land on the live floor.");
       }
     });
 
     const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (session?.access_token) void finish(session.access_token);
+      if (session?.access_token) void finish({ accessToken: session.access_token });
     });
 
     return () => {
       cancelled = true;
       sub.subscription.unsubscribe();
     };
-  }, []);
+  }, [router]);
 
   async function resend() {
     setBusy(true);
@@ -76,7 +89,7 @@ export default function VerifyEmailPage() {
       });
       const json = await response.json();
       if (!response.ok) throw new Error(json.error || "Could not resend.");
-      setMessage("If that address is on file, we sent another confirmation link.");
+      setMessage("If that address is on file, we sent another DealFinder welcome with a Verify Account button.");
     } catch (error) {
       setStatus("error");
       setMessage(error instanceof Error ? error.message : "Could not resend.");
@@ -104,7 +117,7 @@ export default function VerifyEmailPage() {
               />
             </label>
             <button type="button" className="comic-btn w-full" disabled={busy || !email} onClick={() => void resend()}>
-              {busy ? "Sending…" : "Resend confirmation"}
+              {busy ? "Sending…" : "Resend welcome email"}
             </button>
           </div>
         )}

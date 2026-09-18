@@ -16,6 +16,7 @@ export const TEMPLATE_VARIABLES = [
   "{{lot_link}}",
   "{{cash_link}}",
   "{{invoice_total}}",
+  "{{verify_link}}",
 ] as const;
 
 export const DEFAULT_EMAIL_TEMPLATES: EmailTemplate[] = [
@@ -76,14 +77,14 @@ DealFinder Auctions`,
   {
     id: "welcome",
     name: "Welcome / Bidder Card",
-    subject: "You're on the floor — DealFinder Auctions",
+    subject: "Welcome to DealFinder Auctions — verify your account",
     body: `Hey {{customer_name}},
 
-Welcome to DealFinder Auctions. Your account is created.
+Welcome to DealFinder Auctions. Your bidder account is ready.
 
-Confirm your email if we sent a verification link, then browse live lots and bid when you are ready.
+Verify Account: {{verify_link}}
 
-Nothing is charged for signing up.
+Nothing is charged for signing up. After you confirm, you can browse live lots and bid when you are ready.
 
 Live lots: {{lot_link}}
 
@@ -133,7 +134,11 @@ export function mergeEmailTemplates(
   const merged = DEFAULT_EMAIL_TEMPLATES.map((base) => {
     const row = byId.get(base.id);
     const body =
-      row && !(base.id === "welcome" && /helcim|payment_link|checkout/i.test(row.body))
+      row &&
+      !(
+        base.id === "welcome" &&
+        (/helcim|payment_link|checkout/i.test(row.body) || !/verify_link|Verify Account/i.test(row.body))
+      )
         ? row.body
         : base.body;
     return row

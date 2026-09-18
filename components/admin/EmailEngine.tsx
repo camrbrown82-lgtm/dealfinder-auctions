@@ -82,6 +82,8 @@ export function EmailEngine({ onNotice }: { onNotice: (message: string) => void 
       item_title: itemTitle,
       winning_bid: winningBid,
       payment_link: paymentLink,
+      lot_link: "https://dealfinder-auctions.vercel.app/live",
+      verify_link: "https://dealfinder-auctions.vercel.app/verify-email",
     });
     return {
       subject: rendered.subject,
