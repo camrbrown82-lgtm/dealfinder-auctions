@@ -5,10 +5,10 @@ import { AdminAiIntake } from "@/components/AdminAiIntake";
 import { useAdminDesk } from "@/components/admin/AdminDesk";
 import { AdminShell } from "@/components/admin/AdminShell";
 import { AuctionCalendarModal } from "@/components/admin/AuctionCalendar";
-import { DEFAULT_HOUSE_STARTING_BID } from "@/lib/houseDesk";
 import { HouseCatalogSettings } from "@/components/admin/HouseCatalogSettings";
+import { DEFAULT_HOUSE_STARTING_BID } from "@/lib/houseDesk";
 
-export default function AdminIntakePage() {
+export default function AdminWarehouseIntakePage() {
   const { data, setNotice, load, mutate } = useAdminDesk();
   const [filingLot, setFilingLot] = useState<{ id: string; title: string; lotNumber?: string | null } | null>(
     null,
@@ -29,10 +29,12 @@ export default function AdminIntakePage() {
     setNotice(`Filed ${lot.title} into the selected auction.`);
   }
 
+  const openEvents = data.events.filter((event) => !event.archivedAt);
+
   return (
     <AdminShell
-      title="AI generator"
-      subtitle="Work one photo at a time. When you save or post live, this workspace clears and you pick the auction inventory."
+      title="Warehouse AI generator"
+      subtitle="House-owned warehouse stock. Catalog photos, generate a listing, then file into a sale. No consignor commission."
     >
       <HouseCatalogSettings
         settings={
@@ -57,20 +59,16 @@ export default function AdminIntakePage() {
         workspace
         suggestedLotNumber={data.houseSettings?.nextLotNumber ?? data.suggestedLotNumber ?? "LOT-0001"}
         defaultStartingBid={data.houseSettings?.defaultStartingBid ?? DEFAULT_HOUSE_STARTING_BID}
-        consignors={data.consignors ?? []}
         onPosted={async (message, lot) => {
           await load();
           setNotice(message);
           if (lot?.id) setFilingLot(lot);
         }}
       />
-
       <AuctionCalendarModal
         open={Boolean(filingLot)}
-        lotLabel={
-          filingLot ? [filingLot.lotNumber, filingLot.title].filter(Boolean).join(" · ") : "this lot"
-        }
-        events={data.events.filter((event) => !event.archivedAt)}
+        lotLabel={filingLot ? [filingLot.lotNumber, filingLot.title].filter(Boolean).join(" · ") : "this lot"}
+        events={openEvents}
         onClose={() => setFilingLot(null)}
         onSelect={(eventId) => void fileLotIntoSale(eventId)}
       />

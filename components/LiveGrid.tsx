@@ -48,6 +48,8 @@ export function LiveGrid({
   lots: AuctionLot[];
   sales: SaleWindowItem[];
 }) {
+  const [floorLots, setFloorLots] = useState(lots);
+  const [floorSales, setFloorSales] = useState(sales);
   const [query, setQuery] = useState("");
   const [view, setView] = useState<ViewCount>(9);
   const [saleId, setSaleId] = useState(() => defaultSaleId(sales) ?? "");
@@ -59,7 +61,21 @@ export function LiveGrid({
     lotIds: [],
   });
 
-  const selected = sales.find((item) => item.event.id === saleId) ?? sales[0];
+  const selected = floorSales.find((item) => item.event.id === saleId) ?? floorSales[0];
+
+  useEffect(() => {
+    setFloorLots(lots);
+  }, [lots]);
+
+  useEffect(() => {
+    setFloorSales(sales);
+  }, [sales]);
+
+  useEffect(() => {
+    if (!floorSales.some((item) => item.event.id === saleId)) {
+      setSaleId(defaultSaleId(floorSales) ?? "");
+    }
+  }, [floorSales, saleId]);
 
   useEffect(() => {
     try {
@@ -93,6 +109,12 @@ export function LiveGrid({
         const response = await fetch("/api/live-clock", { cache: "no-store" });
         const json = await response.json();
         if (cancelled || !Array.isArray(json.lots)) return;
+        if (json.lots.some((row: { title?: string }) => row.title)) {
+          setFloorLots(json.lots as AuctionLot[]);
+        }
+        if (Array.isArray(json.sales)) {
+          setFloorSales(json.sales as SaleWindowItem[]);
+        }
         const next: Record<string, LotClock> = {};
         for (const row of json.lots as Array<LotClock & { id: string }>) {
           next[row.id] = {
@@ -118,7 +140,7 @@ export function LiveGrid({
   const visible = useMemo(() => {
     const clockMap = clocks ?? {};
     const clockReady = clocks !== null;
-    const merged = lots
+    const merged = floorLots
       .map((lot) => {
         const clock = clockMap[lot.id];
         if (!clock) return lot;
@@ -158,11 +180,11 @@ export function LiveGrid({
         })
       : pool;
     return rankLotsByInterest(filtered, interest);
-  }, [lots, selected, query, interest, clocks]);
+  }, [floorLots, selected, query, interest, clocks]);
 
   return (
     <div className="min-w-0 max-w-full space-y-4 overflow-x-clip">
-      {sales.length > 0 && (
+      {floorSales.length > 0 && (
         <div className="comic-panel p-4">
           <p className="font-display text-lg">Auctions</p>
           <p className="font-comic text-sm">
@@ -170,7 +192,7 @@ export function LiveGrid({
             18.
           </p>
           <div className="mt-3 flex flex-wrap gap-2">
-            {sales.map((item) => {
+            {floorSales.map((item) => {
               const active = item.event.id === selected?.event.id;
               const label =
                 item.kind === "past" ? "Previous" : item.kind === "live" ? "Live now" : "Upcoming";
@@ -237,7 +259,7 @@ export function LiveGrid({
 
       {visible.length === 0 ? (
         <p className="comic-panel p-8 text-center font-display text-2xl">
-          No lots in this sale yet.
+          No lots in this sale yet. Post a lot from Admin and it shows here.
         </p>
       ) : (
         <section className={GRID_CLASS[view]}>

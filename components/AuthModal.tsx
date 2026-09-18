@@ -1,7 +1,6 @@
 "use client";
 
 import { FormEvent, useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
 import { ProfileFields } from "@/components/ProfileFields";
 import {
   emptyProfileInput,
@@ -36,22 +35,37 @@ export function AuthModal({
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [completing, setCompleting] = useState(false);
+  const [needsVerification, setNeedsVerification] = useState(false);
   const [panel, setPanel] = useState<Panel>(mode);
   const [resetSent, setResetSent] = useState(false);
   const [devResetUrl, setDevResetUrl] = useState<string | null>(null);
-  const router = useRouter();
+  const confirmedSession = Boolean(existing);
 
   useEffect(() => {
-    if (!open) return;
+    if (!open) {
+      setNeedsVerification(false);
+      setError(null);
+      setBusy(false);
+      setResetSent(false);
+      setDevResetUrl(null);
+      setPanel(mode);
+      return;
+    }
+    if (existing) setNeedsVerification(false);
     setPanel(mode);
-    setResetSent(false);
-    setDevResetUrl(null);
-    setError(null);
-  }, [mode, open]);
+  }, [open, existing, mode]);
 
-  function goHome() {
+  useEffect(() => {
+    if (!open || !needsVerification || existing) return;
+    const timer = window.setInterval(async () => {
+      const me = await fetch("/api/auth", { credentials: "include", cache: "no-store" }).then((r) => r.json());
+      if (me.user) await onAuthenticated(me.user);
+    }, 4000);
+    return () => window.clearInterval(timer);
+  }, [open, needsVerification, existing, onAuthenticated]);
+
+  function closeModal() {
     onClose();
-    router.push("/");
   }
 
   if (!open) return null;
@@ -106,8 +120,21 @@ export function AuthModal({
           body: JSON.stringify({ email, password }),
         });
         const json = await response.json();
+        if (json.alreadyVerified) {
+          setNeedsVerification(false);
+        }
+        if (json.needsVerification && !json.alreadyVerified) {
+          const me = await fetch("/api/auth", { credentials: "include", cache: "no-store" }).then((r) => r.json());
+          if (me.user) {
+            await onAuthenticated(me.user);
+            return;
+          }
+          setNeedsVerification(true);
+          setError(json.error || "Check your inbox to verify your email.");
+          return;
+        }
         if (!response.ok) throw new Error(json.error || "Could not log in.");
-        const me = await fetch("/api/auth", { credentials: "include" }).then((r) => r.json());
+        const me = await fetch("/api/auth", { credentials: "include", cache: "no-store" }).then((r) => r.json());
         if (!me.user) throw new Error("Session missing after login.");
         if (!isProfileComplete(me.user)) {
           setProfile({
@@ -136,8 +163,23 @@ export function AuthModal({
         body: JSON.stringify({ email, password, ...profile }),
       });
       const json = await response.json();
+      if (json.alreadyVerified) {
+        setNeedsVerification(false);
+        setError("This email is already verified. Log in to continue.");
+        onMode("login");
+        return;
+      }
+      if (json.needsVerification) {
+        setNeedsVerification(true);
+        setError(
+          json.mailSent === false
+            ? json.mailError || "We could not send the confirmation email. Tap resend, or ask the desk to check Resend."
+            : "Check your inbox to verify your email before you can bid.",
+        );
+        return;
+      }
       if (!response.ok) throw new Error(json.error || "Could not sign up.");
-      const me = await fetch("/api/auth", { credentials: "include" }).then((r) => r.json());
+      const me = await fetch("/api/auth", { credentials: "include", cache: "no-store" }).then((r) => r.json());
       if (!me.user) throw new Error("Session missing after signup.");
       await onAuthenticated(me.user);
     } catch (err) {
@@ -169,8 +211,8 @@ export function AuthModal({
           </div>
           <button
             type="button"
-            onClick={goHome}
-            aria-label="Close and return to homepage"
+            onClick={closeModal}
+            aria-label="Close"
             className="comic-btn-invert shrink-0 !px-3 !py-1 !text-3xl leading-none"
           >
             X
@@ -178,144 +220,195 @@ export function AuthModal({
         </div>
 
         <form onSubmit={onSubmit} className="space-y-3 p-4">
-          {panel !== "forgot" && (
-            <div className="flex gap-2">
+          {needsVerification && !confirmedSession ? (
+            <div className="space-y-3">
+              <p className="border-4 border-black bg-white px-3 py-2 font-comic text-sm font-bold">
+                Check your inbox to verify your email before you can use this paddle. Nothing is charged for signing up.
+              </p>
+              {error && (
+                <p className="border-4 border-black bg-white px-3 py-2 font-comic text-sm font-bold text-[#FF0000]">
+                  {error}
+                </p>
+              )}
               <button
                 type="button"
-                className={panel === "login" ? "comic-btn !text-base" : "comic-btn-invert !text-base"}
-                onClick={() => {
-                  setCompleting(false);
-                  setResetSent(false);
-                  setPanel("login");
-                  onMode("login");
+                className="comic-btn"
+                disabled={busy || !email}
+                onClick={async () => {
+                  setBusy(true);
+                  setError(null);
+                  try {
+                    const response = await fetch("/api/auth", {
+                      method: "PATCH",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ email }),
+                    });
+                    const json = await response.json();
+                    if (json.alreadyVerified) {
+                      setNeedsVerification(false);
+                      setError("This email is already verified. Log in to continue.");
+                      onMode("login");
+                      return;
+                    }
+                    if (!response.ok) throw new Error(json.error || "Could not resend.");
+                    setError(
+                      json.mailSent === false
+                        ? json.mailError || "Resend did not deliver. Ask the desk to check the sender domain."
+                        : "We sent another confirmation email.",
+                    );
+                  } catch (err) {
+                    setError(err instanceof Error ? err.message : "Could not resend.");
+                  } finally {
+                    setBusy(false);
+                  }
                 }}
               >
-                Log In
+                {busy ? "Sending…" : "Resend confirmation"}
               </button>
-              <button
-                type="button"
-                className={panel === "signup" ? "comic-btn !text-base" : "comic-btn-invert !text-base"}
-                onClick={() => {
-                  setResetSent(false);
-                  setPanel("signup");
-                  onMode("signup");
-                }}
-              >
-                Sign Up
+              <button type="button" className="comic-btn-invert" onClick={onClose}>
+                Keep browsing
               </button>
             </div>
-          )}
-
-          {!hideCredentials && (
+          ) : (
             <>
-              <label className="block font-comic text-sm font-bold">
-                Email
-                <input
-                  type="email"
-                  required
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="mt-1 w-full border-4 border-black bg-white px-3 py-2 font-normal"
-                  autoComplete="email"
-                />
-              </label>
               {panel !== "forgot" && (
-                <label className="block font-comic text-sm font-bold">
-                  Password
-                  <input
-                    type="password"
-                    required
-                    minLength={6}
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    className="mt-1 w-full border-4 border-black bg-white px-3 py-2 font-normal"
-                    autoComplete={panel === "login" ? "current-password" : "new-password"}
-                  />
-                </label>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    className={panel === "login" ? "comic-btn !text-base" : "comic-btn-invert !text-base"}
+                    onClick={() => {
+                      setCompleting(false);
+                      setNeedsVerification(false);
+                      setResetSent(false);
+                      setPanel("login");
+                      onMode("login");
+                    }}
+                  >
+                    Log In
+                  </button>
+                  <button
+                    type="button"
+                    className={panel === "signup" ? "comic-btn !text-base" : "comic-btn-invert !text-base"}
+                    onClick={() => {
+                      setNeedsVerification(false);
+                      setResetSent(false);
+                      setPanel("signup");
+                      onMode("signup");
+                    }}
+                  >
+                    Sign Up
+                  </button>
+                </div>
               )}
-              {panel === "login" && (
-                <button
-                  type="button"
-                  className="font-comic text-sm font-bold underline"
-                  onClick={() => {
-                    setError(null);
-                    setResetSent(false);
-                    setPanel("forgot");
-                  }}
-                >
-                  Forgot password?
-                </button>
+
+              {!hideCredentials && (
+                <>
+                  <label className="block font-comic text-sm font-bold">
+                    Email
+                    <input
+                      type="email"
+                      required
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      className="mt-1 w-full border-4 border-black bg-white px-3 py-2 font-normal"
+                      autoComplete="email"
+                    />
+                  </label>
+                  {panel !== "forgot" && (
+                    <label className="block font-comic text-sm font-bold">
+                      Password
+                      <input
+                        type="password"
+                        required
+                        minLength={6}
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        className="mt-1 w-full border-4 border-black bg-white px-3 py-2 font-normal"
+                        autoComplete={panel === "login" ? "current-password" : "new-password"}
+                      />
+                    </label>
+                  )}
+                  {panel === "login" && (
+                    <button
+                      type="button"
+                      className="font-comic text-sm font-bold underline"
+                      onClick={() => {
+                        setError(null);
+                        setResetSent(false);
+                        setPanel("forgot");
+                      }}
+                    >
+                      Forgot password?
+                    </button>
+                  )}
+                </>
               )}
+
+              {panel === "forgot" && resetSent && (
+                <p className="border-4 border-black bg-white px-3 py-2 font-comic text-sm font-bold">
+                  If that email has a paddle, we sent a reset link. Check inbox and spam.
+                  {devResetUrl ? (
+                    <>
+                      {" "}
+                      Demo link:{" "}
+                      <a href={devResetUrl} className="underline">
+                        set a new password
+                      </a>
+                    </>
+                  ) : null}
+                </p>
+              )}
+
+              {needsProfile && <ProfileFields value={profile} onChange={setProfile} />}
+
+              {error && (
+                <p className="border-4 border-black bg-white px-3 py-2 font-comic text-sm font-bold text-[#FF0000]">
+                  {error}
+                </p>
+              )}
+
+              <div className="flex flex-wrap gap-2 pt-1">
+                {panel === "forgot" ? (
+                  <>
+                    {!resetSent && (
+                      <button type="submit" className="comic-btn" disabled={busy}>
+                        {busy ? "Sending…" : "Email reset link"}
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      className="comic-btn-invert"
+                      onClick={() => {
+                        setResetSent(false);
+                        setDevResetUrl(null);
+                        setPanel("login");
+                        onMode("login");
+                      }}
+                    >
+                      Back to log in
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <button type="submit" className="comic-btn" disabled={busy}>
+                      {busy
+                        ? "Working…"
+                        : panel === "login"
+                          ? resumeBid
+                            ? "Log In & Bid"
+                            : "Log In"
+                          : resumeBid
+                            ? "Create Account & Bid"
+                            : "Create Account"}
+                    </button>
+                    <button type="button" className="comic-btn-invert" onClick={onClose}>
+                      Keep browsing
+                    </button>
+                  </>
+                )}
+              </div>
             </>
           )}
-
-          {panel === "forgot" && resetSent && (
-            <p className="border-4 border-black bg-white px-3 py-2 font-comic text-sm font-bold">
-              If that email has a paddle, we sent a reset link. Check inbox and spam.
-              {devResetUrl ? (
-                <>
-                  {" "}
-                  Demo link:{" "}
-                  <a href={devResetUrl} className="underline">
-                    set a new password
-                  </a>
-                </>
-              ) : null}
-            </p>
-          )}
-
-          {needsProfile && <ProfileFields value={profile} onChange={setProfile} />}
-
-          {error && (
-            <p className="border-4 border-black bg-white px-3 py-2 font-comic text-sm font-bold text-[#FF0000]">
-              {error}
-            </p>
-          )}
-
-          <div className="flex flex-wrap gap-2 pt-1">
-            {panel === "forgot" ? (
-              <>
-                {!resetSent && (
-                  <button type="submit" className="comic-btn" disabled={busy}>
-                    {busy ? "Sending…" : "Email reset link"}
-                  </button>
-                )}
-                <button
-                  type="button"
-                  className="comic-btn-invert"
-                  onClick={() => {
-                    setResetSent(false);
-                    setDevResetUrl(null);
-                    setPanel("login");
-                    onMode("login");
-                  }}
-                >
-                  Back to log in
-                </button>
-              </>
-            ) : (
-              <>
-                <button
-                  type="submit"
-                  className="comic-btn"
-                  disabled={busy || (needsProfile && !profile.preauthTermsAgreed)}
-                >
-                  {busy
-                    ? "Working…"
-                    : panel === "login"
-                      ? resumeBid
-                        ? "Log In & Bid"
-                        : "Log In"
-                      : resumeBid
-                        ? "Create Account & Bid"
-                        : "Create Account"}
-                </button>
-                <button type="button" className="comic-btn-invert" onClick={onClose}>
-                  Keep browsing
-                </button>
-              </>
-            )}
-          </div>
         </form>
       </div>
     </div>

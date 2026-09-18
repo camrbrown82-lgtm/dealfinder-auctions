@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { bidderUnauthorized, getBidderSession } from "@/lib/bidderAuth";
+import { invoiceFees } from "@/lib/invoiceFees";
+import { isPaymentTestMode } from "@/lib/paymentMode";
 import { invoiceNumber } from "@/lib/payments";
 import {
   helcimCurrency,
@@ -32,7 +34,32 @@ async function hammerForLot(lotId: string, bidderId: string, bidderName: string)
           data.high_bidder === bidderName;
         if (!owns) return { error: "Only the winning paddle can pay this invoice." };
         if (data.paid_at) return { error: "This invoice is already paid." };
-        return { amount: Number(data.current_bid), title: String(data.title ?? "Lot") };
+        const fulfillment = data.fulfillment === "ship" || data.fulfillment === "pickup" ? data.fulfillment : "unset";
+        if (fulfillment === "unset") {
+          return { error: "Choose local pickup or shipping before paying this invoice." };
+        }
+        const { invoiceReadyForEvent } = await import("@/lib/auctionCloseInvoices");
+        if (!(await invoiceReadyForEvent(data.event_id ? String(data.event_id) : null))) {
+          return { error: "Helcim checkout opens after Sunday's consolidated invoice is emailed." };
+        }
+        let includeHandling = fulfillment === "ship";
+        if (includeHandling && data.event_id && data.high_bidder_id) {
+          const siblings = await supabase
+            .from("lots")
+            .select("id, paid_at, fulfillment")
+            .eq("event_id", data.event_id)
+            .eq("high_bidder_id", data.high_bidder_id);
+          includeHandling = !(siblings.data ?? []).some(
+            (row) => row.id !== data.id && row.fulfillment === "ship" && row.paid_at,
+          );
+        }
+        const fees = invoiceFees({
+          hammer: Number(data.current_bid),
+          fulfillment,
+          shippingCost: Number(data.shipping_cost ?? 0),
+          includeHandling,
+        });
+        return { amount: fees.total, title: String(data.title ?? "Lot") };
       }
     }
   }
@@ -40,14 +67,28 @@ async function hammerForLot(lotId: string, bidderId: string, bidderName: string)
   if (demo?.paidAt) return { error: "This invoice is already paid." };
   const fallback = demo || MOCK_LOTS.find((row) => row.id === lotId);
   if (!fallback) return { error: "Lot not found." };
-  return { amount: Number(fallback.currentBid), title: "Lot" };
+  const fulfillment =
+    ("fulfillment" in fallback && (fallback.fulfillment === "ship" || fallback.fulfillment === "pickup")
+      ? fallback.fulfillment
+      : demo?.fulfillment === "ship" || demo?.fulfillment === "pickup"
+        ? demo.fulfillment
+        : "unset");
+  const fees = invoiceFees({
+    hammer: Number(fallback.currentBid),
+    fulfillment,
+    shippingCost: "shippingCost" in fallback ? Number(fallback.shippingCost ?? 0) : Number(demo?.shippingCost ?? 0),
+  });
+  if (fulfillment === "unset") {
+    return { error: "Choose local pickup or shipping before paying this invoice." };
+  }
+  return { amount: fees.total, title: "Lot" };
 }
 
 export async function POST(request: NextRequest) {
   const session = await getBidderSession();
   if (!session) return bidderUnauthorized();
 
-  const body = (await request.json()) as { purpose?: string; lotId?: string };
+  const body = (await request.json()) as { purpose?: string; lotId?: string; eventId?: string };
   if (!isPurpose(body.purpose)) {
     return NextResponse.json({ error: "Unknown Helcim checkout purpose." }, { status: 400 });
   }
@@ -57,6 +98,7 @@ export async function POST(request: NextRequest) {
   let amount = preauthAmount();
   let invoice = `DF-HOLD-${session.id.replace(/[^a-z0-9]/gi, "").slice(0, 8).toUpperCase()}`;
   let lotId: string | null = body.lotId?.trim() || null;
+  const eventId = body.eventId?.trim() || null;
 
   if (body.purpose === "bid_preauth") {
     if (payment.preauthStatus === "held") {
@@ -93,6 +135,7 @@ export async function POST(request: NextRequest) {
       bidderId: session.id,
       purpose: body.purpose,
       lotId,
+      eventId,
       amount,
       currency,
       invoiceNumber: invoice,
@@ -101,6 +144,7 @@ export async function POST(request: NextRequest) {
     });
     return NextResponse.json({
       demo: true,
+      testMode: isPaymentTestMode(),
       configured: false,
       checkoutToken,
       amount,
@@ -126,6 +170,7 @@ export async function POST(request: NextRequest) {
       bidderId: session.id,
       purpose: body.purpose,
       lotId,
+      eventId,
       amount,
       currency,
       invoiceNumber: invoice,
@@ -134,6 +179,7 @@ export async function POST(request: NextRequest) {
     });
     return NextResponse.json({
       demo: false,
+      testMode: isPaymentTestMode(),
       configured: true,
       checkoutToken: tokens.checkoutToken,
       amount,

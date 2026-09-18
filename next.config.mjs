@@ -11,13 +11,16 @@ const nextConfig = {
       bodySizeLimit: "12mb",
     },
   },
+  async redirects() {
+    return [
+      { source: "/admin/review", destination: "/admin/consignments", permanent: false },
+    ];
+  },
   async headers() {
     return [
       {
         source: "/:path*",
-        headers: [
-          { key: "Permissions-Policy", value: "camera=(self)" },
-        ],
+        headers: [{ key: "Permissions-Policy", value: "camera=(self)" }],
       },
     ];
   },

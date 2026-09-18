@@ -7,7 +7,7 @@ import { AuctionCalendarModal } from "@/components/admin/AuctionCalendar";
 import { ReviewQueue, type ReviewDraft } from "@/components/admin/ReviewQueue";
 import type { Consignment } from "@/lib/utils";
 
-export default function AdminReviewPage() {
+export default function AdminConsignmentsPage() {
   const { data, setNotice, mutate } = useAdminDesk();
   const [drafts, setDrafts] = useState<Record<string, ReviewDraft>>({});
   const [picking, setPicking] = useState<{ item: Consignment; draft: ReviewDraft } | null>(null);
@@ -57,8 +57,8 @@ export default function AdminReviewPage() {
 
   return (
     <AdminShell
-      title="Consignment review"
-      subtitle="Approve into a weekly sale from the Sep 20 dropdown (five weeks out)."
+      title="Consignment pipeline"
+      subtitle="Review consignor submissions, then approve them into a sale. Warehouse house stock is cataloged separately."
     >
       <ReviewQueue
         queue={data.queue}
@@ -99,7 +99,6 @@ export default function AdminReviewPage() {
           }).then(() => setNotice(`Rejected: ${draft.title}`))
         }
       />
-
       <AuctionCalendarModal
         open={Boolean(picking)}
         lotLabel={picking ? picking.draft.title : "this lot"}

@@ -1,10 +1,8 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { ImageUrlPaste } from "@/components/ImageUrlPaste";
 import { PhotoDropzone } from "@/components/PhotoDropzone";
-import { moneySplit } from "@/lib/commission";
-import { OwnerPicker } from "@/components/OwnerPicker";
 import { HOUSE_CONSIGNOR } from "@/lib/consignors";
 import { collectItemImageUrls } from "@/lib/files";
 import { requestStudioImage } from "@/lib/studioClient";
@@ -14,25 +12,18 @@ import { AiFeedback } from "@/components/AiFeedback";
 import { ListingGradeFields } from "@/components/ListingGradeFields";
 import { type ListingGrade } from "@/lib/listingGrade";
 import { listingImages, parsePastedImageUrls } from "@/lib/imageUrls";
-import {
-  DEFAULT_COMMISSION_RATE,
-  formatCurrency,
-} from "@/lib/utils";
 
 export function AdminAiIntake({
   suggestedLotNumber,
   defaultStartingBid,
-  consignors,
   onPosted,
   workspace = false,
 }: {
   suggestedLotNumber: string;
   defaultStartingBid: number;
-  consignors: string[];
   workspace?: boolean;
   onPosted: (message: string, lot?: { id: string; title: string; lotNumber?: string | null }) => Promise<void> | void;
 }) {
-  const [consignorName, setConsignorName] = useState(HOUSE_CONSIGNOR);
   const [files, setFiles] = useState<File[]>([]);
   const [imageUrlText, setImageUrlText] = useState("");
   const [resolvedImageUrls, setResolvedImageUrls] = useState<string[]>([]);
@@ -44,7 +35,6 @@ export function AdminAiIntake({
   const [startingTouched, setStartingTouched] = useState(false);
   const [reservePrice, setReservePrice] = useState("");
   const [marketValue, setMarketValue] = useState("");
-  const [commissionPercent, setCommissionPercent] = useState("20");
   const [lotNumber, setLotNumber] = useState(suggestedLotNumber);
   const [error, setError] = useState<string | null>(null);
   const [generating, setGenerating] = useState(false);
@@ -79,19 +69,8 @@ export function AdminAiIntake({
   }, [files]);
 
   const workingImage = studioImageUrl || resolvedImageUrls[0] || filePreview;
-
-  const commissionRate = Number(commissionPercent) / 100 || DEFAULT_COMMISSION_RATE;
   const start = Number(startingBid) || 0;
   const reserve = Number(reservePrice) || 0;
-  const market = Number(marketValue) || 0;
-  const breakdown = useMemo(
-    () => ({
-      start: moneySplit(start, commissionRate),
-      reserve: moneySplit(reserve, commissionRate),
-      market: moneySplit(market, commissionRate),
-    }),
-    [start, reserve, market, commissionRate],
-  );
 
   async function autoGenerate(fromFiles?: File[]) {
     setError(null);
@@ -156,7 +135,7 @@ export function AdminAiIntake({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           action: "createLot",
-          consignorName,
+          consignorName: HOUSE_CONSIGNOR,
           title,
           description,
           listingGrade,
@@ -164,7 +143,7 @@ export function AdminAiIntake({
           startingBid: start || defaultStartingBid,
           buyNowPrice: reserve,
           reservePrice: reserve,
-          commissionRate,
+          commissionRate: 0,
           imageUrls,
           lotNumber,
           postLive,
@@ -206,11 +185,11 @@ export function AdminAiIntake({
 
   return (
     <section className="space-y-4">
-      {!workspace && <h2 className="font-display text-3xl">Post inventory with AI</h2>}
+      {!workspace && <h2 className="font-display text-3xl">Warehouse AI generator</h2>}
       <p className="font-comic text-sm">
-        {workspace
-          ? "Upload up to 4 warehouse photos. Generate makes a studio listing shot for live and inventory, then the form clears when you save."
-          : "Upload up to 4 warehouse photos. Generate catalogs them, looks up comps, and builds a studio listing photo."}
+        House-owned stock only. Upload up to 4 warehouse photos, generate catalog copy and a studio
+        listing shot, then save. These lots are already paid for by the house, so there is no
+        consignor commission.
       </p>
       <form onSubmit={onSubmit} className="grid gap-6 lg:grid-cols-2">
         <div className="comic-panel space-y-4 p-5">
@@ -235,11 +214,9 @@ export function AdminAiIntake({
               )}
             </div>
           )}
-          <OwnerPicker
-            value={consignorName ?? ""}
-            consignors={consignors}
-            onChange={setConsignorName}
-          />
+          <p className="border-4 border-black bg-[#FFF7D1] p-3 font-comic text-sm">
+            Owner: {HOUSE_CONSIGNOR}. Hammer proceeds stay with the house.
+          </p>
           <PhotoDropzone
             files={files}
             onChange={setFiles}
@@ -336,35 +313,6 @@ export function AdminAiIntake({
           {compsNote && (
             <p className="border-4 border-black bg-[#FFF7D1] p-3 font-comic text-sm">{compsNote}</p>
           )}
-          <label className="block font-comic font-bold">
-            House commission ({commissionPercent}%)
-            <input
-              type="range"
-              min={10}
-              max={30}
-              step={1}
-              value={commissionPercent}
-              onChange={(e) => setCommissionPercent(e.target.value)}
-              className="mt-2 w-full"
-            />
-          </label>
-          <div className="border-4 border-black bg-[#FFF7D1] p-3 font-comic text-sm">
-            <p className="font-display text-lg">Commission breakdown</p>
-            <p className="mt-1 flex justify-between gap-4">
-              <span>At starting bid</span>
-              <span>
-                House {formatCurrency(breakdown.start.house)} · Consignor{" "}
-                {formatCurrency(breakdown.start.consignor)}
-              </span>
-            </p>
-            <p className="mt-1 flex justify-between gap-4">
-              <span>At buy now</span>
-              <span>
-                House {formatCurrency(breakdown.reserve.house)} · Consignor{" "}
-                {formatCurrency(breakdown.reserve.consignor)}
-              </span>
-            </p>
-          </div>
           <div className="flex flex-wrap gap-2">
             <button type="submit" className="comic-btn-invert" disabled={submitting}>
               {submitting ? "Saving…" : "Save to inventory"}

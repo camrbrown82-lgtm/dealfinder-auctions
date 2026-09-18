@@ -13,6 +13,7 @@ export type DemoLotState = {
   highBidderId: string | null;
   status: string;
   fulfillment?: "unset" | "ship" | "pickup";
+  shippingCost?: number;
   paidAt?: string | null;
   helcimPurchaseTransactionId?: string | null;
   absentees: AbsenteeMax[];
@@ -63,6 +64,7 @@ function put(target: Map<string, DemoLotState>, lot: AuctionLot) {
     row.currentBid = existing.currentBid;
     row.fulfillment = existing.fulfillment ?? row.fulfillment;
     row.paidAt = existing.paidAt ?? row.paidAt;
+    row.shippingCost = existing.shippingCost ?? row.shippingCost;
     row.helcimPurchaseTransactionId =
       existing.helcimPurchaseTransactionId ?? row.helcimPurchaseTransactionId;
   }
@@ -72,6 +74,13 @@ function put(target: Map<string, DemoLotState>, lot: AuctionLot) {
 
 export function getDemoLot(id: string) {
   return map().get(id);
+}
+
+export function unregisterDemoLot(id: string) {
+  const target = map();
+  for (const [key, row] of Array.from(target.entries())) {
+    if (row.id === id || key === id) target.delete(key);
+  }
 }
 
 export function registerDemoLot(lot: AuctionLot) {

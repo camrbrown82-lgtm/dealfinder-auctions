@@ -33,6 +33,8 @@ export type LotRow = {
   consignment_id?: string | null;
   paid_at?: string | null;
   helcim_purchase_transaction_id?: string | null;
+  shipping_cost?: number | string | null;
+  sale_source?: string | null;
 };
 
 export type ConsignmentRow = {
@@ -52,6 +54,8 @@ export type ConsignmentRow = {
   commission_rate?: number | string | null;
   image_urls: string[] | null;
   status: Consignment["status"];
+  contact_email?: string | null;
+  owner_id?: string | null;
 };
 
 function asUrlList(value: unknown): string[] {
@@ -96,6 +100,8 @@ export function mapLot(row: LotRow): AuctionLot {
     consignmentId: row.consignment_id ?? null,
     paidAt: row.paid_at ?? null,
     helcimPurchaseTransactionId: row.helcim_purchase_transaction_id ?? null,
+    shippingCost: Number(row.shipping_cost ?? 0) || 0,
+    saleSource: row.sale_source === "buy_now" ? "buy_now" : "bid",
   };
 }
 

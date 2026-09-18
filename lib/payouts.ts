@@ -1,4 +1,5 @@
 import { moneySplit } from "@/lib/commission";
+import { isHouseConsignor } from "@/lib/consignors";
 import { lotWasSold } from "@/lib/settlements";
 import { DEFAULT_COMMISSION_RATE, type AuctionLot, type PayoutRow } from "@/lib/utils";
 
@@ -16,6 +17,17 @@ export function buildPayoutItems(lots: AuctionLot[]): PayoutItem[] {
   return lots
     .filter(lotWasSold)
     .map((lot) => {
+      if (isHouseConsignor(lot.consignor)) {
+        return {
+          lotId: lot.id,
+          title: lot.title,
+          consignor: lot.consignor,
+          hammer: lot.currentBid,
+          commissionRate: 0,
+          house: lot.currentBid,
+          payout: 0,
+        };
+      }
       const rate = lot.commissionRate ?? DEFAULT_COMMISSION_RATE;
       const split = moneySplit(lot.currentBid, rate);
       return {

@@ -20,6 +20,8 @@ import {
   upsertSettlementInvoice,
 } from "@/lib/settlementDb";
 import type { AuctionSettlement } from "@/lib/settlements";
+import { invoiceFees } from "@/lib/invoiceFees";
+import { resolveCashRequest } from "@/lib/cashPayment";
 import { getSupabaseAdmin, isSupabaseConfigured } from "@/lib/supabaseClient";
 
 export const dynamic = "force-dynamic";
@@ -79,7 +81,20 @@ export async function PATCH(request: NextRequest) {
     shipping: body.shipping ?? "pending",
     notes: body.notes ?? "",
     fulfillment: body.fulfillment ?? "unset",
+    shippingCost: Number(body.shippingCost ?? 0),
+    paymentChannel: body.paymentChannel ?? (body.payment === "cash_pending" ? "cash" : "helcim"),
   };
+  const fees = invoiceFees({
+    hammer: (row.lots ?? []).reduce((sum, lot) => sum + Number(lot.hammer ?? 0), 0),
+    fulfillment: row.fulfillment,
+    shippingCost: row.shippingCost,
+  });
+  row.hammer = fees.hammer;
+  row.premium = fees.premium;
+  row.handling = fees.handling;
+  row.gst = fees.gst;
+  row.shippingCost = fees.shipping;
+  row.total = fees.total;
   const supabase = getSupabaseAdmin();
   if (isSupabaseConfigured && supabase) {
     try {
@@ -103,9 +118,22 @@ export async function POST(request: NextRequest) {
   if (!isAdminSession()) return unauthorized();
   const body = (await request.json()) as {
     action?: string;
+    invoice?: string;
     sale?: AuctionSettlement;
     archiveInventory?: boolean;
   };
+  if (body.action === "approveCash" || body.action === "rejectCash") {
+    if (!body.invoice) {
+      return NextResponse.json({ error: "invoice is required." }, { status: 400 });
+    }
+    try {
+      const invoice = await resolveCashRequest(body.invoice, body.action === "approveCash");
+      return NextResponse.json({ ok: true, invoice });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Could not update cash request.";
+      return NextResponse.json({ error: message }, { status: 400 });
+    }
+  }
   if (body.action !== "archive" || !body.sale) {
     return NextResponse.json({ error: "sale snapshot is required." }, { status: 400 });
   }

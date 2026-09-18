@@ -1,6 +1,7 @@
+import { invoiceFees } from "@/lib/invoiceFees";
 import type { AuctionSettlement, BuyerSettlement, SettlementLot } from "@/lib/settlements";
 
-export type PaymentMark = "unpaid" | "partial" | "paid";
+export type PaymentMark = "unpaid" | "partial" | "paid" | "cash_pending";
 export type ShippingMark = "pending" | "ready" | "shipped" | "picked_up";
 
 export type InvoiceMark = {
@@ -8,6 +9,7 @@ export type InvoiceMark = {
   shipping: ShippingMark;
   notes: string;
   fulfillment?: "unset" | "ship" | "pickup";
+  shippingCost?: number;
 };
 
 export type SettlementInvoiceRecord = InvoiceMark & {
@@ -21,7 +23,14 @@ export type SettlementInvoiceRecord = InvoiceMark & {
   paymentMethod: string;
   lots: SettlementLot[];
   total: number;
+  hammer?: number;
+  premium?: number;
+  handling?: number;
+  gst?: number;
+  shippingCost?: number;
   fulfillment?: "unset" | "ship" | "pickup";
+  paymentChannel?: "helcim" | "cash";
+  winEmailSentAt?: string | null;
 };
 
 export type SettlementArchiveRecord = {
@@ -33,7 +42,7 @@ export type SettlementArchiveRecord = {
 };
 
 export function emptyMark(): InvoiceMark {
-  return { payment: "unpaid", shipping: "pending", notes: "", fulfillment: "unset" };
+  return { payment: "unpaid", shipping: "pending", notes: "", fulfillment: "unset", shippingCost: 0 };
 }
 
 export function marksFromInvoices(rows: SettlementInvoiceRecord[]): Record<string, InvoiceMark> {
@@ -44,6 +53,7 @@ export function marksFromInvoices(rows: SettlementInvoiceRecord[]): Record<strin
       shipping: row.shipping,
       notes: row.notes,
       fulfillment: row.fulfillment ?? "unset",
+      shippingCost: row.shippingCost ?? 0,
     };
   }
   return marks;
@@ -54,6 +64,12 @@ export function invoiceRecordFromBuyer(
   buyer: BuyerSettlement,
   mark: InvoiceMark,
 ): SettlementInvoiceRecord {
+  const fulfillment = mark.fulfillment ?? buyer.fulfillment ?? "unset";
+  const fees = invoiceFees({
+    hammer: buyer.lots.reduce((sum, lot) => sum + lot.hammer, 0),
+    fulfillment,
+    shippingCost: mark.shippingCost ?? buyer.shippingCost ?? 0,
+  });
   return {
     invoice: buyer.invoice,
     eventId,
@@ -64,7 +80,13 @@ export function invoiceRecordFromBuyer(
     address: buyer.address,
     paymentMethod: buyer.paymentMethod,
     lots: buyer.lots,
-    total: buyer.total,
     ...mark,
+    fulfillment,
+    total: fees.total,
+    hammer: fees.hammer,
+    premium: fees.premium,
+    handling: fees.handling,
+    gst: fees.gst,
+    shippingCost: fees.shipping,
   };
 }

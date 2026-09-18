@@ -1,13 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
 import { addDemoLot, getAdminDemo, seedDemoLots, stampAuctionNumbers } from "@/lib/demoAdminStore";
-import { getDemoLot, registerDemoLot } from "@/lib/demoAuctionStore";
+import { getDemoLot, registerDemoLot, unregisterDemoLot } from "@/lib/demoAuctionStore";
 import { isAdminSession, unauthorized } from "@/lib/adminAuth";
-import { suggestAuctionNumber, sortLotsByNumber } from "@/lib/catalogNumbers";
+import {
+  formatLotNumber,
+  nextFreeLotNumber,
+  parseLotRangeStart,
+  parseLotSeq,
+  suggestAuctionNumber,
+  sortLotsByNumber,
+} from "@/lib/catalogNumbers";
 import { getSupabaseAdmin, isSupabaseConfigured } from "@/lib/supabaseClient";
 import { mapConsignment, mapLot, type ConsignmentRow, type LotRow } from "@/lib/mappers";
 import { parseListingGrade, withListedGrade } from "@/lib/listingGrade";
 import { buildPayoutItems, buildPayoutReport } from "@/lib/payouts";
 import type { AuctionEvent, AuctionLot, ConsignmentStatus, LotCategory, LotStatus } from "@/lib/utils";
+import { auctionTermsColumns, mapAuctionEvent } from "@/lib/mapAuctionEvent";
 import { persistPublicImageUrls } from "@/lib/consignmentStorage";
 import { uniqueConsignorNames } from "@/lib/consignors";
 import { uniqueImageUrls } from "@/lib/utils";
@@ -15,6 +23,7 @@ import { startingBidFromBuyNow } from "@/lib/buyNow";
 import { patchLotRow } from "@/lib/openFloor";
 import { recordSoldLotSettlement } from "@/lib/recordSale";
 import { attachLotToSale, ensureWeeklySales, firstWeeklyEvent, isWeeklySale, nextWeeklySale } from "@/lib/weeklySales";
+import { notifyConsignmentApproved } from "@/lib/notify";
 import {
   allocateLotNumber,
   normalizeHouseSettings,
@@ -200,24 +209,6 @@ function payloadFromDemo() {
   };
 }
 
-function mapEvent(row: {
-  id: string;
-  name: string;
-  auction_number?: string | null;
-  starts_at: string;
-  ends_at: string;
-  archived_at?: string | null;
-}): AuctionEvent {
-  return {
-    id: row.id,
-    name: row.name,
-    auctionNumber: row.auction_number ?? null,
-    startsAt: row.starts_at,
-    endsAt: row.ends_at,
-    archivedAt: row.archived_at ?? null,
-  };
-}
-
 function lotHref(lot: AuctionLot) {
   return `/auctions/${lot.slug || lot.id}`;
 }
@@ -277,7 +268,9 @@ export async function GET() {
     return NextResponse.json({ error: databaseError(lotsRes.error.message) }, { status: 500 });
   }
 
-  const events: AuctionEvent[] = (eventsRes.data ?? []).map(mapEvent);
+  const events: AuctionEvent[] = (eventsRes.data ?? []).map((row) =>
+    mapAuctionEvent(row as Parameters<typeof mapAuctionEvent>[0]),
+  );
   const numbers = new Map(events.map((event) => [event.id, event.auctionNumber ?? null]));
   const inventory = (lotsRes.data as LotRow[])
     .map(mapLot)
@@ -329,10 +322,34 @@ type AdminBody = {
   postLive?: boolean;
   listingGrade?: string;
   itemDetails?: string;
+  tcTemplateType?: string;
+  termsAndConditions?: string;
   status?: string;
   remove?: boolean;
   relist?: boolean;
+  lotIds?: string[];
+  lotStart?: string | number;
+  purgeTestData?: boolean;
 };
+
+function collectLotIds(body: AdminBody) {
+  const ids = new Set<string>();
+  for (const value of body.lotIds ?? []) {
+    const id = String(value ?? "").trim();
+    if (id) ids.add(id);
+  }
+  if (body.id?.trim()) ids.add(body.id.trim());
+  return Array.from(ids);
+}
+
+async function unlinkLotBids(
+  supabase: NonNullable<ReturnType<typeof getSupabaseAdmin>>,
+  lotIds: string[],
+) {
+  if (!lotIds.length) return;
+  await supabase.from("bids").delete().in("lot_id", lotIds);
+  await supabase.from("absentee_bids").delete().in("lot_id", lotIds);
+}
 
 function applyEventToLot(lot: AuctionLot, event: AuctionEvent, forceLive?: boolean) {
   lot.eventId = event.id;
@@ -355,6 +372,48 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: true, seeded });
   }
 
+  if (body.action === "purge-test-data") {
+    const removed: Record<string, number> = {};
+    if (isSupabaseConfigured && supabase) {
+      const tables = [
+        "bids",
+        "absentee_bids",
+        "auction_registrations",
+        "lots",
+        "consignments",
+        "auction_events",
+        "settlement_invoices",
+        "settlement_archives",
+        "helcim_sessions",
+        "helcim_transactions",
+        "profiles",
+      ];
+      for (const table of tables) {
+        const { data: rows } = await supabase.from(table).select("*");
+        const ids = (rows ?? []).map((row) => row.id ?? row.checkout_token ?? row.invoice_number).filter(Boolean);
+        if (ids.length && rows?.[0] && "id" in (rows[0] as object)) {
+          await supabase.from(table).delete().in("id", ids);
+        } else if (table === "helcim_sessions" && ids.length) {
+          await supabase.from(table).delete().in("checkout_token", ids);
+        } else if (ids.length) {
+          await supabase.from(table).delete().in("invoice_number", ids);
+        }
+        const leftover = await supabase.from(table).select("*");
+        removed[table] = leftover.data?.length ?? leftover.error?.message?.length ?? 0;
+      }
+      const listed = await supabase.auth.admin.listUsers({ perPage: 200 });
+      for (const user of listed.data?.users ?? []) {
+        await supabase.auth.admin.deleteUser(user.id);
+      }
+      await supabase.from("house_desk_settings").update({ next_lot_seq: 1 }).eq("id", 1);
+    }
+    const demoStore = getAdminDemo();
+    demoStore.inventory = [];
+    demoStore.queue = [];
+    demoStore.events = [];
+    return NextResponse.json({ ok: true, remaining: removed, source: isSupabaseConfigured ? "supabase" : "demo" });
+  }
+
   if (body.action === "saveHouseSettings") {
     const existing = await listLotNumbers(supabase, demo.inventory);
     const settings = normalizeHouseSettings(
@@ -373,6 +432,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Event name, start, and end are required." }, { status: 400 });
     }
     const auctionNumber = body.auctionNumber?.trim() || suggestAuctionNumber(demo.events);
+    const termsCols = auctionTermsColumns({
+      tcTemplateType: body.tcTemplateType,
+      termsAndConditions: body.termsAndConditions,
+    });
     if (isSupabaseConfigured && supabase) {
       const { data, error } = await supabase
         .from("auction_events")
@@ -381,16 +444,30 @@ export async function POST(request: NextRequest) {
           auction_number: auctionNumber,
           starts_at: body.startsAt,
           ends_at: body.endsAt,
+          ...termsCols,
         })
         .select("*")
         .single();
       if (error || !data) {
-        return NextResponse.json(
-          { error: error?.message || "Could not create that sale week." },
-          { status: 400 },
-        );
+        const { data: retry, error: retryError } = await supabase
+          .from("auction_events")
+          .insert({
+            name: body.name,
+            auction_number: auctionNumber,
+            starts_at: body.startsAt,
+            ends_at: body.endsAt,
+          })
+          .select("*")
+          .single();
+        if (retryError || !retry) {
+          return NextResponse.json(
+            { error: error?.message || retryError?.message || "Could not create that sale week." },
+            { status: 400 },
+          );
+        }
+        return NextResponse.json({ ok: true, event: mapAuctionEvent(retry) });
       }
-      return NextResponse.json({ ok: true, event: mapEvent(data) });
+      return NextResponse.json({ ok: true, event: mapAuctionEvent(data) });
     }
     const event: AuctionEvent = {
       id: crypto.randomUUID(),
@@ -398,9 +475,180 @@ export async function POST(request: NextRequest) {
       auctionNumber,
       startsAt: body.startsAt,
       endsAt: body.endsAt,
+      tcTemplateType: termsCols.tc_template_type,
+      termsAndConditions: termsCols.terms_and_conditions,
+      bidderTerms: termsCols.bidder_terms,
     };
     demo.events.unshift(event);
     return NextResponse.json({ ok: true, event });
+  }
+
+  if (body.action === "deleteEvent") {
+    const id = body.id?.trim();
+    if (!id) return NextResponse.json({ error: "Event id required." }, { status: 400 });
+    demo.events = demo.events.filter((row) => row.id !== id);
+    for (const lot of demo.inventory) {
+      if (lot.eventId === id) {
+        lot.eventId = null;
+        lot.auctionNumber = null;
+      }
+    }
+    if (isSupabaseConfigured && supabase) {
+      await supabase.from("lots").update({ event_id: null }).eq("event_id", id);
+      const { error } = await supabase.from("auction_events").delete().eq("id", id);
+      if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+    }
+    return NextResponse.json({ ok: true });
+  }
+
+  if (body.action === "deleteLots") {
+    const ids = collectLotIds(body);
+    if (!ids.length) return NextResponse.json({ error: "Select at least one lot." }, { status: 400 });
+
+    const demoDeleted: string[] = [];
+    demo.inventory = demo.inventory.filter((lot) => {
+      const hit = ids.includes(lot.id) || (lot.lotNumber != null && ids.includes(lot.lotNumber));
+      if (hit) {
+        demoDeleted.push(lot.id);
+        unregisterDemoLot(lot.id);
+        if (lot.slug) unregisterDemoLot(lot.slug);
+        return false;
+      }
+      return true;
+    });
+
+    if (isSupabaseConfigured && supabase) {
+      const found = new Map<string, string>();
+      const byId = await supabase.from("lots").select("id").in("id", ids);
+      for (const row of byId.data ?? []) found.set(String(row.id), String(row.id));
+      if (found.size < ids.length) {
+        const byNumber = await supabase.from("lots").select("id, lot_number").in("lot_number", ids);
+        for (const row of byNumber.data ?? []) found.set(String(row.id), String(row.id));
+      }
+      if (found.size < ids.length) {
+        const bySlug = await supabase.from("lots").select("id, slug").in("slug", ids);
+        for (const row of bySlug.data ?? []) found.set(String(row.id), String(row.id));
+      }
+      const resolved = Array.from(found.values());
+      if (!resolved.length) {
+        return NextResponse.json({ error: "No matching lots to delete." }, { status: 404 });
+      }
+      await unlinkLotBids(supabase, resolved);
+      const { error } = await supabase.from("lots").delete().in("id", resolved);
+      if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+      return NextResponse.json({ ok: true, deleted: resolved.length });
+    }
+
+    if (!demoDeleted.length) {
+      return NextResponse.json({ error: "No matching lots to delete." }, { status: 404 });
+    }
+    return NextResponse.json({ ok: true, deleted: demoDeleted.length });
+  }
+
+  if (body.action === "relistLots") {
+    const ids = collectLotIds(body);
+    if (!ids.length) return NextResponse.json({ error: "Select at least one lot." }, { status: 400 });
+    const start = parseLotRangeStart(body.lotStart) ?? 9000;
+    const sale = await resolveSaleEvent(supabase, demo, body.eventId);
+    if (!sale) {
+      return NextResponse.json({ error: "Pick a target auction." }, { status: 400 });
+    }
+
+    const existing = await listLotNumbers(supabase, demo.inventory);
+    const assigned: Array<{ id: string; lotNumber: string }> = [];
+    let cursor = start;
+
+    const demoMatches = demo.inventory.filter(
+      (lot) => ids.includes(lot.id) || (lot.lotNumber != null && ids.includes(lot.lotNumber)),
+    );
+    for (const lot of demoMatches) {
+      const lotNumber = nextFreeLotNumber(cursor, existing);
+      const seq = parseLotSeq(lotNumber) ?? cursor;
+      cursor = seq + 1;
+      existing.push({ lotNumber });
+      applyEventToLot(lot, sale, true);
+      lot.lotNumber = lotNumber;
+      lot.highBidder = null;
+      lot.highBidderId = null;
+      lot.paidAt = null;
+      lot.helcimPurchaseTransactionId = null;
+      lot.fulfillment = "unset";
+      lot.currentBid = lot.startingBid ?? lot.currentBid;
+      lot.status = "live";
+      registerDemoLot(lot);
+      assigned.push({ id: lot.id, lotNumber });
+    }
+
+    if (isSupabaseConfigured && supabase) {
+      const { data: rows, error: lookupError } = await supabase.from("lots").select("*").in("id", ids);
+      let matched = (rows ?? []) as LotRow[];
+      if (lookupError || !matched.length) {
+        const extra = await supabase.from("lots").select("*").in("lot_number", ids);
+        matched = ((extra.data ?? []) as LotRow[]).concat(matched);
+      }
+      const unique = new Map(matched.map((row) => [String(row.id), row]));
+      if (!unique.size) {
+        return NextResponse.json({ error: "No matching lots to relist." }, { status: 404 });
+      }
+      const eventId = asEventUuid(sale.id) ?? sale.id;
+      const numbered: Array<{ id: string; lotNumber: string }> = [];
+      for (const row of Array.from(unique.values())) {
+        const lotNumber = nextFreeLotNumber(cursor, existing);
+        const seq = parseLotSeq(lotNumber) ?? cursor;
+        cursor = seq + 1;
+        existing.push({ lotNumber });
+        numbered.push({ id: String(row.id), lotNumber });
+      }
+      await unlinkLotBids(
+        supabase,
+        numbered.map((row) => row.id),
+      );
+      for (const row of numbered) {
+        const startBid =
+          Number(unique.get(row.id)?.starting_bid ?? unique.get(row.id)?.current_bid ?? 0) || 0;
+        const patch: Record<string, unknown> = {
+          event_id: eventId,
+          lot_number: row.lotNumber,
+          status: "live",
+          ends_at: sale.endsAt,
+          high_bidder: null,
+          high_bidder_id: null,
+          paid_at: null,
+          current_bid: startBid,
+          fulfillment: "unset",
+        };
+        let patched = await patchLotRow(row.id, patch);
+        if (!patched.ok && /paid_at|fulfillment|helcim/i.test(patched.body)) {
+          delete patch.paid_at;
+          delete patch.fulfillment;
+          patched = await patchLotRow(row.id, patch);
+        }
+        if (!patched.ok) {
+          return NextResponse.json(
+            { error: patched.body || `Could not relist ${row.lotNumber}.` },
+            { status: 400 },
+          );
+        }
+      }
+      return NextResponse.json({
+        ok: true,
+        eventId: sale.id,
+        auctionNumber: sale.auctionNumber,
+        lots: numbered,
+        start: formatLotNumber(start),
+      });
+    }
+
+    if (!assigned.length) {
+      return NextResponse.json({ error: "No matching lots to relist." }, { status: 404 });
+    }
+    return NextResponse.json({
+      ok: true,
+      eventId: sale.id,
+      auctionNumber: sale.auctionNumber,
+      lots: assigned,
+      start: formatLotNumber(start),
+    });
   }
 
   if (body.action === "createLot") {
@@ -549,6 +797,15 @@ export async function PATCH(request: NextRequest) {
       if (body.startsAt) event.startsAt = body.startsAt;
       if (body.endsAt) event.endsAt = body.endsAt;
       if (body.archivedAt !== undefined) event.archivedAt = body.archivedAt;
+      if (body.tcTemplateType != null || body.termsAndConditions != null) {
+        const cols = auctionTermsColumns({
+          tcTemplateType: body.tcTemplateType ?? event.tcTemplateType,
+          termsAndConditions: body.termsAndConditions ?? event.termsAndConditions,
+        });
+        event.tcTemplateType = cols.tc_template_type;
+        event.termsAndConditions = cols.terms_and_conditions;
+        event.bidderTerms = cols.bidder_terms;
+      }
       stampAuctionNumbers(demo);
       for (const lot of demo.inventory) {
         if (lot.eventId === event.id) {
@@ -564,8 +821,29 @@ export async function PATCH(request: NextRequest) {
       if (body.startsAt) updates.starts_at = body.startsAt;
       if (body.endsAt) updates.ends_at = body.endsAt;
       if (body.archivedAt !== undefined) updates.archived_at = body.archivedAt;
+      if (body.tcTemplateType != null || body.termsAndConditions != null) {
+        Object.assign(
+          updates,
+          auctionTermsColumns({
+            tcTemplateType: body.tcTemplateType,
+            termsAndConditions: body.termsAndConditions,
+          }),
+        );
+      }
       const { error } = await supabase.from("auction_events").update(updates).eq("id", body.id);
-      if (error && /archived_at/i.test(error.message)) {
+      if (error && /tc_template|terms_and_conditions|bidder_terms/i.test(error.message)) {
+        delete updates.tc_template_type;
+        delete updates.terms_and_conditions;
+        delete updates.bidder_terms;
+        const retryTerms = await supabase.from("auction_events").update(updates).eq("id", body.id);
+        if (retryTerms.error && /archived_at/i.test(retryTerms.error.message)) {
+          delete updates.archived_at;
+          const retry = await supabase.from("auction_events").update(updates).eq("id", body.id);
+          if (retry.error) return NextResponse.json({ error: retry.error.message }, { status: 400 });
+        } else if (retryTerms.error) {
+          return NextResponse.json({ error: retryTerms.error.message }, { status: 400 });
+        }
+      } else if (error && /archived_at/i.test(error.message)) {
         delete updates.archived_at;
         const retry = await supabase.from("auction_events").update(updates).eq("id", body.id);
         if (retry.error) return NextResponse.json({ error: retry.error.message }, { status: 400 });
@@ -717,6 +995,13 @@ export async function PATCH(request: NextRequest) {
           lot.auctionNumber = event?.auctionNumber ?? lot.auctionNumber;
           lot.eventId = eventId ?? lot.eventId;
           lot.status = "live";
+          void notifyConsignmentApproved({
+            supabase,
+            row,
+            lotId: lot.id,
+            slug: lot.slug,
+            lotTitle: lot.title,
+          });
           return NextResponse.json({
             ok: true,
             lot,
@@ -767,6 +1052,13 @@ export async function PATCH(request: NextRequest) {
           const lot = mapLot(lotRow as LotRow);
           if (event) attachLotToSale(lot, event);
           await commitHouseLot(supabase, demo, claimed.settings, lotNumber, claimed.existing);
+          void notifyConsignmentApproved({
+            supabase,
+            row,
+            lotId: lot.id,
+            slug: lot.slug,
+            lotTitle: lot.title,
+          });
           return NextResponse.json({
             ok: true,
             lot,

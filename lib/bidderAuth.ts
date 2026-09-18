@@ -5,6 +5,7 @@ import { getDemoUser, publicProfile } from "@/lib/demoUsers";
 import { normalizePaymentMethod, type BidderProfile } from "@/lib/profileTypes";
 import { BID_PREAUTH_AMOUNT } from "@/lib/helcimCopy";
 import { loadBidderPayment, loadTermsAgreed } from "@/lib/helcim";
+import { isAuthEmailConfirmed, loadAuthUser } from "@/lib/authEmail";
 import { getSupabaseAdmin, isSupabaseConfigured } from "@/lib/supabaseClient";
 
 export const BIDDER_COOKIE = "df_bidder";
@@ -37,6 +38,7 @@ export function setBidderCookie(response: NextResponse, userId: string) {
     sameSite: "lax",
     path: "/",
     maxAge: 60 * 60 * 24 * 30,
+    secure: process.env.NODE_ENV === "production",
   });
   return response;
 }
@@ -53,6 +55,8 @@ export async function getBidderSession(): Promise<BidderProfile | null> {
   if (isSupabaseConfigured) {
     const supabase = getSupabaseAdmin();
     if (supabase) {
+      const authUser = await loadAuthUser(supabase, userId);
+      if (!authUser || !isAuthEmailConfirmed(authUser)) return null;
       const { data, error } = await supabase
         .from("profiles")
         .select("*")
@@ -76,6 +80,9 @@ export async function getBidderSession(): Promise<BidderProfile | null> {
           preauthAmount: payment.preauthAmount || Number(data.preauth_amount ?? BID_PREAUTH_AMOUNT) || BID_PREAUTH_AMOUNT,
           hasCardOnFile: payment.hasCardOnFile,
           preauthTermsAgreed: agreed || Boolean(data.preauth_terms_agreed_at),
+          trustedCashUser: Boolean(data.trusted_cash_user),
+          isTrustedBuyer: Boolean(data.is_trusted_buyer),
+          buyNowLimit: data.buy_now_limit == null ? null : Number(data.buy_now_limit),
         };
       }
     }

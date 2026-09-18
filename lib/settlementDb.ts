@@ -9,7 +9,8 @@ import type { SettlementLot } from "@/lib/settlements";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 function asPayment(value: unknown): PaymentMark {
-  return value === "partial" || value === "paid" ? value : "unpaid";
+  if (value === "partial" || value === "paid" || value === "cash_pending") return value;
+  return "unpaid";
 }
 
 function asShipping(value: unknown): ShippingMark {
@@ -41,7 +42,13 @@ export function mapInvoiceRow(row: Record<string, unknown>): SettlementInvoiceRe
     paymentMethod: String(row.payment_method ?? ""),
     lots: asLots(row.lots),
     total: Number(row.total ?? 0),
+    hammer: Number(row.hammer ?? 0),
+    premium: Number(row.buyers_premium ?? row.premium ?? 0),
+    handling: Number(row.handling_fee ?? row.handling ?? 0),
+    gst: Number(row.gst ?? 0),
+    shippingCost: Number(row.shipping_cost ?? 0),
     payment: asPayment(row.payment_status),
+    paymentChannel: row.payment_channel === "cash" ? "cash" : "helcim",
     shipping: asShipping(row.shipping_status),
     notes: String(row.notes ?? ""),
     fulfillment:
@@ -104,15 +111,42 @@ export async function upsertSettlementInvoice(
     total: row.total,
     lots: row.lots,
     fulfillment: row.fulfillment ?? "unset",
+    hammer: row.hammer ?? 0,
+    buyers_premium: row.premium ?? 0,
+    gst: row.gst ?? 0,
+    handling_fee: row.handling ?? 0,
+    shipping_cost: row.shippingCost ?? 0,
+    payment_channel: row.paymentChannel ?? (row.payment === "cash_pending" ? "cash" : "helcim"),
   };
   const { error } = await supabase.from("settlement_invoices").upsert(payload, {
     onConflict: "invoice_number",
   });
+  if (error && /buyers_premium|handling_fee|shipping_cost|\bhammer\b|\bgst\b/i.test(error.message)) {
+    const { hammer: _h, buyers_premium: _p, gst: _g, handling_fee: _hf, shipping_cost: _sc, ...withoutFees } =
+      payload;
+    const retry = await supabase.from("settlement_invoices").upsert(withoutFees, {
+      onConflict: "invoice_number",
+    });
+    if (retry.error && /fulfillment/i.test(retry.error.message)) {
+      const { fulfillment: _f, ...rest } = withoutFees;
+      const last = await supabase.from("settlement_invoices").upsert(rest, { onConflict: "invoice_number" });
+      if (last.error) throw last.error;
+      return;
+    }
+    if (retry.error) throw retry.error;
+    return;
+  }
   if (error && /fulfillment/i.test(error.message)) {
     const { fulfillment: _f, ...rest } = payload;
     const retry = await supabase.from("settlement_invoices").upsert(rest, {
       onConflict: "invoice_number",
     });
+    if (retry.error) throw retry.error;
+    return;
+  }
+  if (error && /payment_channel|win_email_sent_at|cash_pending/i.test(error.message)) {
+    const { payment_channel: _c, ...rest } = payload;
+    const retry = await supabase.from("settlement_invoices").upsert(rest, { onConflict: "invoice_number" });
     if (retry.error) throw retry.error;
     return;
   }

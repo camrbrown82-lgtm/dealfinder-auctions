@@ -1,9 +1,17 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { formatCurrency, type PayoutRow } from "@/lib/utils";
+import { RelistLotsModal } from "@/components/admin/RelistLotsModal";
+import { formatCurrency, type AuctionEvent, type PayoutRow } from "@/lib/utils";
+import { invoiceFees } from "@/lib/invoiceFees";
 import { paymentMethodLabel, fulfillmentLabel } from "@/lib/payments";
-import { mergePersistedInvoices, type AuctionSettlement, type BuyerSettlement } from "@/lib/settlements";
+import {
+  itemizeAuctionSettlements,
+  mergePersistedInvoices,
+  type AuctionSettlement,
+  type BuyerSettlement,
+} from "@/lib/settlements";
+import { salesViewLabel, type SalesViewMode } from "@/lib/salesView";
 import type { PayoutItem } from "@/lib/payouts";
 import {
   emptyMark,
@@ -28,11 +36,19 @@ export function SettlementBook({
   payouts,
   payoutItems,
   onArchived,
+  lens = "all",
+  events = [],
+  onRelistLots,
+  onDeleteLots,
 }: {
   sales: AuctionSettlement[];
   payouts: PayoutRow[];
   payoutItems?: PayoutItem[];
   onArchived?: () => Promise<void> | void;
+  lens?: "all" | "house" | "consignor";
+  events?: AuctionEvent[];
+  onRelistLots?: (lotIds: string[], eventId: string, lotStart: string) => Promise<void> | void;
+  onDeleteLots?: (lotIds: string[]) => Promise<void> | void;
 }) {
   const [marks, setMarks] = useState<Record<string, InvoiceMark>>({});
   const [savedInvoices, setSavedInvoices] = useState<SettlementInvoiceRecord[]>([]);
@@ -40,6 +56,11 @@ export function SettlementBook({
   const [printId, setPrintId] = useState<string | "all" | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [salesView, setSalesView] = useState<SalesViewMode>("grouped");
+  const [unsoldOnly, setUnsoldOnly] = useState(false);
+  const [hub, setHub] = useState<"sales" | "cash">("sales");
+  const [selectedUnsold, setSelectedUnsold] = useState<Set<string>>(new Set());
+  const [relistOpen, setRelistOpen] = useState(false);
   const noteTimers = useRef<Record<string, number>>({});
 
   async function loadRecords() {
@@ -114,20 +135,92 @@ export function SettlementBook({
     await loadRecords();
   }
 
+  async function cashDecision(invoice: string, approve: boolean) {
+    setBusy(invoice);
+    await fetch("/api/admin/settlements", {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: approve ? "approveCash" : "rejectCash", invoice }),
+    });
+    setBusy(null);
+    await loadRecords();
+  }
+
+  const cashPending = savedInvoices.filter((row) => row.payment === "cash_pending");
+
   const visible = useMemo(() => {
     const merged = mergePersistedInvoices(sales, savedInvoices);
-    if (!printId || printId === "all") return merged;
-    return merged.filter((sale) => sale.eventId === printId);
-  }, [printId, sales, savedInvoices]);
+    const scoped = !printId || printId === "all" ? merged : merged.filter((sale) => sale.eventId === printId);
+    return salesView === "itemized" ? itemizeAuctionSettlements(scoped) : scoped;
+  }, [printId, sales, savedInvoices, salesView]);
 
   return (
+    <>
     <div className="space-y-10">
+      {lens !== "consignor" ? (
+        <>
       <div className="flex flex-wrap gap-2 print:hidden">
-        <a className="comic-btn-invert" href="/api/admin/export">
-          Export Excel / Sheets
-        </a>
-        <button type="button" className="comic-btn" onClick={() => setPrintId("all")}>
+        <button
+          type="button"
+          className={hub === "sales" ? "comic-btn" : "comic-btn-invert"}
+          onClick={() => setHub("sales")}
+        >
+          Sales
+        </button>
+        <button
+          type="button"
+          className={hub === "cash" ? "comic-btn" : "comic-btn-invert"}
+          onClick={() => setHub("cash")}
+        >
+          Pending Cash Approvals ({cashPending.length})
+        </button>
+        <button
+          type="button"
+          className="comic-btn"
+          onClick={() => setPrintId("all")}
+        >
           Print all auctions
+        </button>
+        <a className="comic-btn-invert" href={`/api/admin/export?view=${salesView}`}>
+          Excel · {salesViewLabel(salesView)}
+        </a>
+        <button
+          type="button"
+          className={salesView === "itemized" ? "comic-btn" : "comic-btn-invert"}
+          onClick={() => setSalesView("itemized")}
+        >
+          Itemized Sales View
+        </button>
+        <button
+          type="button"
+          className={salesView === "grouped" ? "comic-btn" : "comic-btn-invert"}
+          onClick={() => setSalesView("grouped")}
+        >
+          Grouped Buyer Invoice View
+        </button>
+        <button
+          type="button"
+          className={unsoldOnly ? "comic-btn" : "comic-btn-invert"}
+          onClick={() => setUnsoldOnly((value) => !value)}
+        >
+          Unsold / No-bid items
+        </button>
+        <button
+          type="button"
+          className="comic-btn"
+          disabled={!selectedUnsold.size || !onRelistLots}
+          onClick={() => setRelistOpen(true)}
+        >
+          Relist / Repost selected ({selectedUnsold.size})
+        </button>
+        <button
+          type="button"
+          className="comic-btn-invert"
+          disabled={!selectedUnsold.size || !onDeleteLots}
+          onClick={() => void onDeleteLots?.(Array.from(selectedUnsold))}
+        >
+          Delete selected lots
         </button>
       </div>
       {loadError ? (
@@ -139,7 +232,44 @@ export function SettlementBook({
         inventory.
       </p>
 
-      {visible.length === 0 ? (
+      {hub === "cash" ? (
+        <section className="space-y-3 print:hidden">
+          <h2 className="font-display text-3xl">Pending cash approvals</h2>
+          {cashPending.length === 0 ? (
+            <p className="comic-panel p-4 font-comic">No cash requests waiting.</p>
+          ) : (
+            cashPending.map((row) => (
+              <article key={row.invoice} className="comic-panel p-4">
+                <p className="font-display text-sm tracking-widest text-brand-red">{row.invoice}</p>
+                <h3 className="font-display text-2xl">{row.name}</h3>
+                <p className="font-comic text-sm">
+                  {row.email} · {row.phone || "no phone"} · {formatCurrency(row.total)}
+                </p>
+                <p className="mt-2 font-comic text-sm">{row.lots.map((lot) => lot.title).join(", ")}</p>
+                <p className="mt-2 font-comic text-sm">{row.address}</p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    className="comic-btn"
+                    disabled={busy === row.invoice}
+                    onClick={() => void cashDecision(row.invoice, true)}
+                  >
+                    Approve Cash Payment
+                  </button>
+                  <button
+                    type="button"
+                    className="comic-btn-invert"
+                    disabled={busy === row.invoice}
+                    onClick={() => void cashDecision(row.invoice, false)}
+                  >
+                    Reject Cash Request
+                  </button>
+                </div>
+              </article>
+            ))
+          )}
+        </section>
+      ) : visible.length === 0 ? (
         <p className="comic-panel p-4 font-comic">
           No sold or unsold lots yet. Buy now copies the invoice here immediately. Pulling a lot off
           live files it under unsold or settlements.
@@ -151,13 +281,37 @@ export function SettlementBook({
             sale={sale}
             marks={marks}
             saving={busy === sale.eventId}
+            unsoldOnly={unsoldOnly}
+            selectedUnsold={selectedUnsold}
+            onToggleUnsold={(id, checked) => {
+              setSelectedUnsold((current) => {
+                const next = new Set(current);
+                if (checked) next.add(id);
+                else next.delete(id);
+                return next;
+              });
+            }}
+            onToggleUnsoldGroup={(ids, checked) => {
+              setSelectedUnsold((current) => {
+                const next = new Set(current);
+                for (const id of ids) {
+                  if (checked) next.add(id);
+                  else next.delete(id);
+                }
+                return next;
+              });
+            }}
+            onDeleteLot={(id) => void onDeleteLots?.([id])}
             onMark={(buyer, next, delay) => patchMark(sale, buyer, next, delay)}
             onPrint={() => setPrintId(sale.eventId)}
             onSave={() => void saveSale(sale)}
           />
         ))
       )}
+        </>
+      ) : null}
 
+      {lens !== "house" ? (
       <section className="space-y-3 print:hidden">
         <h2 className="font-display text-3xl">Consignor payouts</h2>
         <p className="font-comic text-sm">House take 20% on hammer. Ended lots only.</p>
@@ -215,30 +369,52 @@ export function SettlementBook({
           </div>
         )}
       </section>
+      ) : null}
 
+      {lens !== "consignor" ? (
       <section className="space-y-3 print:hidden">
         <h2 className="font-display text-3xl">Saved auction records</h2>
+        <p className="font-comic text-sm">
+          Open the dedicated auction desk for stats, paddles, Sunday pre-auth status, and Excel
+          export — one sale at a time.
+        </p>
+        <a className="comic-btn inline-block" href="/admin/auctions">
+          Open saved auctions
+        </a>
         {archives.length === 0 ? (
           <p className="comic-panel-sm p-3 font-comic text-sm">
-            Save an auction to keep a snapshot in Supabase and pull it out of live inventory.
+            Save an auction from a printed settlement to keep a snapshot in Supabase.
           </p>
         ) : (
           <ul className="space-y-2">
-            {archives.map((row) => (
+            {archives.slice(0, 6).map((row) => (
               <li key={`${row.eventId}-${row.savedAt}`} className="comic-panel-sm p-3">
                 <p className="font-display text-xl">
                   {row.auctionNumber} · {row.name}
                 </p>
                 <p className="font-comic text-sm">
-                  Saved {new Date(row.savedAt).toLocaleString()} · {row.snapshot.invoices.length} invoices ·{" "}
-                  {formatCurrency(row.snapshot.invoices.reduce((sum, invoice) => sum + invoice.total, 0))}
+                  Saved {new Date(row.savedAt).toLocaleString()} · {row.snapshot.invoices.length} invoices
                 </p>
               </li>
             ))}
           </ul>
         )}
       </section>
+      ) : null}
     </div>
+    <RelistLotsModal
+      open={relistOpen}
+      count={selectedUnsold.size}
+      events={events}
+      onClose={() => setRelistOpen(false)}
+      onConfirm={(eventId, lotStart) => {
+        void Promise.resolve(onRelistLots?.(Array.from(selectedUnsold), eventId, lotStart)).then(() => {
+          setRelistOpen(false);
+          setSelectedUnsold(new Set());
+        });
+      }}
+    />
+    </>
   );
 }
 
@@ -246,6 +422,11 @@ function AuctionBlock({
   sale,
   marks,
   saving,
+  unsoldOnly,
+  selectedUnsold,
+  onToggleUnsold,
+  onToggleUnsoldGroup,
+  onDeleteLot,
   onMark,
   onPrint,
   onSave,
@@ -253,11 +434,18 @@ function AuctionBlock({
   sale: AuctionSettlement;
   marks: Record<string, InvoiceMark>;
   saving: boolean;
+  unsoldOnly: boolean;
+  selectedUnsold: Set<string>;
+  onToggleUnsold: (id: string, checked: boolean) => void;
+  onToggleUnsoldGroup: (ids: string[], checked: boolean) => void;
+  onDeleteLot?: (id: string) => void;
   onMark: (buyer: BuyerSettlement, next: InvoiceMark, delay?: number) => void;
   onPrint: () => void;
   onSave: () => void;
 }) {
   const hammer = sale.invoices.reduce((sum, row) => sum + row.total, 0);
+  const unsoldIds = sale.unsold.map((lot) => lot.id);
+  const allUnsoldSelected = unsoldIds.length > 0 && unsoldIds.every((id) => selectedUnsold.has(id));
   return (
     <section className="print-auction space-y-4">
       <div className="flex flex-wrap items-end justify-between gap-2">
@@ -271,6 +459,12 @@ function AuctionBlock({
           </p>
         </div>
         <div className="flex flex-wrap gap-2 print:hidden">
+          <a
+            className="comic-btn-invert"
+            href={`/api/admin/export?eventId=${encodeURIComponent(sale.eventId)}&master=1`}
+          >
+            Export Master Auction Report
+          </a>
           <button type="button" className="comic-btn" onClick={onPrint}>
             Print this auction
           </button>
@@ -280,20 +474,73 @@ function AuctionBlock({
         </div>
       </div>
 
-      {sale.invoices.map((invoice) => (
-        <InvoiceCard
-          key={invoice.invoice}
-          invoice={invoice}
-          mark={marks[invoice.invoice] ?? emptyMark()}
-          onMark={(next, delay) => onMark(invoice, next, delay)}
-        />
-      ))}
+      {unsoldOnly ? null : (
+        sale.invoices.map((invoice) => (
+          <InvoiceCard
+            key={`${invoice.invoice}-${invoice.lots.map((lot) => lot.id).join(",")}`}
+            invoice={invoice}
+            mark={marks[invoice.invoice] ?? emptyMark()}
+            onMark={(next, delay) => onMark(invoice, next, delay)}
+          />
+        ))
+      )}
 
       {sale.unsold.length > 0 ? (
-        <p className="comic-panel-sm p-3 font-comic text-sm print:hidden">
-          Unsold in this sale: {sale.unsold.map((lot) => lot.lotNumber || lot.title).join(", ")}. Move them
-          from House inventory into an upcoming auction before you archive this sale.
-        </p>
+        <div className="comic-panel p-4 print:hidden">
+          <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+            <h3 className="font-display text-2xl">Unsold / no-bid items</h3>
+            <label className="font-comic text-sm font-bold">
+              <input
+                type="checkbox"
+                className="mr-2"
+                checked={allUnsoldSelected}
+                onChange={(e) => onToggleUnsoldGroup(unsoldIds, e.target.checked)}
+              />
+              Select all
+            </label>
+          </div>
+          <div className="comic-table-wrap">
+            <table className="w-full min-w-[640px] border-collapse font-comic text-sm">
+              <thead className="bg-black text-left text-white">
+                <tr>
+                  <th className="border-b-4 border-black p-2 w-10" />
+                  <th className="border-b-4 border-black p-2">Lot</th>
+                  <th className="border-b-4 border-black p-2">Item</th>
+                  <th className="border-b-4 border-black p-2">Status</th>
+                  <th className="border-b-4 border-black p-2">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {sale.unsold.map((lot) => (
+                  <tr key={lot.id} className="bg-[#FFF7D1]">
+                    <td className="border-b-2 border-black p-2">
+                      <input
+                        type="checkbox"
+                        checked={selectedUnsold.has(lot.id)}
+                        onChange={(e) => onToggleUnsold(lot.id, e.target.checked)}
+                        aria-label={`Select ${lot.lotNumber ?? lot.title}`}
+                      />
+                    </td>
+                    <td className="border-b-2 border-black p-2">{lot.lotNumber ?? "—"}</td>
+                    <td className="border-b-2 border-black p-2">{lot.title}</td>
+                    <td className="border-b-2 border-black p-2">{(lot.status ?? "ended").toUpperCase()}</td>
+                    <td className="border-b-2 border-black p-2">
+                      <button
+                        type="button"
+                        className="comic-btn !px-2 !py-1 !text-sm"
+                        onClick={() => onDeleteLot?.(lot.id)}
+                      >
+                        Delete lot
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      ) : unsoldOnly ? (
+        <p className="comic-panel-sm p-3 font-comic text-sm print:hidden">No unsold lots in this sale.</p>
       ) : null}
     </section>
   );
@@ -308,6 +555,11 @@ function InvoiceCard({
   mark: InvoiceMark;
   onMark: (next: InvoiceMark, delay?: number) => void;
 }) {
+  const fees = invoiceFees({
+    hammer: invoice.hammer || invoice.lots.reduce((sum, lot) => sum + lot.hammer, 0),
+    fulfillment: mark.fulfillment ?? invoice.fulfillment ?? "unset",
+    shippingCost: mark.shippingCost ?? invoice.shippingCost ?? 0,
+  });
   return (
     <article className="comic-panel break-inside-avoid p-4">
       <div className="flex flex-wrap items-start justify-between gap-2">
@@ -315,7 +567,7 @@ function InvoiceCard({
           <p className="font-display text-sm tracking-widest text-brand-red">{invoice.invoice}</p>
           <h3 className="font-display text-2xl">{invoice.name}</h3>
         </div>
-        <p className="font-display text-2xl">{formatCurrency(invoice.total)}</p>
+        <p className="font-display text-2xl">{formatCurrency(fees.total)}</p>
       </div>
       <dl className="mt-3 grid gap-1 font-comic text-sm sm:grid-cols-2">
         <div>
@@ -355,9 +607,66 @@ function InvoiceCard({
               <td className="p-2 text-right">{formatCurrency(lot.hammer)}</td>
             </tr>
           ))}
+          <tr className="border-t-2 border-black">
+            <td className="p-2" colSpan={2}>
+              Hammer subtotal
+            </td>
+            <td className="p-2 text-right">{formatCurrency(fees.hammer)}</td>
+          </tr>
+          <tr className="border-t-2 border-black">
+            <td className="p-2" colSpan={2}>
+              15% buyer&apos;s premium
+            </td>
+            <td className="p-2 text-right">{formatCurrency(fees.premium)}</td>
+          </tr>
+          {fees.handling > 0 ? (
+            <tr className="border-t-2 border-black">
+              <td className="p-2" colSpan={2}>
+                Shipping handling fee
+              </td>
+              <td className="p-2 text-right">{formatCurrency(fees.handling)}</td>
+            </tr>
+          ) : null}
+          {fees.shipping > 0 ? (
+            <tr className="border-t-2 border-black">
+              <td className="p-2" colSpan={2}>
+                Carrier shipping
+              </td>
+              <td className="p-2 text-right">{formatCurrency(fees.shipping)}</td>
+            </tr>
+          ) : null}
+          <tr className="border-t-2 border-black">
+            <td className="p-2" colSpan={2}>
+              5% GST
+            </td>
+            <td className="p-2 text-right">{formatCurrency(fees.gst)}</td>
+          </tr>
+          <tr className="border-t-2 border-black font-bold">
+            <td className="p-2" colSpan={2}>
+              Total due
+            </td>
+            <td className="p-2 text-right">{formatCurrency(fees.total)}</td>
+          </tr>
         </tbody>
       </table>
       <div className="mt-3 grid gap-2 print:hidden sm:grid-cols-2">
+        <label className="block font-comic text-sm font-bold">
+          Fulfillment
+          <select
+            value={mark.fulfillment ?? invoice.fulfillment ?? "unset"}
+            onChange={(e) =>
+              onMark({
+                ...mark,
+                fulfillment: e.target.value as "unset" | "ship" | "pickup",
+              })
+            }
+            className="mt-1 w-full border-4 border-black bg-white px-2 py-1 font-normal"
+          >
+            <option value="unset">Unset</option>
+            <option value="pickup">Pickup</option>
+            <option value="ship">Ship</option>
+          </select>
+        </label>
         <label className="block font-comic text-sm font-bold">
           Payment
           <select
@@ -366,8 +675,9 @@ function InvoiceCard({
             className="mt-1 w-full border-4 border-black bg-white px-2 py-1 font-normal"
           >
             <option value="unpaid">Unpaid</option>
+            <option value="cash_pending">Cash pending approval</option>
             <option value="partial">Partial</option>
-            <option value="paid">Paid</option>
+            <option value="paid">Paid / Paid in cash</option>
           </select>
         </label>
         <label className="block font-comic text-sm font-bold">
@@ -382,6 +692,18 @@ function InvoiceCard({
             <option value="shipped">Shipped</option>
             <option value="picked_up">Picked up</option>
           </select>
+        </label>
+        <label className="block font-comic text-sm font-bold">
+          Actual carrier shipping ($)
+          <input
+            type="number"
+            min="0"
+            step="0.01"
+            value={mark.shippingCost ?? invoice.shippingCost ?? 0}
+            onChange={(e) => onMark({ ...mark, shippingCost: Number(e.target.value) || 0 }, 400)}
+            className="mt-1 w-full border-4 border-black bg-white px-2 py-1 font-normal"
+            disabled={(mark.fulfillment ?? invoice.fulfillment) !== "ship"}
+          />
         </label>
         <label className="block font-comic text-sm font-bold sm:col-span-2">
           Notes

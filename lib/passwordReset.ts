@@ -5,8 +5,8 @@ import {
   getDemoUser,
   setDemoUserPassword,
 } from "@/lib/demoUsers";
-import { sendTemplateEmail } from "@/lib/sendTemplateEmail";
-import { publicSiteUrl } from "@/lib/siteUrl";
+import { publicAppUrl } from "@/lib/appUrl";
+import { sendTransactionalEmail } from "@/lib/transactionalEmail";
 import { getSupabaseAdmin, isSupabaseConfigured } from "@/lib/supabaseClient";
 
 const TTL_MS = 60 * 60 * 1000;
@@ -156,8 +156,8 @@ export async function issuePasswordReset(emailRaw: string): Promise<{
     expiresAt,
   });
 
-  const resetUrl = `${publicSiteUrl()}/reset-password?token=${token}`;
-  const mailed = await sendTemplateEmail({
+  const resetUrl = `${publicAppUrl()}/reset-password?token=${token}`;
+  const mailed = await sendTransactionalEmail({
     templateId: "password_reset",
     to: paddle.email,
     vars: {
@@ -166,6 +166,7 @@ export async function issuePasswordReset(emailRaw: string): Promise<{
       winning_bid: "",
       payment_link: resetUrl,
     },
+    forceDeliver: true,
   });
 
   const result: {

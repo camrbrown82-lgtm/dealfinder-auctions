@@ -10,6 +10,7 @@ import { registerDemoLot, seedDemoBidTape } from "@/lib/demoAuctionStore";
 import { suggestLotNumber } from "@/lib/catalogNumbers";
 import { DEFAULT_HOUSE_STARTING_BID, type HouseDeskSettings } from "@/lib/houseDesk";
 import { WEEKLY_SALES } from "@/lib/weeklySales";
+import { termsTextFor } from "@/lib/tcTemplates";
 
 export type AdminDemoState = {
   queue: Consignment[];
@@ -35,6 +36,9 @@ export function getAdminDemo(): AdminDemoState {
       auctionNumber: sale.auctionNumber,
       startsAt: sale.startsAt,
       endsAt: sale.endsAt,
+      tcTemplateType: "standard",
+      termsAndConditions: termsTextFor("standard"),
+      bidderTerms: termsTextFor("standard"),
     }));
     const nextId = events[0]?.id;
     globalThis.__dealfinderAdminDemo = {

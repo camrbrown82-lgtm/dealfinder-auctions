@@ -58,6 +58,7 @@ export function HelcimPayModal({
   open,
   purpose,
   lotId,
+  eventId,
   onClose,
   onComplete,
   onDeclined,
@@ -65,6 +66,7 @@ export function HelcimPayModal({
   open: boolean;
   purpose: HelcimPurpose;
   lotId?: string;
+  eventId?: string;
   onClose: () => void;
   onComplete: (result: { demo: boolean; preauthReleased?: boolean; warning?: string }) => void;
   onDeclined?: () => void;
@@ -99,7 +101,7 @@ export function HelcimPayModal({
           method: "POST",
           credentials: "include",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ purpose, lotId }),
+          body: JSON.stringify({ purpose, lotId, eventId }),
         });
         const json = await response.json();
         if (!response.ok) throw new Error(json.error || "Could not start Helcim.");
@@ -123,7 +125,7 @@ export function HelcimPayModal({
     return () => {
       cancelled = true;
     };
-  }, [open, purpose, lotId]);
+  }, [open, purpose, lotId, eventId]);
 
   async function confirm(eventMessage?: unknown, demo = false) {
     if (!session) return;
@@ -245,9 +247,8 @@ export function HelcimPayModal({
           ) : null}
           {session?.demo ? (
             <p className="border-4 border-black bg-white px-3 py-2 font-comic text-sm">
-              Helcim sandbox keys are not on this machine yet, so this is a local test approval.
-              Paste <code>HELCIM_API_TOKEN</code> into <code>.env.local</code> (and Vercel) to open
-              the real HelcimPay.js modal.
+              Payment test mode is on (`PAYMENT_TEST_MODE`). This simulates Helcim without charging a
+              card. Confirm to fire the same webhook path live checkout uses.
             </p>
           ) : null}
           {message ? (

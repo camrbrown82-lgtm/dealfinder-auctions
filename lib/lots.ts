@@ -1,5 +1,6 @@
 import { getSupabaseAdmin, isSupabaseConfigured } from "@/lib/supabaseClient";
 import { openRows } from "@/lib/openFloor";
+import { mapAuctionEvent } from "@/lib/mapAuctionEvent";
 import { mapLot, type LotRow } from "@/lib/mappers";
 import { getDemoLot } from "@/lib/demoAuctionStore";
 import { getAdminDemo, stampAuctionNumbers } from "@/lib/demoAdminStore";
@@ -7,6 +8,7 @@ import { MOCK_LOTS, getLotById, filterLots, lotImages, uniqueImageUrls, type Auc
 import { ensureWeeklySales } from "@/lib/weeklySales";
 
 function withGallery(lot: AuctionLot): AuctionLot {
+  if (isSupabaseConfigured) return lot;
   if (lotImages(lot).length > 1) return lot;
   const mock = MOCK_LOTS.find(
     (row) => row.id === lot.id || row.slug === lot.slug || row.slug === lot.id || row.id === lot.slug,
@@ -23,24 +25,6 @@ function catalogLots(): AuctionLot[] {
     byId.set(lot.id, lot);
   }
   return Array.from(byId.values()).map(withGallery);
-}
-
-function mapEvent(row: {
-  id: string;
-  name: string;
-  auction_number?: string | null;
-  starts_at: string;
-  ends_at: string;
-  archived_at?: string | null;
-}): AuctionEvent {
-  return {
-    id: row.id,
-    name: row.name,
-    auctionNumber: row.auction_number ?? null,
-    startsAt: row.starts_at,
-    endsAt: row.ends_at,
-    archivedAt: row.archived_at ?? null,
-  };
 }
 
 export async function fetchLiveCatalog(): Promise<{
@@ -76,7 +60,9 @@ export async function fetchLiveCatalog(): Promise<{
   const rows = Array.isArray(data) ? (data as LotRow[]) : [];
   const floor = await openRows(rows);
 
-  const events = (eventsRes.data ?? []).map(mapEvent);
+  const events = (eventsRes.data ?? []).map((row) =>
+    mapAuctionEvent(row as Parameters<typeof mapAuctionEvent>[0]),
+  );
   const numbers = new Map(events.map((event) => [event.id, event.auctionNumber ?? null]));
   const lots = rows
     .map((row) => {

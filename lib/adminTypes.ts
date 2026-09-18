@@ -38,4 +38,7 @@ export type CustomerRow = {
   auctionsWon: number;
   lifetimeSpend: number;
   paymentFlag: string;
+  trustedCashUser?: boolean;
+  isTrustedBuyer?: boolean;
+  buyNowLimit?: number | null;
 };

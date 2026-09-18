@@ -3,6 +3,11 @@ export type WinInvoice = {
   title: string;
   slug?: string | null;
   currentBid: number;
+  premium: number;
+  handling: number;
+  shippingCost: number;
+  gst: number;
+  total: number;
   status?: string;
   invoice: string;
   paymentMethod: string;
@@ -11,6 +16,12 @@ export type WinInvoice = {
   winning: boolean;
   fulfillment: "unset" | "ship" | "pickup";
   address: string;
+  buyerName: string;
+  phone: string;
   paid: boolean;
   paidAt?: string | null;
+  payment?: "unpaid" | "partial" | "paid" | "cash_pending";
+  paymentChannel?: "helcim" | "cash";
+  invoiceReady?: boolean;
+  lotNumber?: string | null;
 };

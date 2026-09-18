@@ -3,6 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { Logo } from "@/components/Logo";
+import { ConsignLink } from "@/components/ConsignLink";
 import { useBidder } from "@/components/BidderProvider";
 
 const navClass =
@@ -35,9 +36,7 @@ export function AppHeader() {
         <Link href="/live" className={navClass}>
           Live
         </Link>
-        <Link href="/consignor" className={navClass}>
-          Consign
-        </Link>
+        <ConsignLink className={navClass}>Consign</ConsignLink>
         {user ? (
           <>
             <Link href="/profile" className={navClass}>

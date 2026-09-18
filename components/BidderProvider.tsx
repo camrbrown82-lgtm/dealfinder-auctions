@@ -11,8 +11,7 @@ import {
   type ReactNode,
 } from "react";
 import { AuthModal } from "@/components/AuthModal";
-import { HelcimPayModal } from "@/components/HelcimPayModal";
-import { type BidderProfile } from "@/lib/profileTypes";
+import { isProfileComplete, type BidderProfile } from "@/lib/profileTypes";
 
 type AuthMode = "login" | "signup";
 
@@ -21,7 +20,7 @@ type BidderContextValue = {
   ready: boolean;
   refresh: () => Promise<BidderProfile | null>;
   logout: () => Promise<void>;
-  requestAuth: (after?: () => void | Promise<void>, mode?: AuthMode) => void;
+  requestAuth: (after?: () => void | Promise<void>, mode?: AuthMode, resumeBid?: boolean) => void;
 };
 
 const BidderContext = createContext<BidderContextValue | null>(null);
@@ -32,12 +31,16 @@ export function BidderProvider({ children }: { children: ReactNode }) {
   const [modalOpen, setModalOpen] = useState(false);
   const [mode, setMode] = useState<AuthMode>("signup");
   const [resumeBid, setResumeBid] = useState(false);
-  const [sundayOpen, setSundayOpen] = useState(false);
   const pendingRef = useRef<(() => void | Promise<void>) | null>(null);
+  const userRef = useRef<BidderProfile | null>(null);
+  userRef.current = user;
 
   const refresh = useCallback(async () => {
     try {
-      const response = await fetch("/api/auth", { credentials: "include" });
+      const response = await fetch("/api/auth", {
+        credentials: "include",
+        cache: "no-store",
+      });
       const json = await response.json();
       const next = (json.user as BidderProfile | null) ?? null;
       setUser(next);
@@ -52,47 +55,57 @@ export function BidderProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     void refresh();
+    function onVisible() {
+      if (document.visibilityState === "visible") void refresh();
+    }
+    function onAuthEvent() {
+      void refresh();
+    }
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("focus", onVisible);
+    window.addEventListener("dealfinder-auth", onAuthEvent);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("focus", onVisible);
+      window.removeEventListener("dealfinder-auth", onAuthEvent);
+    };
   }, [refresh]);
 
   useEffect(() => {
-    if (!user) {
-      setSundayOpen(false);
+    if (user && isProfileComplete(user) && modalOpen) {
+      setModalOpen(false);
+      pendingRef.current = null;
+    }
+  }, [user, modalOpen]);
+
+  const requestAuth = useCallback((after?: () => void | Promise<void>, preferred?: AuthMode, asBid?: boolean) => {
+    const current = userRef.current;
+    if (current && isProfileComplete(current)) {
+      void after?.();
       return;
     }
-    let cancelled = false;
-    void fetch("/api/payments/helcim/sunday", { credentials: "include" })
-      .then((res) => res.json())
-      .then((json) => {
-        if (!cancelled && json.needed) setSundayOpen(true);
-      })
-      .catch(() => undefined);
-    return () => {
-      cancelled = true;
-    };
-  }, [user]);
-
-  const requestAuth = useCallback((after?: () => void | Promise<void>, preferred?: AuthMode) => {
     pendingRef.current = after ?? null;
-    setResumeBid(Boolean(after));
+    setResumeBid(asBid ?? Boolean(after));
     setMode(preferred ?? "signup");
     setModalOpen(true);
   }, []);
 
   const logout = useCallback(async () => {
-    await fetch("/api/auth", { method: "DELETE" });
+    await fetch("/api/auth", { method: "DELETE", credentials: "include" });
     setUser(null);
   }, []);
 
-  async function finishAuth(next: BidderProfile) {
+  const finishAuth = useCallback(async (next: BidderProfile) => {
     setUser(next);
     setModalOpen(false);
+    window.dispatchEvent(new Event("dealfinder-auth"));
     const action = pendingRef.current;
     pendingRef.current = null;
     if (action) {
       await new Promise((resolve) => window.setTimeout(resolve, 50));
       await action();
     }
-  }
+  }, []);
 
   const value = useMemo(
     () => ({ user, ready, refresh, logout, requestAuth }),
@@ -113,26 +126,6 @@ export function BidderProvider({ children }: { children: ReactNode }) {
           pendingRef.current = null;
         }}
         onAuthenticated={finishAuth}
-      />
-      <HelcimPayModal
-        open={sundayOpen}
-        purpose="bid_preauth"
-        onClose={() => setSundayOpen(false)}
-        onComplete={() => {
-          setSundayOpen(false);
-          void refresh();
-        }}
-        onDeclined={() => {
-          void fetch("/api/payments/helcim/denied", {
-            method: "POST",
-            credentials: "include",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({}),
-          }).then(() => {
-            setSundayOpen(false);
-            void refresh();
-          });
-        }}
       />
     </BidderContext.Provider>
   );
