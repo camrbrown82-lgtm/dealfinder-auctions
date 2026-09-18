@@ -12,6 +12,7 @@ import {
 } from "@/lib/demoUsers";
 import { normalizePaymentMethod, type PaymentMethod } from "@/lib/profileTypes";
 import { persistTermsAgreement } from "@/lib/helcim";
+import { sendWelcomeEmail } from "@/lib/notify";
 import { getSupabaseAdmin, getSupabaseAuthClient, isSupabaseConfigured } from "@/lib/supabaseClient";
 
 export const dynamic = "force-dynamic";
@@ -148,6 +149,7 @@ export async function PUT(request: NextRequest) {
           return NextResponse.json({ error: error.message }, { status: 400 });
         }
         await persistTermsAgreement(userId, fields.preauthTermsAgreed);
+        void sendWelcomeEmail(email, fields.fullName);
         const response = NextResponse.json({ ok: true });
         return setBidderCookie(response, userId);
       }
@@ -160,6 +162,7 @@ export async function PUT(request: NextRequest) {
       password,
       ...fields,
     });
+    void sendWelcomeEmail(user.email, user.fullName);
     const response = NextResponse.json({ ok: true, user: publicProfile(user) });
     return setBidderCookie(response, user.id);
   } catch (error) {

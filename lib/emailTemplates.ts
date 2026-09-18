@@ -13,6 +13,9 @@ export const TEMPLATE_VARIABLES = [
   "{{item_title}}",
   "{{winning_bid}}",
   "{{payment_link}}",
+  "{{lot_link}}",
+  "{{cash_link}}",
+  "{{invoice_total}}",
 ] as const;
 
 export const DEFAULT_EMAIL_TEMPLATES: EmailTemplate[] = [
@@ -24,7 +27,7 @@ export const DEFAULT_EMAIL_TEMPLATES: EmailTemplate[] = [
 
 Another paddle just jumped {{item_title}}. Current high is {{winning_bid}}.
 
-Jump back in before the clock hits zero.
+Re-bid now: {{lot_link}}
 
 DealFinder Auctions`,
   },
@@ -36,7 +39,9 @@ DealFinder Auctions`,
 
 You hammered {{item_title}} at {{winning_bid}}.
 
-Pay this invoice with Helcim at checkout: {{payment_link}}
+Choose local pickup or shipping, then pay with Helcim: {{payment_link}}
+
+Or request cash payment on pickup: {{cash_link}}
 
 Bring photo ID matching your bidder card.
 
@@ -94,6 +99,18 @@ If you did not ask for this, tell the desk.
 
 DealFinder Auctions`,
   },
+  {
+    id: "cash_receipt",
+    name: "Cash Payment Receipt",
+    subject: "Paid in cash — {{item_title}}",
+    body: `{{customer_name}},
+
+Cash payment for {{item_title}} ({{winning_bid}}) is approved. This email is your receipt.
+
+See invoices: {{payment_link}}
+
+DealFinder Auctions`,
+  },
 ];
 
 export function slugifyTemplateId(name: string) {
@@ -138,10 +155,9 @@ export function renderTemplate(
   vars: Record<string, string>,
 ) {
   const fill = (text: string) =>
-    text
-      .replaceAll("{{customer_name}}", vars.customer_name ?? "")
-      .replaceAll("{{item_title}}", vars.item_title ?? "")
-      .replaceAll("{{winning_bid}}", vars.winning_bid ?? "")
-      .replaceAll("{{payment_link}}", vars.payment_link ?? "");
+    Object.entries(vars).reduce(
+      (current, [key, value]) => current.replaceAll(`{{${key}}}`, value ?? ""),
+      text,
+    );
   return { subject: fill(template.subject), body: fill(template.body) };
 }

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { bidderUnauthorized, getBidderSession } from "@/lib/bidderAuth";
 import { invoiceFees } from "@/lib/invoiceFees";
+import { isPaymentTestMode } from "@/lib/paymentMode";
 import { invoiceNumber } from "@/lib/payments";
 import {
   helcimCurrency,
@@ -34,6 +35,9 @@ async function hammerForLot(lotId: string, bidderId: string, bidderName: string)
         if (!owns) return { error: "Only the winning paddle can pay this invoice." };
         if (data.paid_at) return { error: "This invoice is already paid." };
         const fulfillment = data.fulfillment === "ship" || data.fulfillment === "pickup" ? data.fulfillment : "unset";
+        if (fulfillment === "unset") {
+          return { error: "Choose local pickup or shipping before paying this invoice." };
+        }
         let includeHandling = fulfillment === "ship";
         if (includeHandling && data.event_id && data.high_bidder_id) {
           const siblings = await supabase
@@ -68,8 +72,11 @@ async function hammerForLot(lotId: string, bidderId: string, bidderName: string)
   const fees = invoiceFees({
     hammer: Number(fallback.currentBid),
     fulfillment,
-    shippingCost: 0,
+    shippingCost: "shippingCost" in fallback ? Number(fallback.shippingCost ?? 0) : Number(demo?.shippingCost ?? 0),
   });
+  if (fulfillment === "unset") {
+    return { error: "Choose local pickup or shipping before paying this invoice." };
+  }
   return { amount: fees.total, title: "Lot" };
 }
 
@@ -131,6 +138,7 @@ export async function POST(request: NextRequest) {
     });
     return NextResponse.json({
       demo: true,
+      testMode: isPaymentTestMode(),
       configured: false,
       checkoutToken,
       amount,
@@ -164,6 +172,7 @@ export async function POST(request: NextRequest) {
     });
     return NextResponse.json({
       demo: false,
+      testMode: isPaymentTestMode(),
       configured: true,
       checkoutToken: tokens.checkoutToken,
       amount,

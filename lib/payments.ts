@@ -61,9 +61,9 @@ export function isFulfillmentChoice(value: unknown): value is FulfillmentChoice 
 }
 
 export function fulfillmentLabel(choice: FulfillmentChoice) {
-  if (choice === "ship") return "Ship it";
-  if (choice === "pickup") return "Pick up";
-  return "Choose delivery";
+  if (choice === "ship") return "Shipping";
+  if (choice === "pickup") return "Local Pickup";
+  return "Choose fulfillment";
 }
 
 export function fulfillmentInstructions(

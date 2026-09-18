@@ -8,6 +8,11 @@ import { loadLiveEmailTemplates, resolveEmailLogo } from "@/lib/emailService";
 
 export const dynamic = "force-dynamic";
 
+export async function GET() {
+  if (!isAdminSession()) return unauthorized();
+  return NextResponse.json({ outbox: getOutbox().slice(0, 40) });
+}
+
 export async function POST(request: NextRequest) {
   if (!isAdminSession()) return unauthorized();
 

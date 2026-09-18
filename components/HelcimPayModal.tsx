@@ -245,9 +245,8 @@ export function HelcimPayModal({
           ) : null}
           {session?.demo ? (
             <p className="border-4 border-black bg-white px-3 py-2 font-comic text-sm">
-              Helcim sandbox keys are not on this machine yet, so this is a local test approval.
-              Paste <code>HELCIM_API_TOKEN</code> into <code>.env.local</code> (and Vercel) to open
-              the real HelcimPay.js modal.
+              Payment test mode is on (`PAYMENT_TEST_MODE`). This simulates Helcim without charging a
+              card. Confirm to fire the same webhook path live checkout uses.
             </p>
           ) : null}
           {message ? (

@@ -16,6 +16,10 @@ export type WinInvoice = {
   winning: boolean;
   fulfillment: "unset" | "ship" | "pickup";
   address: string;
+  buyerName: string;
+  phone: string;
   paid: boolean;
   paidAt?: string | null;
+  payment?: "unpaid" | "partial" | "paid" | "cash_pending";
+  paymentChannel?: "helcim" | "cash";
 };

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useBidder } from "@/components/BidderProvider";
 import { InvoicePanel } from "@/components/InvoicePanel";
@@ -18,6 +18,7 @@ export default function CheckoutPage() {
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [payLotId, setPayLotId] = useState<string | null>(null);
+  const cashRequested = useRef(false);
 
   async function load() {
     const response = await fetch("/api/wins", { credentials: "include" });
@@ -45,8 +46,68 @@ export default function CheckoutPage() {
       return;
     }
     await load();
-    setNotice(fulfillment === "ship" ? "We will ship this lot." : "This lot is marked for pickup.");
+    setNotice(fulfillment === "ship" ? "We will ship this lot. Confirm your address below." : "This lot is marked for local pickup.");
   }
+
+  async function saveAddress(
+    lotId: string,
+    address: {
+      fullName: string;
+      street: string;
+      city: string;
+      province: string;
+      postalCode: string;
+      phone: string;
+    },
+  ) {
+    setBusy(lotId);
+    setNotice(null);
+    const response = await fetch("/api/wins", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ lotId, fulfillment: "ship", address }),
+    });
+    const json = await response.json().catch(() => ({}));
+    setBusy(null);
+    if (!response.ok) {
+      setNotice(typeof json.error === "string" ? json.error : "Could not save shipping address.");
+      return;
+    }
+    await load();
+    setNotice("Shipping address saved. Estimated postage is on the invoice.");
+  }
+
+  async function requestCash(lotId: string) {
+    setBusy(lotId);
+    setNotice(null);
+    const response = await fetch("/api/wins", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ lotId, cash: true }),
+    });
+    const json = await response.json().catch(() => ({}));
+    setBusy(null);
+    if (!response.ok) {
+      setNotice(typeof json.error === "string" ? json.error : "Could not request cash payment.");
+      return;
+    }
+    await load();
+    setNotice("Cash payment is pending desk approval.");
+  }
+
+  useEffect(() => {
+    if (!user || !wins.length) return;
+    const params = new URLSearchParams(window.location.search);
+    const lot = params.get("lot");
+    const cash = params.get("cash");
+    if (lot && cash === "1" && !cashRequested.current) {
+      const match = wins.find((row) => row.lotId === lot);
+      if (match && match.payment !== "cash_pending" && !match.paid) {
+        cashRequested.current = true;
+        void requestCash(lot);
+      }
+    }
+  }, [user, wins]);
 
   if (!ready) return <p className="font-comic">Loading invoices…</p>;
 
@@ -80,10 +141,10 @@ export default function CheckoutPage() {
       <div className="comic-panel p-4">
         <h1 className="font-display text-5xl text-brand-red">Winning checkout</h1>
         <p className="font-comic text-sm">
-          Invoices settle by Helcim card only. After each hammer, pick ship or pick up, then pay
-          the invoice (hammer + 15% premium + GST, and $10 handling plus carrier postage if you
-          ship). We reverse the Sunday $50 hold as soon as that sale goes through. If checkout is
-          denied, that bid is forfeited.
+          Invoices settle by Helcim card, or you can request cash on pickup for desk approval. After
+          each hammer, pick local pickup or shipping. Pickup is hammer + 15% premium + GST. Shipping
+          adds a $10 handling fee, estimated carrier postage, and GST. Helcim charges the live
+          invoice total.
         </p>
       </div>
 
@@ -123,6 +184,8 @@ export default function CheckoutPage() {
               busy={busy === win.lotId}
               onFulfillment={(lotId, fulfillment) => void chooseFulfillment(lotId, fulfillment)}
               onPay={(lotId) => setPayLotId(lotId)}
+              onCash={(lotId) => void requestCash(lotId)}
+              onAddress={(lotId, address) => void saveAddress(lotId, address)}
             />
           ))}
         </div>

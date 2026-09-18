@@ -4,6 +4,7 @@ import { markDemoLotPaid } from "@/lib/demoAuctionStore";
 import { getDemoUser, updateDemoUser } from "@/lib/demoUsers";
 import type { BidderProfile, PreauthStatus } from "@/lib/profileTypes";
 import { isPreauthStatus } from "@/lib/profileTypes";
+import { isPaymentTestMode } from "@/lib/paymentMode";
 import { getSupabaseAdmin, isSupabaseConfigured } from "@/lib/supabaseClient";
 
 export type HelcimPurpose = "bid_preauth" | "checkout_purchase";
@@ -94,6 +95,7 @@ export function helcimCurrency() {
 }
 
 export function isHelcimConfigured() {
+  if (isPaymentTestMode()) return false;
   return Boolean(helcimApiToken());
 }
 
@@ -531,7 +533,7 @@ export async function markSettlementPaid(invoice: string) {
   if (!isSupabaseConfigured || !supabase) return;
   await supabase
     .from("settlement_invoices")
-    .update({ payment_status: "paid" })
+    .update({ payment_status: "paid", payment_channel: "helcim" })
     .eq("invoice_number", invoice);
 }
 

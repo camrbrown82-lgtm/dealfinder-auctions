@@ -22,6 +22,7 @@ export function EmailEngine({ onNotice }: { onNotice: (message: string) => void 
   const [logoSrc, setLogoSrc] = useState("data:image/gif;base64,R0lGODlhAQABAAAAACwAAAAAAQABAAA=");
   const [newName, setNewName] = useState("");
   const [newSubject, setNewSubject] = useState("");
+  const [outbox, setOutbox] = useState<Array<Record<string, string>>>([]);
   const logoInput = useRef<HTMLInputElement>(null);
   const htmlInput = useRef<HTMLInputElement>(null);
 
@@ -37,8 +38,15 @@ export function EmailEngine({ onNotice }: { onNotice: (message: string) => void 
     }
   }
 
+  async function loadOutbox() {
+    const response = await fetch("/api/send-email", { credentials: "include", cache: "no-store" });
+    const json = await response.json().catch(() => ({}));
+    if (Array.isArray(json.outbox)) setOutbox(json.outbox as Array<Record<string, string>>);
+  }
+
   useEffect(() => {
     void load();
+    void loadOutbox();
   }, []);
 
   useEffect(() => {
@@ -145,6 +153,7 @@ export function EmailEngine({ onNotice }: { onNotice: (message: string) => void 
         ? `Sent ${json.sent} via Resend.`
         : `Queued ${json.sent} in demo outbox (set RESEND_API_KEY to deliver).`,
     );
+    await loadOutbox();
   }
 
   function patch(field: "name" | "subject" | "body", value: string) {
@@ -399,6 +408,18 @@ export function EmailEngine({ onNotice }: { onNotice: (message: string) => void 
           </button>
         </div>
       </div>
+      {outbox.length > 0 ? (
+        <div className="border-4 border-black bg-white p-3 font-comic text-sm">
+          <p className="font-display text-xl">Recent outbox (test mode logs here)</p>
+          <ul className="mt-2 space-y-2">
+            {outbox.slice(0, 12).map((row, index) => (
+              <li key={`${row.at}-${index}`}>
+                <strong>{row.subject}</strong> → {row.to} · {row.mode} · {row.at}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
     </section>
   );
 }

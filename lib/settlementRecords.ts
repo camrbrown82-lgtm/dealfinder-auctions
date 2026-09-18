@@ -1,7 +1,7 @@
 import { invoiceFees } from "@/lib/invoiceFees";
 import type { AuctionSettlement, BuyerSettlement, SettlementLot } from "@/lib/settlements";
 
-export type PaymentMark = "unpaid" | "partial" | "paid";
+export type PaymentMark = "unpaid" | "partial" | "paid" | "cash_pending";
 export type ShippingMark = "pending" | "ready" | "shipped" | "picked_up";
 
 export type InvoiceMark = {
@@ -29,6 +29,8 @@ export type SettlementInvoiceRecord = InvoiceMark & {
   gst?: number;
   shippingCost?: number;
   fulfillment?: "unset" | "ship" | "pickup";
+  paymentChannel?: "helcim" | "cash";
+  winEmailSentAt?: string | null;
 };
 
 export type SettlementArchiveRecord = {

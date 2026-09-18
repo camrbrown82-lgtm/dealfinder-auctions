@@ -11,6 +11,7 @@ import { getSupabaseAdmin, isSupabaseConfigured } from "@/lib/supabaseClient";
 import { isProfileComplete, type BidderProfile } from "@/lib/profileTypes";
 import { openUnsoldFloors, patchLotRow, weekFromNow } from "@/lib/openFloor";
 import { recordSoldLotSettlement } from "@/lib/recordSale";
+import { notifyOutbid } from "@/lib/notifyOutbid";
 import { mapLot, type LotRow } from "@/lib/mappers";
 import { hasAuctionRegistration } from "@/lib/auctionRegistrations";
 
@@ -231,6 +232,8 @@ async function persistDemo(
   }
   demo.status = "live";
   demo.endsAt = weekFromNow();
+  const previousBidderId = demo.highBidderId;
+  const previousBidderName = demo.highBidder;
 
   if (body.mode === "buy_now") {
     const catalog = getAdminDemo().inventory.find((row) => row.id === lotId || row.slug === lotId);
@@ -309,6 +312,15 @@ async function persistDemo(
       bidderId: event.bidder === bidder ? bidderId : null,
     }));
     demo.bids.push(...stamped);
+    void notifyOutbid({
+      previousBidderId,
+      previousBidderName,
+      nextBidderId: demo.highBidderId,
+      title: catalog?.title || "Lot",
+      currentBid: demo.currentBid,
+      lotId,
+      slug: catalog?.slug,
+    });
 
     return NextResponse.json({
       currentBid: demo.currentBid,
@@ -373,6 +385,8 @@ async function persistSupabase(
   }
   const opened = await forceLotOpen(supabase, resolvedId);
   Object.assign(lot, opened.patch);
+  const previousBidderId = (lot.high_bidder_id as string | null) ?? null;
+  const previousBidderName = (lot.high_bidder as string | null) ?? null;
 
   const { data: absenteeRows } = await supabase
     .from("absentee_bids")
@@ -488,6 +502,16 @@ async function persistSupabase(
         kind: event.kind,
       });
     }
+
+    void notifyOutbid({
+      previousBidderId,
+      previousBidderName,
+      nextBidderId: result.state.highBidder === bidder ? bidderId : null,
+      title: String(lot.title ?? "Lot"),
+      currentBid: result.state.currentBid,
+      lotId: resolvedId,
+      slug: lot.slug ? String(lot.slug) : null,
+    });
 
     return NextResponse.json({
       currentBid: result.state.currentBid,

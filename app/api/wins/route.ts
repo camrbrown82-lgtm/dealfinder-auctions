@@ -14,6 +14,8 @@ import { profileAddress } from "@/lib/profileTypes";
 import { getSupabaseAdmin, isSupabaseConfigured } from "@/lib/supabaseClient";
 import { MOCK_LOTS, type AuctionLot } from "@/lib/utils";
 import { saveWinFulfillment } from "@/lib/winFulfillment";
+import { invoicePaymentForLot, requestCashPayment } from "@/lib/cashPayment";
+import { estimateCarrierShipping } from "@/lib/shippingEstimate";
 import type { WinInvoice } from "@/lib/winTypes";
 import { isLotPaid, lotPaidRecord } from "@/lib/helcim";
 
@@ -57,6 +59,7 @@ export async function GET() {
         highBidderId: demo.highBidderId,
         status: (demo.status as AuctionLot["status"]) ?? lot.status,
         fulfillment: demo.fulfillment ?? lot.fulfillment ?? "unset",
+        shippingCost: demo.shippingCost ?? lot.shippingCost ?? 0,
         paidAt: demo.paidAt ?? lot.paidAt ?? null,
         helcimPurchaseTransactionId:
           demo.helcimPurchaseTransactionId ?? lot.helcimPurchaseTransactionId ?? null,
@@ -68,7 +71,8 @@ export async function GET() {
 
   const address = profileAddress(session);
   const handlingClaimed = new Set<string>();
-  const wins: WinInvoice[] = lots.map((lot) => {
+  const wins: WinInvoice[] = [];
+  for (const lot of lots) {
     const invoice = invoiceNumber(lot.id, session.id);
     const memory = lotPaidRecord(lot.id);
     const paid = isLotPaid(lot) || Boolean(memory);
@@ -81,7 +85,8 @@ export async function GET() {
       shippingCost: lot.shippingCost ?? 0,
       includeHandling,
     });
-    return {
+    const settlement = await invoicePaymentForLot(lot.id, session);
+    wins.push({
       lotId: lot.id,
       title: lot.title,
       slug: lot.slug,
@@ -92,17 +97,21 @@ export async function GET() {
       gst: fees.gst,
       total: fees.total,
       status: lot.status,
-      invoice,
+      invoice: settlement?.invoice ?? invoice,
       paymentMethodKey: "helcim_card" as const,
       paymentMethod: paymentMethodLabel("helcim_card"),
-      instructions: paymentInstructions("helcim_card", invoice),
+      instructions: paymentInstructions("helcim_card", settlement?.invoice ?? invoice),
       winning: lot.status === "ended",
       fulfillment: lot.fulfillment ?? "unset",
       address,
-      paid,
+      buyerName: session.fullName,
+      phone: session.phone,
+      paid: paid || settlement?.payment === "paid",
       paidAt: lot.paidAt ?? memory?.paidAt ?? null,
-    };
-  });
+      payment: settlement?.payment ?? (paid ? "paid" : "unpaid"),
+      paymentChannel: settlement?.paymentChannel ?? "helcim",
+    });
+  }
 
   return NextResponse.json({ wins, profile: session });
 }
@@ -112,9 +121,21 @@ export async function PATCH(request: NextRequest) {
   if (!session) {
     return NextResponse.json({ error: "Log in to choose shipping." }, { status: 401 });
   }
-  const body = (await request.json()) as { lotId?: string; fulfillment?: FulfillmentChoice };
-  if (!body.lotId || !isFulfillmentChoice(body.fulfillment) || body.fulfillment === "unset") {
-    return NextResponse.json({ error: "Pick ship or pick up for a won lot." }, { status: 400 });
+  const body = (await request.json()) as {
+    lotId?: string;
+    fulfillment?: FulfillmentChoice;
+    cash?: boolean;
+    address?: {
+      fullName?: string;
+      street?: string;
+      city?: string;
+      province?: string;
+      postalCode?: string;
+      phone?: string;
+    };
+  };
+  if (!body.lotId) {
+    return NextResponse.json({ error: "lotId is required." }, { status: 400 });
   }
 
   let lot: AuctionLot | null = null;
@@ -144,17 +165,73 @@ export async function PATCH(request: NextRequest) {
     lot.highBidder === session.fullName ||
     lot.highBidder === session.email;
   if (!owns) {
-    return NextResponse.json({ error: "Only the winner can choose ship or pick up." }, { status: 403 });
+    return NextResponse.json({ error: "Only the winner can update this invoice." }, { status: 403 });
   }
   if (lot.status !== "ended") {
     return NextResponse.json({ error: "Choose shipping after the hammer." }, { status: 400 });
   }
 
+  if (body.cash) {
+    try {
+      if (lot.fulfillment !== "pickup") {
+        await saveWinFulfillment(body.lotId, "pickup", session);
+      }
+      const invoice = await requestCashPayment(body.lotId, session);
+      return NextResponse.json({ ok: true, payment: invoice.payment, invoice: invoice.invoice });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Could not request cash payment.";
+      return NextResponse.json({ error: message }, { status: 400 });
+    }
+  }
+
+  if (!body.fulfillment || !isFulfillmentChoice(body.fulfillment) || body.fulfillment === "unset") {
+    return NextResponse.json({ error: "Pick ship or pick up for a won lot." }, { status: 400 });
+  }
+
+  let addressLine = profileAddress(session);
+  if (body.address) {
+    const next = {
+      ...session,
+      fullName: body.address.fullName?.trim() || session.fullName,
+      phone: body.address.phone?.trim() || session.phone,
+      street: body.address.street?.trim() || session.street,
+      city: body.address.city?.trim() || session.city,
+      province: body.address.province?.trim() || session.province,
+      postalCode: body.address.postalCode?.trim() || session.postalCode,
+    };
+    addressLine = profileAddress(next);
+    const supabase = getSupabaseAdmin();
+    if (isSupabaseConfigured && supabase) {
+      await supabase
+        .from("profiles")
+        .update({
+          full_name: next.fullName,
+          phone: next.phone,
+          street: next.street,
+          city: next.city,
+          province: next.province,
+          postal_code: next.postalCode,
+        })
+        .eq("id", session.id);
+    }
+  }
+
+  const shippingCost =
+    body.fulfillment === "ship"
+      ? estimateCarrierShipping({
+          province: body.address?.province || session.province,
+          postalCode: body.address?.postalCode || session.postalCode,
+        })
+      : 0;
+
   try {
-    await saveWinFulfillment(body.lotId, body.fulfillment, session);
+    await saveWinFulfillment(body.lotId, body.fulfillment, session, {
+      shippingCost,
+      address: addressLine,
+    });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Could not save delivery choice.";
     return NextResponse.json({ error: message }, { status: 400 });
   }
-  return NextResponse.json({ ok: true, fulfillment: body.fulfillment });
+  return NextResponse.json({ ok: true, fulfillment: body.fulfillment, shippingCost });
 }

@@ -58,6 +58,7 @@ export function SettlementBook({
   const [loadError, setLoadError] = useState<string | null>(null);
   const [salesView, setSalesView] = useState<SalesViewMode>("grouped");
   const [unsoldOnly, setUnsoldOnly] = useState(false);
+  const [hub, setHub] = useState<"sales" | "cash">("sales");
   const [selectedUnsold, setSelectedUnsold] = useState<Set<string>>(new Set());
   const [relistOpen, setRelistOpen] = useState(false);
   const noteTimers = useRef<Record<string, number>>({});
@@ -134,6 +135,20 @@ export function SettlementBook({
     await loadRecords();
   }
 
+  async function cashDecision(invoice: string, approve: boolean) {
+    setBusy(invoice);
+    await fetch("/api/admin/settlements", {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: approve ? "approveCash" : "rejectCash", invoice }),
+    });
+    setBusy(null);
+    await loadRecords();
+  }
+
+  const cashPending = savedInvoices.filter((row) => row.payment === "cash_pending");
+
   const visible = useMemo(() => {
     const merged = mergePersistedInvoices(sales, savedInvoices);
     const scoped = !printId || printId === "all" ? merged : merged.filter((sale) => sale.eventId === printId);
@@ -146,7 +161,25 @@ export function SettlementBook({
       {lens !== "consignor" ? (
         <>
       <div className="flex flex-wrap gap-2 print:hidden">
-        <button type="button" className="comic-btn" onClick={() => setPrintId("all")}>
+        <button
+          type="button"
+          className={hub === "sales" ? "comic-btn" : "comic-btn-invert"}
+          onClick={() => setHub("sales")}
+        >
+          Sales
+        </button>
+        <button
+          type="button"
+          className={hub === "cash" ? "comic-btn" : "comic-btn-invert"}
+          onClick={() => setHub("cash")}
+        >
+          Pending Cash Approvals ({cashPending.length})
+        </button>
+        <button
+          type="button"
+          className="comic-btn"
+          onClick={() => setPrintId("all")}
+        >
           Print all auctions
         </button>
         <a className="comic-btn-invert" href={`/api/admin/export?view=${salesView}`}>
@@ -199,7 +232,44 @@ export function SettlementBook({
         inventory.
       </p>
 
-      {visible.length === 0 ? (
+      {hub === "cash" ? (
+        <section className="space-y-3 print:hidden">
+          <h2 className="font-display text-3xl">Pending cash approvals</h2>
+          {cashPending.length === 0 ? (
+            <p className="comic-panel p-4 font-comic">No cash requests waiting.</p>
+          ) : (
+            cashPending.map((row) => (
+              <article key={row.invoice} className="comic-panel p-4">
+                <p className="font-display text-sm tracking-widest text-brand-red">{row.invoice}</p>
+                <h3 className="font-display text-2xl">{row.name}</h3>
+                <p className="font-comic text-sm">
+                  {row.email} · {row.phone || "no phone"} · {formatCurrency(row.total)}
+                </p>
+                <p className="mt-2 font-comic text-sm">{row.lots.map((lot) => lot.title).join(", ")}</p>
+                <p className="mt-2 font-comic text-sm">{row.address}</p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    className="comic-btn"
+                    disabled={busy === row.invoice}
+                    onClick={() => void cashDecision(row.invoice, true)}
+                  >
+                    Approve Cash Payment
+                  </button>
+                  <button
+                    type="button"
+                    className="comic-btn-invert"
+                    disabled={busy === row.invoice}
+                    onClick={() => void cashDecision(row.invoice, false)}
+                  >
+                    Reject Cash Request
+                  </button>
+                </div>
+              </article>
+            ))
+          )}
+        </section>
+      ) : visible.length === 0 ? (
         <p className="comic-panel p-4 font-comic">
           No sold or unsold lots yet. Buy now copies the invoice here immediately. Pulling a lot off
           live files it under unsold or settlements.
@@ -605,8 +675,9 @@ function InvoiceCard({
             className="mt-1 w-full border-4 border-black bg-white px-2 py-1 font-normal"
           >
             <option value="unpaid">Unpaid</option>
+            <option value="cash_pending">Cash pending approval</option>
             <option value="partial">Partial</option>
-            <option value="paid">Paid</option>
+            <option value="paid">Paid / Paid in cash</option>
           </select>
         </label>
         <label className="block font-comic text-sm font-bold">
