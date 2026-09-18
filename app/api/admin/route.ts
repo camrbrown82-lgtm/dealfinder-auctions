@@ -23,6 +23,7 @@ import { startingBidFromBuyNow } from "@/lib/buyNow";
 import { patchLotRow } from "@/lib/openFloor";
 import { recordSoldLotSettlement } from "@/lib/recordSale";
 import { attachLotToSale, ensureWeeklySales, firstWeeklyEvent, isWeeklySale, nextWeeklySale } from "@/lib/weeklySales";
+import { notifyConsignmentApproved } from "@/lib/notify";
 import {
   allocateLotNumber,
   normalizeHouseSettings,
@@ -994,6 +995,13 @@ export async function PATCH(request: NextRequest) {
           lot.auctionNumber = event?.auctionNumber ?? lot.auctionNumber;
           lot.eventId = eventId ?? lot.eventId;
           lot.status = "live";
+          void notifyConsignmentApproved({
+            supabase,
+            row,
+            lotId: lot.id,
+            slug: lot.slug,
+            lotTitle: lot.title,
+          });
           return NextResponse.json({
             ok: true,
             lot,
@@ -1044,6 +1052,13 @@ export async function PATCH(request: NextRequest) {
           const lot = mapLot(lotRow as LotRow);
           if (event) attachLotToSale(lot, event);
           await commitHouseLot(supabase, demo, claimed.settings, lotNumber, claimed.existing);
+          void notifyConsignmentApproved({
+            supabase,
+            row,
+            lotId: lot.id,
+            slug: lot.slug,
+            lotTitle: lot.title,
+          });
           return NextResponse.json({
             ok: true,
             lot,

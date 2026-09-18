@@ -1,11 +1,13 @@
 import { NextResponse } from "next/server";
 import { uniqueConsignorNames } from "@/lib/consignors";
 import { getAdminDemo } from "@/lib/demoAdminStore";
+import { isAdminSession, unauthorized } from "@/lib/adminAuth";
 import { getSupabaseAdmin, isSupabaseConfigured } from "@/lib/supabaseClient";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
+  if (!isAdminSession()) return unauthorized();
   const supabase = getSupabaseAdmin();
   if (isSupabaseConfigured && supabase) {
     const [queue, lots] = await Promise.all([

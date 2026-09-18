@@ -53,6 +53,8 @@ export type ConsignmentRow = {
   commission_rate?: number | string | null;
   image_urls: string[] | null;
   status: Consignment["status"];
+  contact_email?: string | null;
+  owner_id?: string | null;
 };
 
 function asUrlList(value: unknown): string[] {

@@ -50,14 +50,134 @@ ${ship ? "" : `<p>${escapeHtml(PICKUP_INSTRUCTIONS)}</p>`}
 export function welcomeEmailHtml(input: { name: string; liveHref: string; verifyHref?: string }) {
   const name = escapeHtml(input.name || "Bidder");
   const verify = input.verifyHref
-    ? `<p style="text-align:center;margin:28px 0;">
-  <a href="${escapeHtml(input.verifyHref)}" style="display:inline-block;background:#FF0000;color:#FFFFFF;padding:14px 22px;border:4px solid #000000;font-weight:bold;text-decoration:none;">Verify Account</a>
-</p>`
+    ? `<table role="presentation" cellpadding="0" cellspacing="0" align="center" style="margin:28px auto;">
+  <tr>
+    <td align="center" style="background:#111111;padding:12px 22px;">
+      <a href="${escapeHtml(input.verifyHref)}" style="color:#ffffff;text-decoration:none;font-family:Arial,Helvetica,sans-serif;font-size:16px;font-weight:bold;">Confirm your email</a>
+    </td>
+  </tr>
+</table>`
     : "";
-  return `<p>Hey ${name},</p>
-<p>Welcome to DealFinder Auctions. Your bidder account is ready.</p>
+  return `<p>Hi ${name},</p>
+<p>Thanks for creating a DealFinder Auctions bidder account. Please confirm this email address so you can bid.</p>
 ${verify}
-<p><a href="${escapeHtml(input.liveHref)}">Browse live lots</a></p>`;
+<p>If you did not create this account, you can ignore this message.</p>`;
+}
+
+export function consignmentApprovedEmailHtml(input: {
+  name: string;
+  title: string;
+  lotHref: string;
+  dashboardHref: string;
+}) {
+  return `<p>Hi ${escapeHtml(input.name || "Consignor")},</p>
+<p>Good news: DealFinder approved <strong>${escapeHtml(input.title)}</strong> and filed it into the live sale.</p>
+<p><a href="${escapeHtml(input.lotHref)}" style="color:#111111;font-weight:bold;">View the lot</a></p>
+<p>You can track your consignments after you log in: <a href="${escapeHtml(input.dashboardHref)}">${escapeHtml(input.dashboardHref)}</a></p>`;
+}
+
+export async function sendConsignmentApprovedEmail(input: {
+  to: string;
+  name: string;
+  title: string;
+  lotId?: string;
+  slug?: string | null;
+}) {
+  const dashboard = `${publicAppUrl()}/consignor`;
+  const link = input.lotId ? lotHref(input.slug || input.lotId) : dashboard;
+  const displayName = input.name || "Consignor";
+  return sendTransactionalEmail({
+    templateId: "consignment_approved",
+    to: input.to,
+    forceDeliver: true,
+    simpleLayout: true,
+    vars: {
+      customer_name: displayName,
+      item_title: input.title,
+      winning_bid: "",
+      payment_link: dashboard,
+      lot_link: link,
+    },
+    htmlOverride: consignmentApprovedEmailHtml({
+      name: displayName,
+      title: input.title,
+      lotHref: link,
+      dashboardHref: dashboard,
+    }),
+  });
+}
+
+export async function resolveConsignorEmail(
+  supabase: ReturnType<typeof import("@/lib/supabaseClient").getSupabaseAdmin>,
+  row: {
+    consignor_name?: string | null;
+    contact_email?: string | null;
+    owner_id?: string | null;
+  },
+): Promise<{ email: string; name: string } | null> {
+  const name = String(row.consignor_name ?? "").trim() || "Consignor";
+  const direct = String(row.contact_email ?? "").trim().toLowerCase();
+  if (direct.includes("@")) return { email: direct, name };
+
+  if (!supabase) return null;
+
+  if (row.owner_id) {
+    const { data } = await supabase
+      .from("profiles")
+      .select("email, full_name")
+      .eq("id", row.owner_id)
+      .maybeSingle();
+    const email = String(data?.email ?? "").trim().toLowerCase();
+    if (email.includes("@")) {
+      return { email, name: String(data?.full_name ?? "").trim() || name };
+    }
+  }
+
+  if (name) {
+    const { data } = await supabase
+      .from("profiles")
+      .select("email, full_name")
+      .ilike("full_name", name)
+      .limit(2);
+    const unique = Array.from(
+      new Set(
+        (data ?? [])
+          .map((row) => String(row.email ?? "").trim().toLowerCase())
+          .filter((email) => email.includes("@")),
+      ),
+    );
+    if (unique.length === 1) {
+      return { email: unique[0], name };
+    }
+  }
+
+  return null;
+}
+
+export async function notifyConsignmentApproved(input: {
+  supabase: ReturnType<typeof import("@/lib/supabaseClient").getSupabaseAdmin>;
+  row: {
+    consignor_name?: string | null;
+    contact_email?: string | null;
+    owner_id?: string | null;
+    title?: string | null;
+  };
+  lotId?: string;
+  slug?: string | null;
+  lotTitle?: string;
+}) {
+  const recipient = await resolveConsignorEmail(input.supabase, input.row);
+  if (!recipient) {
+    console.warn("consignment_approved_no_email", { title: input.row.title });
+    return { ok: false, skipped: true as const };
+  }
+  return sendConsignmentApprovedEmail({
+    to: recipient.email,
+    name: recipient.name,
+    title: input.lotTitle || String(input.row.title ?? "your item"),
+    lotId: input.lotId,
+    slug: input.slug,
+  });
 }
 
 export async function sendWelcomeEmail(to: string, name: string, verifyHref?: string) {
@@ -67,6 +187,7 @@ export async function sendWelcomeEmail(to: string, name: string, verifyHref?: st
     templateId: "welcome",
     to,
     forceDeliver: true,
+    simpleLayout: true,
     vars: {
       customer_name: displayName,
       item_title: "",

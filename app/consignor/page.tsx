@@ -7,6 +7,7 @@ import { moneySplit } from "@/lib/commission";
 import { ConsignmentTermsModal } from "@/components/ConsignmentTermsModal";
 import { AiFeedback } from "@/components/AiFeedback";
 import { ConsignorNameField } from "@/components/ConsignorNameField";
+import { useBidder } from "@/components/BidderProvider";
 import { collectItemImageUrls } from "@/lib/files";
 import { listingImages, parsePastedImageUrls } from "@/lib/imageUrls";
 import { requestCatalog } from "@/lib/aiIntakeClient";
@@ -25,8 +26,8 @@ import {
 const LOCAL_KEY = "dealfinder-consignor-items";
 
 export default function ConsignorPage() {
+  const { user, ready, requestAuth } = useBidder();
   const [consignorName, setConsignorName] = useState("");
-  const [savedConsignors, setSavedConsignors] = useState<string[]>([]);
   const [files, setFiles] = useState<File[]>([]);
   const [imageUrlText, setImageUrlText] = useState("");
   const [resolvedImageUrls, setResolvedImageUrls] = useState<string[]>([]);
@@ -59,14 +60,9 @@ export default function ConsignorPage() {
     [buyNow, market, commissionRate],
   );
 
-  async function loadItems(name: string) {
-    const local = readLocal(name);
-    if (!name.trim()) {
-      setItems(local);
-      return;
-    }
-    const query = `?consignor=${encodeURIComponent(name.trim())}`;
-    const response = await fetch(`/api/consignments${query}`);
+  async function loadItems() {
+    const local = readLocal(consignorName || user?.fullName || "");
+    const response = await fetch("/api/consignments", { credentials: "include" });
     const json = await parseApiJson<{ items?: ConsignorItem[]; error?: string }>(response);
     if (!response.ok) {
       setError(json.error || "Could not load status table");
@@ -81,22 +77,17 @@ export default function ConsignorPage() {
   }
 
   useEffect(() => {
-    setItems(readLocal(""));
-    void fetch("/api/consignors")
-      .then((response) => parseApiJson<{ consignors?: string[] }>(response))
-      .then((json) => {
-        if (Array.isArray(json.consignors)) setSavedConsignors(json.consignors);
-      })
-      .catch(() => undefined);
-  }, []);
+    if (user?.fullName) setConsignorName(user.fullName);
+  }, [user]);
 
   useEffect(() => {
-    const timer = window.setTimeout(() => {
-      void loadItems(consignorName);
-    }, 350);
-    return () => window.clearTimeout(timer);
+    if (!user) {
+      setItems([]);
+      return;
+    }
+    void loadItems();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [consignorName]);
+  }, [user?.id]);
 
   useEffect(() => {
     setResolvedImageUrls([]);
@@ -171,6 +162,7 @@ export default function ConsignorPage() {
       const imageUrls = listingImages(studioImageUrl, warehouse);
       const response = await fetch("/api/consignments", {
         method: "POST",
+        credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           consignorName,
@@ -212,6 +204,30 @@ export default function ConsignorPage() {
     }
   }
 
+  if (!ready) {
+    return <div className="comic-panel p-6 font-comic">Checking your account…</div>;
+  }
+
+  if (!user) {
+    return (
+      <div className="comic-panel max-w-xl space-y-4 p-6">
+        <h1 className="font-display text-4xl text-brand-red">Log in to consign</h1>
+        <p className="font-comic text-lg">
+          Use your DealFinder account so we can attach items to you. Other consignors&apos; names
+          are never shown on this form.
+        </p>
+        <div className="flex flex-wrap gap-3">
+          <button type="button" className="comic-btn" onClick={() => requestAuth(undefined, "login")}>
+            Log in
+          </button>
+          <button type="button" className="comic-btn-invert" onClick={() => requestAuth(undefined, "signup")}>
+            Create account
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-8">
       <div>
@@ -225,11 +241,7 @@ export default function ConsignorPage() {
 
       <form onSubmit={onSubmit} className="grid gap-6 lg:grid-cols-2">
         <div className="comic-panel space-y-4 p-6">
-          <ConsignorNameField
-            value={consignorName}
-            savedNames={savedConsignors}
-            onChange={setConsignorName}
-          />
+          <ConsignorNameField value={consignorName} />
           {studioImageUrl && (
             <div className="relative min-h-[16rem] overflow-hidden border-4 border-black bg-black">
               {/* eslint-disable-next-line @next/next/no-img-element */}

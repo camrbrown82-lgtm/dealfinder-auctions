@@ -28,5 +28,5 @@ export function checkoutHref(lotId?: string) {
 }
 
 export function publicEmailLogoUrl() {
-  return `${publicAppUrl()}/api/email-logo`;
+  return `${publicAppUrl()}/email-logo.png`;
 }

@@ -4,6 +4,7 @@ import { addDemoConsignment } from "@/lib/demoAdminStore";
 import { startingBidFromBuyNow } from "@/lib/buyNow";
 import { getSupabaseAdmin, isSupabaseConfigured } from "@/lib/supabaseClient";
 import { persistPublicImageUrls } from "@/lib/consignmentStorage";
+import { getBidderSession } from "@/lib/bidderAuth";
 import {
   DEFAULT_COMMISSION_RATE,
   MOCK_CONSIGNMENTS,
@@ -39,14 +40,28 @@ function demoItems(): ConsignorItem[] {
   return [...fromQueue, ...fromLots];
 }
 
-export async function GET(request: NextRequest) {
-  const consignor = request.nextUrl.searchParams.get("consignor")?.trim().toLowerCase();
+function ownsRow(
+  session: { id: string; email: string; fullName: string },
+  row: { owner_id?: string | null; contact_email?: string | null; consignor_name?: string | null },
+) {
+  if (row.owner_id && row.owner_id === session.id) return true;
+  const email = String(row.contact_email ?? "").trim().toLowerCase();
+  if (email && email === session.email.trim().toLowerCase()) return true;
+  const name = String(row.consignor_name ?? "").trim().toLowerCase();
+  const mine = session.fullName.trim().toLowerCase();
+  return Boolean(mine && name === mine);
+}
+
+export async function GET() {
+  const session = await getBidderSession();
+  if (!session) {
+    return NextResponse.json({ error: "Log in to view your consignments." }, { status: 401 });
+  }
   const supabase = getSupabaseAdmin();
 
   if (!isSupabaseConfigured || !supabase) {
-    const items = consignor
-      ? demoItems().filter((item) => item.consignor.toLowerCase().includes(consignor))
-      : demoItems();
+    const mine = session.fullName.trim().toLowerCase();
+    const items = demoItems().filter((item) => item.consignor.toLowerCase() === mine);
     return NextResponse.json({ source: "demo", items });
   }
 
@@ -66,7 +81,16 @@ export async function GET(request: NextRequest) {
     (lotsRes.data ?? []).map((lot) => [lot.consignment_id as string | null, lot]),
   );
 
-  const items: ConsignorItem[] = (queueRes.data ?? []).map((row) => {
+  const ownQueue = (queueRes.data ?? []).filter((row) =>
+    ownsRow(session, {
+      owner_id: row.owner_id as string | null,
+      contact_email: row.contact_email as string | null,
+      consignor_name: row.consignor_name as string | null,
+    }),
+  );
+  const ownIds = new Set(ownQueue.map((row) => row.id as string));
+
+  const items: ConsignorItem[] = ownQueue.map((row) => {
     const lot = lotByConsignment.get(row.id);
     let pipelineStatus: ConsignorItem["pipelineStatus"] = consignmentToPipeline(row.status);
     if (row.status === "approved" && !lot) pipelineStatus = "pending_approval";
@@ -88,6 +112,8 @@ export async function GET(request: NextRequest) {
   const seen = new Set(items.map((item) => item.id));
   for (const lot of lotsRes.data ?? []) {
     const cid = lot.consignment_id as string | null;
+    if (cid && !ownIds.has(cid)) continue;
+    if (!cid && !ownsRow(session, { consignor_name: lot.consignor_name as string | null })) continue;
     if (cid && seen.has(cid)) continue;
     if (seen.has(lot.id as string)) continue;
     seen.add(String(lot.id));
@@ -102,14 +128,15 @@ export async function GET(request: NextRequest) {
     });
   }
 
-  const filtered = consignor
-    ? items.filter((item) => item.consignor.toLowerCase().includes(consignor))
-    : items;
-
-  return NextResponse.json({ source: "supabase", items: filtered });
+  return NextResponse.json({ source: "supabase", items });
 }
 
 export async function POST(request: NextRequest) {
+  const session = await getBidderSession();
+  if (!session) {
+    return NextResponse.json({ error: "Log in to consign an item." }, { status: 401 });
+  }
+
   const body = (await request.json()) as {
     consignorName?: string;
     title?: string;
@@ -127,11 +154,11 @@ export async function POST(request: NextRequest) {
     notes?: string;
   };
 
-  const consignorName = body.consignorName?.trim();
+  const consignorName = session.fullName.trim() || body.consignorName?.trim();
   const title = body.title?.trim();
   if (!consignorName || !title) {
     return NextResponse.json(
-      { error: "Consignor name and title are required." },
+      { error: "Your account name and a title are required." },
       { status: 400 },
     );
   }
@@ -171,6 +198,8 @@ export async function POST(request: NextRequest) {
 
   const payload = {
     consignor_name: consignorName,
+    contact_email: session.email.trim().toLowerCase() || null,
+    owner_id: session.id,
     title,
     category: body.category ?? "Oddities",
     listing_grade: listingGrade,
@@ -230,6 +259,10 @@ export async function POST(request: NextRequest) {
   }
   if (error && /starting_bid|reserve_price|commission_rate/i.test(error.message)) {
     const { starting_bid: _s, reserve_price: _r, commission_rate: _c, buy_now_price: _b, ...rest } = payload;
+    ({ data, error } = await supabase.from("consignments").insert(rest).select("id").single());
+  }
+  if (error && /contact_email|owner_id/i.test(error.message)) {
+    const { contact_email: _e, owner_id: _o, ...rest } = payload;
     ({ data, error } = await supabase.from("consignments").insert(rest).select("id").single());
   }
 

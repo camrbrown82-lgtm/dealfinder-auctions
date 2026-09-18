@@ -1,7 +1,8 @@
 import { publicEmailLogoUrl } from "@/lib/appUrl";
+import { SITE } from "@/lib/site";
 import { Resend } from "resend";
 import { getOutbox } from "@/lib/demoEmailStore";
-import { buildEmailHtml, htmlToText, looksLikeHtml } from "@/lib/emailHtml";
+import { buildEmailHtml, buildSimpleEmailHtml, htmlToText, looksLikeHtml } from "@/lib/emailHtml";
 import { loadLiveEmailTemplates } from "@/lib/emailService";
 import { renderTemplate } from "@/lib/emailTemplates";
 import { isPaymentTestMode } from "@/lib/paymentMode";
@@ -19,6 +20,7 @@ export async function sendTransactionalEmail(input: {
   htmlOverride?: string;
   forceDeliver?: boolean;
   skipLogo?: boolean;
+  simpleLayout?: boolean;
 }) {
   const to = input.to.trim().toLowerCase();
   if (!to || !to.includes("@")) {
@@ -35,7 +37,13 @@ export async function sendTransactionalEmail(input: {
   const key = (process.env.RESEND_API_KEY || "").trim();
   const from = (process.env.RESEND_FROM || "DealFinder Auctions <onboarding@resend.dev>").trim();
   const body = input.htmlOverride || rendered.body;
-  const html = buildEmailHtml(body, publicEmailLogoUrl());
+  const logoSrc = publicEmailLogoUrl();
+  const simple = Boolean(
+    input.simpleLayout ||
+      input.templateId === "welcome" ||
+      input.templateId === "consignment_approved",
+  );
+  const html = simple ? buildSimpleEmailHtml(body, logoSrc) : buildEmailHtml(body, logoSrc);
   const text = looksLikeHtml(body) ? htmlToText(html) : body.replaceAll("{{logo}}", "");
   const test = isPaymentTestMode();
   const useResend = Boolean(key) && (input.forceDeliver || !test);
@@ -45,16 +53,20 @@ export async function sendTransactionalEmail(input: {
     const { error } = await resend.emails.send({
       from,
       to,
+      replyTo: SITE.email,
       subject: rendered.subject,
       text,
       html,
+      headers: {
+        "X-Entity-Ref-ID": `${input.templateId}-${Date.now()}`,
+      },
     });
     if (error) {
       const message =
         typeof error === "object" && error && "message" in error
           ? String((error as { message: string }).message)
           : "Resend failed";
-      console.error("resend_send_failed", { templateId: input.templateId, to, message });
+      console.error("resend_send_failed", { templateId: input.templateId, message });
       getOutbox().unshift({
         to,
         subject: rendered.subject,

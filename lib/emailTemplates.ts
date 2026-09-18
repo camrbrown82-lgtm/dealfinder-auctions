@@ -77,16 +77,32 @@ DealFinder Auctions`,
   {
     id: "welcome",
     name: "Welcome / Bidder Card",
-    subject: "Welcome to DealFinder Auctions — verify your account",
-    body: `Hey {{customer_name}},
+    subject: "Confirm your DealFinder Auctions email",
+    body: `Hi {{customer_name}},
 
-Welcome to DealFinder Auctions. Your bidder account is ready.
+Thanks for creating a DealFinder Auctions bidder account. Please confirm this email address so you can bid.
 
-Verify Account: {{verify_link}}
+Confirm your email: {{verify_link}}
 
-Live lots: {{lot_link}}
+If you did not create this account, you can ignore this message.
 
-DealFinder Auctions`,
+    DealFinder Auctions
+529 Gateway Rd NE, Airdrie, AB T4B 0J6`,
+  },
+  {
+    id: "consignment_approved",
+    name: "Consignment Approved",
+    subject: "Your consignment is approved — {{item_title}}",
+    body: `Hi {{customer_name}},
+
+Good news: DealFinder approved {{item_title}} and filed it into the live sale.
+
+View the lot: {{lot_link}}
+
+Track your consignments after you log in: {{payment_link}}
+
+DealFinder Auctions
+529 Gateway Rd NE, Airdrie, AB T4B 0J6`,
   },
   {
     id: "password_reset",

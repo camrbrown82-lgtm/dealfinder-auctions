@@ -4,6 +4,7 @@ import { join } from "node:path";
 export {
   EMAIL_LOGO_CID,
   buildEmailHtml,
+  buildSimpleEmailHtml,
   escapeHtml,
   htmlToText,
   logoImgTag,
