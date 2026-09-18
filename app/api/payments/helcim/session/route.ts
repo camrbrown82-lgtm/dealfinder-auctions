@@ -38,6 +38,10 @@ async function hammerForLot(lotId: string, bidderId: string, bidderName: string)
         if (fulfillment === "unset") {
           return { error: "Choose local pickup or shipping before paying this invoice." };
         }
+        const { invoiceReadyForEvent } = await import("@/lib/auctionCloseInvoices");
+        if (!(await invoiceReadyForEvent(data.event_id ? String(data.event_id) : null))) {
+          return { error: "Helcim checkout opens after Sunday's consolidated invoice is emailed." };
+        }
         let includeHandling = fulfillment === "ship";
         if (includeHandling && data.event_id && data.high_bidder_id) {
           const siblings = await supabase

@@ -34,6 +34,7 @@ export type LotRow = {
   paid_at?: string | null;
   helcim_purchase_transaction_id?: string | null;
   shipping_cost?: number | string | null;
+  sale_source?: string | null;
 };
 
 export type ConsignmentRow = {
@@ -100,6 +101,7 @@ export function mapLot(row: LotRow): AuctionLot {
     paidAt: row.paid_at ?? null,
     helcimPurchaseTransactionId: row.helcim_purchase_transaction_id ?? null,
     shippingCost: Number(row.shipping_cost ?? 0) || 0,
+    saleSource: row.sale_source === "buy_now" ? "buy_now" : "bid",
   };
 }
 

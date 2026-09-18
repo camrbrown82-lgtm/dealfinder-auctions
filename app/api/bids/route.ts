@@ -14,6 +14,7 @@ import { recordSoldLotSettlement } from "@/lib/recordSale";
 import { notifyOutbid } from "@/lib/notifyOutbid";
 import { mapLot, type LotRow } from "@/lib/mappers";
 import { evaluateBidAuth } from "@/lib/auctionRegistrations";
+import { assertBuyNowLimit } from "@/lib/pendingInvoices";
 
 export const dynamic = "force-dynamic";
 
@@ -239,6 +240,14 @@ async function persistDemo(
     if (!amount || amount < demo.currentBid) {
       return NextResponse.json({ error: "Buy now is no longer available on this lot." }, { status: 400 });
     }
+    const limitError = await assertBuyNowLimit({
+      session,
+      eventId: catalog?.eventId ?? null,
+      amount,
+    });
+    if (limitError) {
+      return NextResponse.json({ error: limitError, code: "BUY_NOW_LIMIT" }, { status: 403 });
+    }
     demo.currentBid = amount;
     demo.highBidder = bidder;
     demo.highBidderId = bidderId;
@@ -262,7 +271,7 @@ async function persistDemo(
       inventory.endsAt = demo.endsAt;
       inventory.highBidder = bidder;
       inventory.highBidderId = bidderId;
-      await recordSoldLotSettlement(inventory, session, inventory.auctionNumber);
+      await recordSoldLotSettlement(inventory, session, inventory.auctionNumber, "buy_now");
     }
     return NextResponse.json({
       currentBid: demo.currentBid,
@@ -409,6 +418,14 @@ async function persistSupabase(
       if (!buyNow) {
         return NextResponse.json({ error: "This lot has no buy now price." }, { status: 400 });
       }
+      const limitError = await assertBuyNowLimit({
+        session,
+        eventId: (lot.event_id as string | null) ?? null,
+        amount: buyNow,
+      });
+      if (limitError) {
+        return NextResponse.json({ error: limitError, code: "BUY_NOW_LIMIT" }, { status: 403 });
+      }
       const endedAt = new Date().toISOString();
       const closePatch: Record<string, unknown> = {
         current_bid: buyNow,
@@ -416,11 +433,12 @@ async function persistSupabase(
         high_bidder_id: bidderId,
         status: "ended",
         ends_at: endedAt,
+        sale_source: "buy_now",
       };
       let closed = await patchLotRow(resolvedId, closePatch);
       if (!closed.ok || !closed.data?.length) {
-        const { high_bidder_id: _id, ...withoutBidderId } = closePatch;
-        closed = await patchLotRow(resolvedId, withoutBidderId);
+        const { sale_source: _source, high_bidder_id: _id, ...withoutExtra } = closePatch;
+        closed = await patchLotRow(resolvedId, withoutExtra);
       }
       if (!closed.ok || !closed.data?.length) {
         const closeError = await writeLot(supabase, resolvedId, closePatch);
@@ -436,7 +454,7 @@ async function persistSupabase(
         amount: buyNow,
         kind: "live",
       });
-      const sold = mapLot({ ...lot, current_bid: buyNow, high_bidder: bidder, high_bidder_id: bidderId, status: "ended" } as LotRow);
+      const sold = mapLot({ ...lot, current_bid: buyNow, high_bidder: bidder, high_bidder_id: bidderId, status: "ended", sale_source: "buy_now" } as LotRow);
       if (sold.eventId) {
         const { data: event } = await supabase
           .from("auction_events")
@@ -445,7 +463,8 @@ async function persistSupabase(
           .maybeSingle();
         sold.auctionNumber = event?.auction_number ?? sold.auctionNumber;
       }
-      await recordSoldLotSettlement(sold, session, sold.auctionNumber);
+      sold.saleSource = "buy_now";
+      await recordSoldLotSettlement(sold, session, sold.auctionNumber, "buy_now");
       return NextResponse.json({
         currentBid: buyNow,
         endsAt: endedAt,

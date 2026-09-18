@@ -43,6 +43,7 @@ export type AuctionLot = {
   paidAt?: string | null;
   helcimPurchaseTransactionId?: string | null;
   shippingCost?: number | null;
+  saleSource?: "bid" | "buy_now" | null;
 };
 
 export type AuctionEvent = {
@@ -55,6 +56,7 @@ export type AuctionEvent = {
   tcTemplateType?: "standard" | "high_bid" | "charity" | "custom" | null;
   termsAndConditions?: string | null;
   bidderTerms?: string | null;
+  invoiceBatchSentAt?: string | null;
 };
 
 export type PayoutRow = {

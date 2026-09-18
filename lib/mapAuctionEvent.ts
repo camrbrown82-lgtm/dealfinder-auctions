@@ -11,6 +11,7 @@ export type AuctionEventRow = {
   bidder_terms?: string | null;
   terms_and_conditions?: string | null;
   tc_template_type?: string | null;
+  invoice_batch_sent_at?: string | null;
 };
 
 export function mapAuctionEvent(row: AuctionEventRow): AuctionEvent {
@@ -27,6 +28,7 @@ export function mapAuctionEvent(row: AuctionEventRow): AuctionEvent {
     tcTemplateType,
     termsAndConditions: terms,
     bidderTerms: terms || null,
+    invoiceBatchSentAt: row.invoice_batch_sent_at ?? null,
   };
 }
 

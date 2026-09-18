@@ -4,6 +4,7 @@ import { pickSaleWindow } from "@/lib/liveSales";
 import { isSupabaseConfigured } from "@/lib/supabaseClient";
 import { isAuctionEndDay } from "@/lib/auctionEndDay";
 import { runSundayPreauthSweep } from "@/lib/sundayPreauth";
+import { issueEndedAuctionInvoices } from "@/lib/auctionCloseInvoices";
 import { closeEndedSoldLots } from "@/lib/closeEndedLots";
 
 export const dynamic = "force-dynamic";
@@ -22,6 +23,7 @@ export async function GET() {
     if (!globalThis.__dealfinderSundaySweepAt || now - globalThis.__dealfinderSundaySweepAt > 10 * 60 * 1000) {
       globalThis.__dealfinderSundaySweepAt = now;
       void runSundayPreauthSweep("127.0.0.1").catch(() => undefined);
+      void issueEndedAuctionInvoices().catch(() => undefined);
     }
   }
   const catalog = await fetchLiveCatalog();

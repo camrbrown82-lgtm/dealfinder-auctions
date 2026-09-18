@@ -6,6 +6,24 @@ import { PICKUP_INSTRUCTIONS } from "@/lib/payments";
 import { adminNotifyEmail } from "@/lib/site";
 import { sendTransactionalEmail } from "@/lib/transactionalEmail";
 
+export const WIN_RESERVATION_DISCLOSURE =
+  "Your winning item has been reserved! To save you on processing fees, no payment is required right now. All your winning bids and Buy-Now items from this auction will be consolidated into a single invoice sent automatically when the auction closes on Sunday.";
+
+export function winReservationEmailHtml(input: {
+  name: string;
+  title: string;
+  lotNumber: string;
+  hammer: string;
+  lotHref: string;
+}) {
+  const lot = input.lotNumber ? `Lot ${escapeHtml(input.lotNumber)} · ` : "";
+  return `<p style="font-size:22px;font-weight:bold;">Congratulations! You're the Winning Bidder!</p>
+<p>POW, ${escapeHtml(input.name)} — you locked in <strong>${escapeHtml(input.title)}</strong>.</p>
+<p>${lot}Winning price: <strong>${escapeHtml(input.hammer)}</strong></p>
+<p style="border:4px solid #000;background:#FFF7D1;padding:12px;font-weight:bold;">${escapeHtml(WIN_RESERVATION_DISCLOSURE)}</p>
+<p><a href="${escapeHtml(input.lotHref)}">View your lot</a></p>`;
+}
+
 export function invoiceEmailHtml(input: {
   name: string;
   invoice: string;
@@ -16,6 +34,7 @@ export function invoiceEmailHtml(input: {
   fees: InvoiceFeeBreakdown;
   fulfillment: string;
   address: string;
+  batch?: boolean;
 }) {
   const ship = input.fulfillment === "ship";
   const method = ship ? "Shipping" : input.fulfillment === "pickup" ? "Local Pickup" : "Choose fulfillment at checkout";
@@ -36,7 +55,8 @@ export function invoiceEmailHtml(input: {
     )
     .join("");
   return `<p>POW, ${escapeHtml(input.name)}!</p>
-<p>You won <strong>${escapeHtml(input.title)}</strong>. Invoice <strong>${escapeHtml(input.invoice)}</strong>.</p>
+${input.batch ? `<p>Sunday close is in. This is your consolidated invoice <strong>${escapeHtml(input.invoice)}</strong> for every winning bid and Buy-Now reservation from this auction.</p>` : `<p>You won <strong>${escapeHtml(input.title)}</strong>. Invoice <strong>${escapeHtml(input.invoice)}</strong>.</p>`}
+<p><strong>${escapeHtml(input.title)}</strong></p>
 <p>Fulfillment: <strong>${escapeHtml(method)}</strong><br/>${escapeHtml(input.address || "Confirm your address at checkout.")}</p>
 ${ship ? "" : `<p>${escapeHtml(PICKUP_INSTRUCTIONS)}</p>`}
 <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="border-collapse:collapse;margin:16px 0;">${table}</table>
@@ -223,6 +243,38 @@ export async function sendOutbidEmail(input: {
   });
 }
 
+export async function sendWinReservationEmail(input: {
+  to: string;
+  name: string;
+  title: string;
+  lotNumber?: string | null;
+  hammer: number;
+  lotId: string;
+  slug?: string | null;
+}) {
+  const link = lotHref(input.slug || input.lotId);
+  const html = winReservationEmailHtml({
+    name: input.name,
+    title: input.title,
+    lotNumber: input.lotNumber ?? "",
+    hammer: formatCurrency(input.hammer),
+    lotHref: link,
+  });
+  return sendTransactionalEmail({
+    templateId: "winning_reservation",
+    to: input.to,
+    forceDeliver: true,
+    vars: {
+      customer_name: input.name || "Bidder",
+      item_title: input.title,
+      winning_bid: formatCurrency(input.hammer),
+      payment_link: checkoutHref(),
+      lot_link: link,
+    },
+    htmlOverride: html,
+  });
+}
+
 export async function sendWinInvoiceEmail(input: {
   to: string;
   name: string;
@@ -233,6 +285,7 @@ export async function sendWinInvoiceEmail(input: {
   fees: InvoiceFeeBreakdown;
   fulfillment: string;
   address: string;
+  batch?: boolean;
 }) {
   const payHref = checkoutHref(input.lotId);
   const cashHref = `${checkoutHref(input.lotId)}&cash=1`;
@@ -246,6 +299,7 @@ export async function sendWinInvoiceEmail(input: {
     fees: input.fees,
     fulfillment: input.fulfillment,
     address: input.address,
+    batch: input.batch,
   });
   return sendTransactionalEmail({
     templateId: "winning_invoice",

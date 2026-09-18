@@ -39,4 +39,6 @@ export type CustomerRow = {
   lifetimeSpend: number;
   paymentFlag: string;
   trustedCashUser?: boolean;
+  isTrustedBuyer?: boolean;
+  buyNowLimit?: number | null;
 };

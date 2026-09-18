@@ -141,10 +141,10 @@ export default function CheckoutPage() {
       <div className="comic-panel p-4">
         <h1 className="font-display text-5xl text-brand-red">Winning checkout</h1>
         <p className="font-comic text-sm">
-          Invoices settle by Helcim card, or you can request cash on pickup for desk approval. After
-          each hammer, pick local pickup or shipping. Pickup is hammer + 15% premium + GST. Shipping
-          adds a $10 handling fee, estimated carrier postage, and GST. Helcim charges the live
-          invoice total.
+          Invoices settle by Helcim card after Sunday close, or you can request cash on pickup
+          once the consolidated invoice is emailed. After each hammer, pick local pickup or
+          shipping. Pickup is hammer + 15% premium + GST. Shipping adds a $10 handling fee,
+          estimated carrier postage, and GST.
         </p>
       </div>
 

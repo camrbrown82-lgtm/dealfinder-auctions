@@ -81,6 +81,8 @@ export function createDemoUser(input: {
     hasCardOnFile: false,
     preauthTermsAgreed: Boolean(input.preauthTermsAgreed),
     trustedCashUser: false,
+    isTrustedBuyer: false,
+    buyNowLimit: 50,
     preauthTransactionId: null,
     helcimCardToken: null,
     helcimCustomerCode: null,
@@ -131,6 +133,8 @@ export function publicProfile(user: DemoUser): BidderProfile {
     hasCardOnFile: Boolean(user.helcimCardToken || user.hasCardOnFile),
     preauthTermsAgreed: Boolean(user.preauthTermsAgreed),
     trustedCashUser: Boolean(user.trustedCashUser),
+    isTrustedBuyer: Boolean(user.isTrustedBuyer),
+    buyNowLimit: user.buyNowLimit ?? 50,
   };
 }
 
@@ -138,12 +142,19 @@ export function listDemoUsers() {
   return Array.from(store().values());
 }
 
-export function setDemoUserStatus(id: string, status: AccountStatus) {
+export function setDemoUserFlags(
+  id: string,
+  patch: { status?: AccountStatus; isTrustedBuyer?: boolean; buyNowLimit?: number | null },
+) {
   const current = store().get(id);
   if (!current) return null;
-  const next = { ...current, status };
+  const next = { ...current, ...patch };
   store().set(id, next);
   return next;
+}
+
+export function setDemoUserStatus(id: string, status: AccountStatus) {
+  return setDemoUserFlags(id, { status });
 }
 
 export function ensureSeedBidders() {

@@ -21,6 +21,7 @@ const GROUPS: NavGroup[] = [
       { href: "/admin/auctions", label: "Auction desk" },
       { href: "/admin/intake", label: "Warehouse AI generator" },
       { href: "/admin/consignments", label: "Consignment pipeline" },
+      { href: "/operations-guide", label: "Operations guide" },
     ],
   },
   {

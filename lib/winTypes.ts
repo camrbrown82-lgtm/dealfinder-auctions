@@ -22,4 +22,6 @@ export type WinInvoice = {
   paidAt?: string | null;
   payment?: "unpaid" | "partial" | "paid" | "cash_pending";
   paymentChannel?: "helcim" | "cash";
+  invoiceReady?: boolean;
+  lotNumber?: string | null;
 };

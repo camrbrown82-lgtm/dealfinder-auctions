@@ -214,21 +214,29 @@ export function InvoicePanel({
         <button
           type="button"
           className="comic-btn mt-3 w-full"
-          disabled={busy || win.fulfillment === "unset"}
+          disabled={busy || win.fulfillment === "unset" || !win.invoiceReady}
           onClick={() => onPay(win.lotId)}
         >
-          Pay {formatCurrency(win.total)} with Helcim
+          {win.invoiceReady
+            ? `Pay ${formatCurrency(win.total)} with Helcim`
+            : "Pay opens after Sunday invoice"}
         </button>
       ) : null}
       {win.winning && !win.paid && !cashPending && onCash ? (
         <button
           type="button"
           className="comic-btn-invert mt-2 w-full"
-          disabled={busy}
+          disabled={busy || !win.invoiceReady}
           onClick={() => onCash(win.lotId)}
         >
           Request Cash Payment on Pickup
         </button>
+      ) : null}
+      {!win.invoiceReady && win.winning && !win.paid ? (
+        <p className="mt-3 border-4 border-black bg-[#FFF7D1] px-3 py-2 font-comic text-sm">
+          Reserved. No payment is due until this auction closes on Sunday and your consolidated
+          invoice is emailed.
+        </p>
       ) : null}
       {cashPending ? (
         <p className="mt-3 border-4 border-black bg-white px-3 py-2 font-comic text-sm">

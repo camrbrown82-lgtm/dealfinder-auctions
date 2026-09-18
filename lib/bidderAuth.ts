@@ -81,6 +81,8 @@ export async function getBidderSession(): Promise<BidderProfile | null> {
           hasCardOnFile: payment.hasCardOnFile,
           preauthTermsAgreed: agreed || Boolean(data.preauth_terms_agreed_at),
           trustedCashUser: Boolean(data.trusted_cash_user),
+          isTrustedBuyer: Boolean(data.is_trusted_buyer),
+          buyNowLimit: data.buy_now_limit == null ? null : Number(data.buy_now_limit),
         };
       }
     }

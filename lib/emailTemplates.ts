@@ -33,18 +33,29 @@ Re-bid now: {{lot_link}}
 DealFinder Auctions`,
   },
   {
+    id: "winning_reservation",
+    name: "Winning Bid / Buy-Now Reservation",
+    subject: "Congratulations! You're the Winning Bidder — {{item_title}}",
+    body: `Congratulations {{customer_name}}! You're the Winning Bidder!
+
+{{item_title}} is yours at {{winning_bid}}.
+
+Your winning item has been reserved! To save you on processing fees, no payment is required right now. All your winning bids and Buy-Now items from this auction will be consolidated into a single invoice sent automatically when the auction closes on Sunday.
+
+View the lot: {{lot_link}}
+
+DealFinder Auctions`,
+  },
+  {
     id: "winning_invoice",
     name: "Winning Bidder Invoice & Pickup Instructions",
-    subject: "You won {{item_title}} — invoice enclosed",
+    subject: "Sunday invoice for {{item_title}}",
     body: `POW, {{customer_name}}!
 
-You hammered {{item_title}} at {{winning_bid}}.
+Your consolidated Sunday invoice is ready for {{item_title}} ({{winning_bid}}).
 
-Choose local pickup or shipping, then pay with Helcim: {{payment_link}}
-
+Pay with Helcim: {{payment_link}}
 Or request cash payment on pickup: {{cash_link}}
-
-Bring photo ID matching your bidder card.
 
 DealFinder Auctions desk`,
   },

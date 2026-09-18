@@ -2,7 +2,6 @@
 
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useBidder } from "@/components/BidderProvider";
 import { BidAgreementModal } from "@/components/BidAgreementModal";
 import { BidPaymentModal } from "@/components/BidPaymentModal";
@@ -32,7 +31,6 @@ type BidRow = {
 };
 
 export function AuctionRoom({ lot }: { lot: AuctionLot }) {
-  const router = useRouter();
   const { user, requestAuth, refresh } = useBidder();
   const [currentBid, setCurrentBid] = useState(lot.currentBid);
   const [endsAt, setEndsAt] = useState(lot.endsAt);
@@ -57,6 +55,7 @@ export function AuctionRoom({ lot }: { lot: AuctionLot }) {
   const [agreeOpen, setAgreeOpen] = useState(false);
   const [agreeBusy, setAgreeBusy] = useState(false);
   const [agreeError, setAgreeError] = useState<string | null>(null);
+  const [limitOpen, setLimitOpen] = useState(false);
   const pendingBid = useRef<{
     mode: "live" | "absentee" | "buy_now";
     amount: number;
@@ -268,6 +267,10 @@ export function AuctionRoom({ lot }: { lot: AuctionLot }) {
           setAgreeOpen(true);
           throw new Error("Agree to this auction's terms, then authorize payment before the bid is submitted.");
         }
+        if (json.code === "BUY_NOW_LIMIT") {
+          setLimitOpen(true);
+          throw new Error(text);
+        }
         if (json.code === "CASH_PENDING") {
           setPayOpen(true);
           setAuthStatus("pending");
@@ -293,8 +296,9 @@ export function AuctionRoom({ lot }: { lot: AuctionLot }) {
       if (json.status) setStatus(json.status);
       if (json.boughtNow) {
         setStatus("ended");
-        setMessage(`You won this lot for ${formatCurrency(json.currentBid)}. Choose ship or pick up below, then settle payment.`);
-        router.push("/checkout");
+        setMessage(
+          `Reserved for ${formatCurrency(json.currentBid)}. No payment now — your Sunday invoice will include this lot.`,
+        );
         return;
       }
       setMessage(
@@ -494,8 +498,8 @@ export function AuctionRoom({ lot }: { lot: AuctionLot }) {
             <p className="font-display text-sm tracking-[0.25em] text-brand-red">YOU WON THIS LOT</p>
             <p className="font-display text-3xl">Hammer {formatCurrency(currentBid)}</p>
             <p className="font-comic text-sm">
-              Pay the hammer with Helcim at checkout. The Sunday $50 hold is reversed as soon as
-              this sale goes through. If checkout is denied, the bid is forfeited. Choose ship or pick up here.
+              This lot is reserved in your name. No payment is taken now. Choose ship or pick up
+              here. All winning bids and Buy-Now items from this auction go on one Sunday invoice.
             </p>
             <div className="grid gap-2 sm:grid-cols-2">
               <button
@@ -519,7 +523,7 @@ export function AuctionRoom({ lot }: { lot: AuctionLot }) {
               {fulfillmentInstructions(fulfillment, user ? profileAddress(user) : "")}
             </p>
             <Link href="/checkout" className="comic-btn inline-block">
-              Pay with Helcim
+              View reserved lots
             </Link>
             {message ? <p className="font-display text-xl">{message}</p> : null}
           </div>
@@ -671,6 +675,21 @@ export function AuctionRoom({ lot }: { lot: AuctionLot }) {
           await placeBid();
         }}
       />
+
+      {limitOpen ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="comic-panel max-w-lg space-y-3 p-5">
+            <p className="font-display text-3xl">Buy-Now limit reached</p>
+            <p className="font-comic text-sm">
+              You have reached your standard Buy-Now reservation limit for this auction. Please
+              await auction settlement or contact management to upgrade to Trusted Status.
+            </p>
+            <button type="button" className="comic-btn" onClick={() => setLimitOpen(false)}>
+              Close
+            </button>
+          </div>
+        </div>
+      ) : null}
 
       <div className="comic-panel p-4">
         <p className="font-display text-2xl">Bid tape</p>

@@ -20,11 +20,13 @@ export type BidderProfile = {
   hasCardOnFile: boolean;
   preauthTermsAgreed: boolean;
   trustedCashUser: boolean;
+  isTrustedBuyer: boolean;
+  buyNowLimit: number | null;
 };
 
 export type ProfileInput = Omit<
   BidderProfile,
-  "id" | "email" | "status" | "preauthStatus" | "preauthAmount" | "hasCardOnFile" | "trustedCashUser"
+  "id" | "email" | "status" | "preauthStatus" | "preauthAmount" | "hasCardOnFile" | "trustedCashUser" | "isTrustedBuyer" | "buyNowLimit"
 >;
 
 export function emptyProfileInput(): ProfileInput {

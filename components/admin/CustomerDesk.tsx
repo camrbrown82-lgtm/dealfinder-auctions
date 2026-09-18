@@ -32,19 +32,23 @@ export function CustomerDesk({ onNotice }: { onNotice: (message: string) => void
     });
   }, [customers, query, status]);
 
-  async function setFlag(id: string, next: "active" | "suspended") {
+  async function patchCustomer(id: string, body: Record<string, unknown>, notice: string) {
     const response = await fetch("/api/admin/customers", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id, status: next }),
+      body: JSON.stringify({ id, ...body }),
     });
     const json = await response.json();
     if (!response.ok) {
       onNotice(json.error || "Could not update bidder.");
       return;
     }
-    onNotice(next === "suspended" ? "Bidding privileges suspended." : "Paddle restored.");
+    onNotice(notice);
     await load();
+  }
+
+  async function setFlag(id: string, next: "active" | "suspended") {
+    await patchCustomer(id, { status: next }, next === "suspended" ? "Bidding privileges suspended." : "Paddle restored.");
   }
 
   async function reset(row: CustomerRow) {
@@ -97,6 +101,8 @@ export function CustomerDesk({ onNotice }: { onNotice: (message: string) => void
               <th className="border-b-4 border-black p-3">Lifetime spend</th>
               <th className="border-b-4 border-black p-3">Payment flag</th>
               <th className="border-b-4 border-black p-3">Cash</th>
+              <th className="border-b-4 border-black p-3">Trusted client</th>
+              <th className="border-b-4 border-black p-3">Buy-Now limit</th>
               <th className="border-b-4 border-black p-3">Actions</th>
             </tr>
           </thead>
@@ -112,6 +118,40 @@ export function CustomerDesk({ onNotice }: { onNotice: (message: string) => void
                 <td className="border-b-2 border-black p-3">{formatCurrency(row.lifetimeSpend)}</td>
                 <td className="border-b-2 border-black p-3">{row.paymentFlag}</td>
                 <td className="border-b-2 border-black p-3">{row.trustedCashUser ? "Trusted cash" : "—"}</td>
+                <td className="border-b-2 border-black p-3">
+                  <label className="flex items-center gap-2 font-bold">
+                    <input
+                      type="checkbox"
+                      checked={Boolean(row.isTrustedBuyer)}
+                      onChange={(e) =>
+                        void patchCustomer(
+                          row.id,
+                          { isTrustedBuyer: e.target.checked },
+                          e.target.checked ? "Trusted Client on." : "Trusted Client off.",
+                        )
+                      }
+                    />
+                    Trusted
+                  </label>
+                </td>
+                <td className="border-b-2 border-black p-3">
+                  <input
+                    type="number"
+                    min={0}
+                    className="w-24 border-4 border-black px-2 py-1"
+                    defaultValue={row.buyNowLimit ?? ""}
+                    placeholder={row.isTrustedBuyer ? "∞" : "50"}
+                    onBlur={(e) => {
+                      const raw = e.target.value.trim();
+                      const value = raw === "" ? null : Number(raw);
+                      void patchCustomer(
+                        row.id,
+                        { buyNowLimit: value },
+                        "Saved Buy-Now limit.",
+                      );
+                    }}
+                  />
+                </td>
                 <td className="border-b-2 border-black p-3">
                   <div className="flex flex-wrap gap-2">
                     {row.status === "active" ? (
