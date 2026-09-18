@@ -80,6 +80,7 @@ export function createDemoUser(input: {
     preauthAmount: BID_PREAUTH_AMOUNT,
     hasCardOnFile: false,
     preauthTermsAgreed: Boolean(input.preauthTermsAgreed),
+    trustedCashUser: false,
     preauthTransactionId: null,
     helcimCardToken: null,
     helcimCustomerCode: null,
@@ -129,6 +130,7 @@ export function publicProfile(user: DemoUser): BidderProfile {
     preauthAmount: user.preauthAmount ?? BID_PREAUTH_AMOUNT,
     hasCardOnFile: Boolean(user.helcimCardToken || user.hasCardOnFile),
     preauthTermsAgreed: Boolean(user.preauthTermsAgreed),
+    trustedCashUser: Boolean(user.trustedCashUser),
   };
 }
 

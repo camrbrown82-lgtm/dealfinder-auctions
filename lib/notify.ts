@@ -3,6 +3,7 @@ import { escapeHtml } from "@/lib/emailHtml";
 import { formatCurrency } from "@/lib/utils";
 import { invoiceFees, type InvoiceFeeBreakdown } from "@/lib/invoiceFees";
 import { PICKUP_INSTRUCTIONS } from "@/lib/payments";
+import { adminNotifyEmail } from "@/lib/site";
 import { sendTransactionalEmail } from "@/lib/transactionalEmail";
 
 export function invoiceEmailHtml(input: {
@@ -279,6 +280,35 @@ export async function sendCashReceiptEmail(input: {
       payment_link: checkoutHref(),
       lot_link: checkoutHref(),
     },
+  });
+}
+
+export async function sendCashBidAuthEmail(input: {
+  name: string;
+  email: string;
+  auctionLabel: string;
+  eventId: string;
+  requestedAt: string;
+}) {
+  const desk = `${publicAppUrl()}/admin/customers`;
+  const to = adminNotifyEmail();
+  const when = new Date(input.requestedAt).toLocaleString("en-CA", { timeZone: "America/Edmonton" });
+  return sendTransactionalEmail({
+    templateId: "cash_bid_auth",
+    to,
+    forceDeliver: true,
+    simpleLayout: true,
+    vars: {
+      customer_name: input.name || "Bidder",
+      item_title: input.email,
+      winning_bid: input.auctionLabel,
+      payment_link: desk,
+      lot_link: desk,
+      invoice_total: when,
+    },
+    htmlOverride: `<p><strong>${escapeHtml(input.name)}</strong> (${escapeHtml(input.email)}) asked to bid with cash on pickup.</p>
+<p>Auction: <strong>${escapeHtml(input.auctionLabel)}</strong><br/>Requested: ${escapeHtml(when)}</p>
+<p><a href="${escapeHtml(desk)}" style="color:#111111;font-weight:bold;">Open cash bidding queue</a></p>`,
   });
 }
 

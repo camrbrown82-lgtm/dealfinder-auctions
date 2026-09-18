@@ -130,6 +130,19 @@ See invoices: {{payment_link}}
 
 DealFinder Auctions`,
   },
+  {
+    id: "cash_bid_auth",
+    name: "Cash Bid Authorization Request",
+    subject: "Cash bidding request — {{customer_name}}",
+    body: `{{customer_name}} ({{item_title}}) asked to bid with cash on pickup.
+
+Auction: {{winning_bid}}
+Requested: {{invoice_total}}
+
+Review and approve or reject: {{payment_link}}
+
+DealFinder Auctions`,
+  },
 ];
 
 export function slugifyTemplateId(name: string) {

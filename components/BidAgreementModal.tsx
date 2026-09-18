@@ -88,15 +88,16 @@ export function BidAgreementModal({
               disabled={busy}
               className="mt-1 h-5 w-5 shrink-0"
             />
-            <span>{terms.preauthCheckbox}</span>
+            <span>I understand bidding requires a $50 Helcim card hold or cash-on-pickup approval.</span>
           </label>
           <p className="font-comic text-xs">
-            Confirming places your paddle. The {formatCurrency(BID_PREAUTH_AMOUNT)} Sunday hold is for this
-            auction only. You are not charged the hammer until Helcim checkout.
+            Confirming saves this auction&apos;s terms. Next you authorize a{" "}
+            {formatCurrency(BID_PREAUTH_AMOUNT)} Helcim hold or request cash pickup. The hammer is
+            not charged until checkout.
           </p>
           <div className="flex flex-wrap gap-2">
             <button type="button" className="comic-btn" disabled={!ready} onClick={onConfirm}>
-              {busy ? "Confirming…" : "Confirm and place bid"}
+              {busy ? "Saving…" : "Agree and continue"}
             </button>
             <button type="button" className="comic-btn-invert" disabled={busy} onClick={onClose}>
               Cancel

@@ -15,3 +15,8 @@ export const SITE = {
     facebook: "",
   },
 } as const;
+
+export function adminNotifyEmail() {
+  return (process.env.ADMIN_NOTIFY_EMAIL || "").trim() || SITE.email;
+}
+

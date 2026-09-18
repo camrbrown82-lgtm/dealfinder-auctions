@@ -24,6 +24,8 @@ import {
 } from "@/lib/authEmail";
 import { getSupabaseAdmin, getSupabaseAuthClient, isSupabaseConfigured } from "@/lib/supabaseClient";
 
+export const dynamic = "force-dynamic";
+
 function verificationResponse() {
   return NextResponse.json(
     {
@@ -128,28 +130,47 @@ export async function POST(request: NextRequest) {
   if (isSupabaseConfigured) {
     const authClient = getSupabaseAuthClient();
     if (authClient) {
-      const { data, error } = await authClient.auth.signInWithPassword({ email, password });
-      if (error || !data.user) {
-        const pending = /email not confirmed|confirm your email|not verified/i.test(error?.message ?? "");
+      const admin = getSupabaseAdmin();
+      let { data, error } = await authClient.auth.signInWithPassword({ email, password });
+      let pending = /email not confirmed|confirm your email|not verified/i.test(error?.message ?? "");
+
+      if ((error || !data.user || pending) && admin) {
+        const profileRow = await admin.from("profiles").select("id").eq("email", email).maybeSingle();
+        const stored = profileRow.data?.id
+          ? (await admin.auth.admin.getUserById(profileRow.data.id)).data.user
+          : null;
+        if (isAuthEmailConfirmed(stored)) {
+          const retry = await authClient.auth.signInWithPassword({ email, password });
+          data = retry.data;
+          error = retry.error;
+          pending = /email not confirmed|confirm your email|not verified/i.test(error?.message ?? "");
+        }
+      }
+
+      const authUser = data.user;
+      if (pending && !isAuthEmailConfirmed(authUser)) return verificationResponse();
+      if (error || !authUser) {
         if (pending) return verificationResponse();
         return NextResponse.json(
           { error: error?.message || "Could not log in." },
           { status: 401 },
         );
       }
-      if (!isAuthEmailConfirmed(data.user)) return verificationResponse();
-      const admin = getSupabaseAdmin();
+      const confirmed = admin
+        ? (await admin.auth.admin.getUserById(authUser.id)).data.user ?? authUser
+        : authUser;
+      if (!isAuthEmailConfirmed(confirmed)) return verificationResponse();
       if (admin) {
-        const profile = await admin.from("profiles").select("full_name").eq("id", data.user.id).maybeSingle();
+        const profile = await admin.from("profiles").select("full_name").eq("id", confirmed.id).maybeSingle();
         await sendWelcomeOnce(
           admin,
-          data.user.id,
+          confirmed.id,
           email,
-          String(profile.data?.full_name || data.user.user_metadata?.full_name || email),
+          String(profile.data?.full_name || confirmed.user_metadata?.full_name || email),
         );
       }
-      const response = NextResponse.json({ ok: true });
-      return setBidderCookie(response, data.user.id);
+      const response = NextResponse.json({ ok: true, verified: true });
+      return setBidderCookie(response, confirmed.id);
     }
   }
 
@@ -262,10 +283,16 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({ error: "Auth is not configured." }, { status: 400 });
   }
   const link = await generateVerifyLink(admin, email);
-  const profile = await admin.from("profiles").select("full_name").eq("email", email).maybeSingle();
+  const profileRow = await admin.from("profiles").select("id, full_name").eq("email", email).maybeSingle();
+  const authUser = profileRow.data?.id
+    ? (await admin.auth.admin.getUserById(profileRow.data.id)).data.user
+    : null;
+  if (isAuthEmailConfirmed(authUser)) {
+    return NextResponse.json({ ok: true, alreadyVerified: true, needsVerification: false });
+  }
   const mail = await deliverSignupConfirmation(
     email,
-    String(profile.data?.full_name || email),
+    String(profileRow.data?.full_name || email),
     link.verifyHref,
   );
   return NextResponse.json({

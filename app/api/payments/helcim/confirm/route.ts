@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { bidderUnauthorized, getBidderSession } from "@/lib/bidderAuth";
+import { approveHelcimBidAuth } from "@/lib/auctionRegistrations";
 import {
   clientIp,
   dropHelcimSession,
@@ -79,6 +80,7 @@ export async function POST(request: NextRequest) {
         customerCode,
         amount: stored.amount,
       });
+      await approveHelcimBidAuth(session.id, stored.eventId);
       await recordHelcimTransaction({
         bidderId: session.id,
         lotId: stored.lotId,

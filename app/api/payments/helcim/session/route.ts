@@ -84,7 +84,7 @@ export async function POST(request: NextRequest) {
   const session = await getBidderSession();
   if (!session) return bidderUnauthorized();
 
-  const body = (await request.json()) as { purpose?: string; lotId?: string };
+  const body = (await request.json()) as { purpose?: string; lotId?: string; eventId?: string };
   if (!isPurpose(body.purpose)) {
     return NextResponse.json({ error: "Unknown Helcim checkout purpose." }, { status: 400 });
   }
@@ -94,6 +94,7 @@ export async function POST(request: NextRequest) {
   let amount = preauthAmount();
   let invoice = `DF-HOLD-${session.id.replace(/[^a-z0-9]/gi, "").slice(0, 8).toUpperCase()}`;
   let lotId: string | null = body.lotId?.trim() || null;
+  const eventId = body.eventId?.trim() || null;
 
   if (body.purpose === "bid_preauth") {
     if (payment.preauthStatus === "held") {
@@ -130,6 +131,7 @@ export async function POST(request: NextRequest) {
       bidderId: session.id,
       purpose: body.purpose,
       lotId,
+      eventId,
       amount,
       currency,
       invoiceNumber: invoice,
@@ -164,6 +166,7 @@ export async function POST(request: NextRequest) {
       bidderId: session.id,
       purpose: body.purpose,
       lotId,
+      eventId,
       amount,
       currency,
       invoiceNumber: invoice,

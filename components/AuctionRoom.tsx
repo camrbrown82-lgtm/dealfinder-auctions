@@ -5,6 +5,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useBidder } from "@/components/BidderProvider";
 import { BidAgreementModal } from "@/components/BidAgreementModal";
+import { BidPaymentModal } from "@/components/BidPaymentModal";
+import { HelcimPayModal } from "@/components/HelcimPayModal";
 import { LotTimer } from "@/components/LotTimer";
 import { nextLiveAmount } from "@/lib/bidding";
 import { isProfileComplete } from "@/lib/profileTypes";
@@ -45,6 +47,12 @@ export function AuctionRoom({ lot }: { lot: AuctionLot }) {
   const [feed, setFeed] = useState<BidRow[]>([]);
   const [fulfillment, setFulfillment] = useState<FulfillmentChoice>(lot.fulfillment ?? "unset");
   const [registered, setRegistered] = useState(false);
+  const [authorized, setAuthorized] = useState(false);
+  const [authStatus, setAuthStatus] = useState<string>("none");
+  const [payOpen, setPayOpen] = useState(false);
+  const [payBusy, setPayBusy] = useState(false);
+  const [payError, setPayError] = useState<string | null>(null);
+  const [helcimOpen, setHelcimOpen] = useState(false);
   const [terms, setTerms] = useState<AuctionTermsPack | null>(null);
   const [agreeOpen, setAgreeOpen] = useState(false);
   const [agreeBusy, setAgreeBusy] = useState(false);
@@ -81,6 +89,7 @@ export function AuctionRoom({ lot }: { lot: AuctionLot }) {
   useEffect(() => {
     if (!user || !lot.eventId) {
       setRegistered(false);
+      setAuthorized(false);
       return;
     }
     let cancelled = false;
@@ -92,6 +101,8 @@ export function AuctionRoom({ lot }: { lot: AuctionLot }) {
         if (cancelled) return;
         if (json.terms) setTerms(json.terms as AuctionTermsPack);
         setRegistered(Boolean(json.registered));
+        setAuthorized(Boolean(json.authorized));
+        setAuthStatus(String(json.authStatus || "none"));
       })
       .catch(() => undefined);
     return () => {
@@ -252,10 +263,19 @@ export function AuctionRoom({ lot }: { lot: AuctionLot }) {
             : err && typeof err === "object" && "message" in err
               ? String((err as { message: string }).message)
               : "Bid failed";
-        if (response.status === 402 || json.code === "AUCTION_TERMS_REQUIRED" || json.code === "PREAUTH_TERMS_REQUIRED") {
+        if (response.status === 402 || json.code === "AUCTION_TERMS_REQUIRED") {
           setRegistered(false);
           setAgreeOpen(true);
-          throw new Error("Agree to this auction's terms and the Sunday $50 pre-authorization, then confirm the bid.");
+          throw new Error("Agree to this auction's terms, then authorize payment before the bid is submitted.");
+        }
+        if (json.code === "CASH_PENDING") {
+          setPayOpen(true);
+          setAuthStatus("pending");
+          throw new Error(text);
+        }
+        if (json.code === "BID_AUTH_REQUIRED" || json.code === "PREAUTH_TERMS_REQUIRED") {
+          setPayOpen(true);
+          throw new Error(text);
         }
         throw new Error(text);
       }
@@ -314,6 +334,11 @@ export function AuctionRoom({ lot }: { lot: AuctionLot }) {
       setAgreeOpen(true);
       return;
     }
+    if (!authorized) {
+      setPayError(authStatus === "pending" ? "Cash pickup is waiting on desk approval." : null);
+      setPayOpen(true);
+      return;
+    }
     await placeBid();
   }
   ensureBidRef.current = ensureBid;
@@ -340,11 +365,81 @@ export function AuctionRoom({ lot }: { lot: AuctionLot }) {
       setRegistered(true);
       setAgreeOpen(false);
       await refresh();
-      await placeBid();
+      if (json.authorized) {
+        setAuthorized(true);
+        await placeBid();
+        return;
+      }
+      setAuthorized(false);
+      setAuthStatus(String(json.authStatus || "none"));
+      setPayOpen(true);
     } catch (error) {
       setAgreeError(error instanceof Error ? error.message : "Could not save auction agreement.");
     } finally {
       setAgreeBusy(false);
+    }
+  }
+
+  async function authorizeHelcim() {
+    if (!lot.eventId) return;
+    setPayBusy(true);
+    setPayError(null);
+    try {
+      const response = await fetch("/api/auctions/authorize", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ eventId: lot.eventId, method: "helcim" }),
+      });
+      const json = await response.json();
+      if (!response.ok) throw new Error(json.error || "Could not start card authorization.");
+      if (json.needHelcim) {
+        setPayOpen(false);
+        setHelcimOpen(true);
+        return;
+      }
+      setAuthorized(Boolean(json.authorized));
+      setAuthStatus(String(json.authStatus || "approved"));
+      setPayOpen(false);
+      await refresh();
+      await placeBid();
+    } catch (error) {
+      setPayError(error instanceof Error ? error.message : "Could not authorize card.");
+    } finally {
+      setPayBusy(false);
+    }
+  }
+
+  async function authorizeCash() {
+    if (!lot.eventId) return;
+    setPayBusy(true);
+    setPayError(null);
+    try {
+      const response = await fetch("/api/auctions/authorize", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ eventId: lot.eventId, method: "cash" }),
+      });
+      const json = await response.json();
+      if (!response.ok) throw new Error(json.error || "Could not request cash approval.");
+      setAuthorized(Boolean(json.authorized));
+      setAuthStatus(String(json.authStatus || "pending"));
+      if (json.authorized) {
+        setPayOpen(false);
+        await refresh();
+        await placeBid();
+        return;
+      }
+      setPayError(
+        json.autoApproved
+          ? null
+          : "Cash request sent to the desk. You can bid after they approve this auction.",
+      );
+    } catch (error) {
+      setPayError(error instanceof Error ? error.message : "Could not request cash approval.");
+    } finally {
+      setPayBusy(false);
     }
   }
 
@@ -488,14 +583,15 @@ export function AuctionRoom({ lot }: { lot: AuctionLot }) {
           {user ? (
             <>
               Paddle: <strong>{user.fullName}</strong> — guests can watch the tape;
-              placing a bid uses this account. Terms and the $50 Sunday hold are confirmed for
-              this auction when you bid.
+              placing a bid uses this account. Terms, then a $50 Helcim hold or cash approval,
+              are required for this auction before the bid is submitted.
             </>
           ) : (
             <>
               Watch the room free. <strong>Place Bid</strong> or{" "}
               <strong>Set Absentee Bid</strong> opens the paddle gate — log in first, then agree to
-              this auction&apos;s terms and the Sunday $50 hold before the bid is submitted.
+              this auction&apos;s terms, then a $50 Helcim hold or cash-on-pickup approval, before
+              the bid is submitted.
             </>
           )}
         </p>
@@ -551,6 +647,29 @@ export function AuctionRoom({ lot }: { lot: AuctionLot }) {
         terms={terms}
         onClose={() => setAgreeOpen(false)}
         onConfirm={() => void confirmAgreementAndBid()}
+      />
+      <BidPaymentModal
+        open={payOpen}
+        busy={payBusy}
+        error={payError}
+        pendingCash={authStatus === "pending"}
+        testMode={/^(1|true|yes|on)$/i.test(process.env.NEXT_PUBLIC_PAYMENT_TEST_MODE || "")}
+        onClose={() => setPayOpen(false)}
+        onHelcim={() => void authorizeHelcim()}
+        onCash={() => void authorizeCash()}
+      />
+      <HelcimPayModal
+        open={helcimOpen}
+        purpose="bid_preauth"
+        eventId={lot.eventId ?? undefined}
+        onClose={() => setHelcimOpen(false)}
+        onComplete={async () => {
+          setHelcimOpen(false);
+          setAuthorized(true);
+          setAuthStatus("approved");
+          await refresh();
+          await placeBid();
+        }}
       />
 
       <div className="comic-panel p-4">

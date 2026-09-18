@@ -35,7 +35,7 @@ export function getSupabaseAuthClient(): SupabaseClient | null {
   const anonKey = publicAnonKey();
   if (!url || !anonKey) return null;
   return createClient(url, anonKey, {
-    auth: { persistSession: false, autoRefreshToken: false },
+    auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
     global: { fetch: (input, init) => fetch(input, { ...init, cache: "no-store" }) },
   });
 }

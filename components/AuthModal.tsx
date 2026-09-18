@@ -1,7 +1,6 @@
 "use client";
 
-import { FormEvent, useState } from "react";
-import { useRouter } from "next/navigation";
+import { FormEvent, useEffect, useState } from "react";
 import { ProfileFields } from "@/components/ProfileFields";
 import {
   emptyProfileInput,
@@ -36,11 +35,29 @@ export function AuthModal({
   const [busy, setBusy] = useState(false);
   const [completing, setCompleting] = useState(false);
   const [needsVerification, setNeedsVerification] = useState(false);
-  const router = useRouter();
+  const confirmedSession = Boolean(existing);
 
-  function goHome() {
+  useEffect(() => {
+    if (!open) {
+      setNeedsVerification(false);
+      setError(null);
+      setBusy(false);
+      return;
+    }
+    if (existing) setNeedsVerification(false);
+  }, [open, existing]);
+
+  useEffect(() => {
+    if (!open || !needsVerification || existing) return;
+    const timer = window.setInterval(async () => {
+      const me = await fetch("/api/auth", { credentials: "include", cache: "no-store" }).then((r) => r.json());
+      if (me.user) await onAuthenticated(me.user);
+    }, 4000);
+    return () => window.clearInterval(timer);
+  }, [open, needsVerification, existing, onAuthenticated]);
+
+  function closeModal() {
     onClose();
-    router.push("/");
   }
 
   if (!open) return null;
@@ -76,13 +93,21 @@ export function AuthModal({
           body: JSON.stringify({ email, password }),
         });
         const json = await response.json();
-        if (json.needsVerification) {
+        if (json.alreadyVerified) {
+          setNeedsVerification(false);
+        }
+        if (json.needsVerification && !json.alreadyVerified) {
+          const me = await fetch("/api/auth", { credentials: "include", cache: "no-store" }).then((r) => r.json());
+          if (me.user) {
+            await onAuthenticated(me.user);
+            return;
+          }
           setNeedsVerification(true);
           setError(json.error || "Check your inbox to verify your email.");
           return;
         }
         if (!response.ok) throw new Error(json.error || "Could not log in.");
-        const me = await fetch("/api/auth", { credentials: "include" }).then((r) => r.json());
+        const me = await fetch("/api/auth", { credentials: "include", cache: "no-store" }).then((r) => r.json());
         if (!me.user) throw new Error("Session missing after login.");
         if (!isProfileComplete(me.user)) {
           setProfile({
@@ -111,6 +136,12 @@ export function AuthModal({
         body: JSON.stringify({ email, password, ...profile }),
       });
       const json = await response.json();
+      if (json.alreadyVerified) {
+        setNeedsVerification(false);
+        setError("This email is already verified. Log in to continue.");
+        onMode("login");
+        return;
+      }
       if (json.needsVerification) {
         setNeedsVerification(true);
         setError(
@@ -121,7 +152,7 @@ export function AuthModal({
         return;
       }
       if (!response.ok) throw new Error(json.error || "Could not sign up.");
-      const me = await fetch("/api/auth", { credentials: "include" }).then((r) => r.json());
+      const me = await fetch("/api/auth", { credentials: "include", cache: "no-store" }).then((r) => r.json());
       if (!me.user) throw new Error("Session missing after signup.");
       await onAuthenticated(me.user);
     } catch (err) {
@@ -152,8 +183,8 @@ export function AuthModal({
           </div>
           <button
             type="button"
-            onClick={goHome}
-            aria-label="Close and return to homepage"
+            onClick={closeModal}
+            aria-label="Close"
             className="comic-btn-invert shrink-0 !px-3 !py-1 !text-3xl leading-none"
           >
             X
@@ -161,7 +192,7 @@ export function AuthModal({
         </div>
 
         <form onSubmit={onSubmit} className="space-y-3 p-4">
-          {needsVerification ? (
+          {needsVerification && !confirmedSession ? (
             <div className="space-y-3">
               <p className="border-4 border-black bg-white px-3 py-2 font-comic text-sm font-bold">
                 Check your inbox to verify your email before you can use this paddle. Nothing is charged for signing up.
@@ -185,6 +216,12 @@ export function AuthModal({
                       body: JSON.stringify({ email }),
                     });
                     const json = await response.json();
+                    if (json.alreadyVerified) {
+                      setNeedsVerification(false);
+                      setError("This email is already verified. Log in to continue.");
+                      onMode("login");
+                      return;
+                    }
                     if (!response.ok) throw new Error(json.error || "Could not resend.");
                     setError(
                       json.mailSent === false

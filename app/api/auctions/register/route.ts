@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auctionTermsPack } from "@/lib/auctionTerms";
-import { hasAuctionRegistration, saveAuctionRegistration } from "@/lib/auctionRegistrations";
+import { saveAuctionRegistration, evaluateBidAuth } from "@/lib/auctionRegistrations";
 import { getBidderSession, bidderUnauthorized } from "@/lib/bidderAuth";
 import { getAdminDemo } from "@/lib/demoAdminStore";
 import { mapAuctionEvent } from "@/lib/mapAuctionEvent";
@@ -30,9 +30,14 @@ export async function GET(request: NextRequest) {
   if (!event) {
     return NextResponse.json({ error: "Auction not found" }, { status: 404 });
   }
-  const registered = await hasAuctionRegistration(session.id, eventId);
+  const auth = await evaluateBidAuth(session.id, eventId);
   return NextResponse.json({
-    registered,
+    registered: auth.registered,
+    authorized: auth.authorized,
+    authStatus: auth.authStatus,
+    paymentMethod: auth.paymentMethod,
+    trustedCash: auth.trustedCash,
+    preauthHeld: auth.preauthHeld,
     terms: auctionTermsPack(event),
   });
 }
@@ -63,5 +68,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Auction not found" }, { status: 404 });
   }
   await saveAuctionRegistration(session.id, eventId);
-  return NextResponse.json({ registered: true, terms: auctionTermsPack(event) });
+  const auth = await evaluateBidAuth(session.id, eventId);
+  return NextResponse.json({ ...auth, terms: auctionTermsPack(event) });
 }

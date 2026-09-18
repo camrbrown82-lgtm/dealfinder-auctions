@@ -96,6 +96,7 @@ export function CustomerDesk({ onNotice }: { onNotice: (message: string) => void
               <th className="border-b-4 border-black p-3">Won</th>
               <th className="border-b-4 border-black p-3">Lifetime spend</th>
               <th className="border-b-4 border-black p-3">Payment flag</th>
+              <th className="border-b-4 border-black p-3">Cash</th>
               <th className="border-b-4 border-black p-3">Actions</th>
             </tr>
           </thead>
@@ -110,6 +111,7 @@ export function CustomerDesk({ onNotice }: { onNotice: (message: string) => void
                 <td className="border-b-2 border-black p-3">{row.auctionsWon}</td>
                 <td className="border-b-2 border-black p-3">{formatCurrency(row.lifetimeSpend)}</td>
                 <td className="border-b-2 border-black p-3">{row.paymentFlag}</td>
+                <td className="border-b-2 border-black p-3">{row.trustedCashUser ? "Trusted cash" : "—"}</td>
                 <td className="border-b-2 border-black p-3">
                   <div className="flex flex-wrap gap-2">
                     {row.status === "active" ? (

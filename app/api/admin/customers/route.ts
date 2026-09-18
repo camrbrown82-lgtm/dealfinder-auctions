@@ -38,6 +38,7 @@ export async function GET() {
         lifetimeSpend: spend,
         paymentFlag:
           row.preauth_status === "held" ? "helcim-hold" : spend > 0 ? "helcim-paid" : "helcim",
+        trustedCashUser: Boolean(row.trusted_cash_user),
       };
     });
     return NextResponse.json({ customers });
@@ -65,7 +66,8 @@ export async function GET() {
       auctionsWon: wins.length,
       lifetimeSpend: spend,
         paymentFlag: user.preauthStatus === "held" ? "helcim-hold" : "helcim",
-    };
+        trustedCashUser: Boolean(user.trustedCashUser),
+      };
   });
 
   return NextResponse.json({ customers });

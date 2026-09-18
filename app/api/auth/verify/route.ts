@@ -1,25 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import type { EmailOtpType } from "@supabase/supabase-js";
 import { setBidderCookie } from "@/lib/bidderAuth";
-import { isAuthEmailConfirmed } from "@/lib/authEmail";
+import {
+  isAuthEmailConfirmed,
+  loadConfirmedAuthUser,
+  otpTypesToTry,
+} from "@/lib/authEmail";
 import { getSupabaseAdmin, getSupabaseAuthClient } from "@/lib/supabaseClient";
 
 export const dynamic = "force-dynamic";
-
-function asOtpType(value: string): EmailOtpType {
-  const type = value.toLowerCase();
-  if (
-    type === "signup" ||
-    type === "invite" ||
-    type === "magiclink" ||
-    type === "recovery" ||
-    type === "email_change" ||
-    type === "email"
-  ) {
-    return type;
-  }
-  return "signup";
-}
 
 export async function POST(request: NextRequest) {
   const body = (await request.json()) as { accessToken?: string; tokenHash?: string; type?: string };
@@ -33,36 +22,38 @@ export async function POST(request: NextRequest) {
   }
 
   let userId = "";
-  let confirmed = false;
 
   if (tokenHash) {
-    const { data, error } = await authClient.auth.verifyOtp({
-      token_hash: tokenHash,
-      type: asOtpType(String(body.type ?? "signup")),
-    });
-    if (error || !data.user) {
-      return NextResponse.json(
-        { error: error?.message || "This confirmation link is invalid or expired." },
-        { status: 403 },
-      );
+    let lastError = "This confirmation link is invalid or expired.";
+    for (const type of otpTypesToTry(body.type)) {
+      const { data, error } = await authClient.auth.verifyOtp({
+        token_hash: tokenHash,
+        type: type as EmailOtpType,
+      });
+      if (!error && data.user) {
+        userId = data.user.id;
+        break;
+      }
+      if (error?.message) lastError = error.message;
     }
-    userId = data.user.id;
-    confirmed = isAuthEmailConfirmed(data.user) || Boolean(data.session);
+    if (!userId) {
+      return NextResponse.json({ error: lastError }, { status: 403 });
+    }
   } else if (accessToken) {
     const { data, error } = await authClient.auth.getUser(accessToken);
-    if (error || !data.user || !isAuthEmailConfirmed(data.user)) {
+    if (error || !data.user) {
       return NextResponse.json(
         { error: "Confirm the link in your inbox first." },
         { status: 403 },
       );
     }
     userId = data.user.id;
-    confirmed = true;
   } else {
     return NextResponse.json({ error: "Missing confirmation token." }, { status: 400 });
   }
 
-  if (!confirmed || !userId) {
+  const confirmed = await loadConfirmedAuthUser(admin, userId);
+  if (!userId || !isAuthEmailConfirmed(confirmed)) {
     return NextResponse.json({ error: "Email is not verified yet." }, { status: 403 });
   }
 

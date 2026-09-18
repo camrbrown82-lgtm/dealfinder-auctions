@@ -11,7 +11,7 @@ import {
   type ReactNode,
 } from "react";
 import { AuthModal } from "@/components/AuthModal";
-import { type BidderProfile } from "@/lib/profileTypes";
+import { isProfileComplete, type BidderProfile } from "@/lib/profileTypes";
 
 type AuthMode = "login" | "signup";
 
@@ -32,10 +32,15 @@ export function BidderProvider({ children }: { children: ReactNode }) {
   const [mode, setMode] = useState<AuthMode>("signup");
   const [resumeBid, setResumeBid] = useState(false);
   const pendingRef = useRef<(() => void | Promise<void>) | null>(null);
+  const userRef = useRef<BidderProfile | null>(null);
+  userRef.current = user;
 
   const refresh = useCallback(async () => {
     try {
-      const response = await fetch("/api/auth", { credentials: "include" });
+      const response = await fetch("/api/auth", {
+        credentials: "include",
+        cache: "no-store",
+      });
       const json = await response.json();
       const next = (json.user as BidderProfile | null) ?? null;
       setUser(next);
@@ -50,9 +55,35 @@ export function BidderProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     void refresh();
+    function onVisible() {
+      if (document.visibilityState === "visible") void refresh();
+    }
+    function onAuthEvent() {
+      void refresh();
+    }
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("focus", onVisible);
+    window.addEventListener("dealfinder-auth", onAuthEvent);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("focus", onVisible);
+      window.removeEventListener("dealfinder-auth", onAuthEvent);
+    };
   }, [refresh]);
 
+  useEffect(() => {
+    if (user && isProfileComplete(user) && modalOpen) {
+      setModalOpen(false);
+      pendingRef.current = null;
+    }
+  }, [user, modalOpen]);
+
   const requestAuth = useCallback((after?: () => void | Promise<void>, preferred?: AuthMode, asBid?: boolean) => {
+    const current = userRef.current;
+    if (current && isProfileComplete(current)) {
+      void after?.();
+      return;
+    }
     pendingRef.current = after ?? null;
     setResumeBid(asBid ?? Boolean(after));
     setMode(preferred ?? "signup");
@@ -60,20 +91,21 @@ export function BidderProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const logout = useCallback(async () => {
-    await fetch("/api/auth", { method: "DELETE" });
+    await fetch("/api/auth", { method: "DELETE", credentials: "include" });
     setUser(null);
   }, []);
 
-  async function finishAuth(next: BidderProfile) {
+  const finishAuth = useCallback(async (next: BidderProfile) => {
     setUser(next);
     setModalOpen(false);
+    window.dispatchEvent(new Event("dealfinder-auth"));
     const action = pendingRef.current;
     pendingRef.current = null;
     if (action) {
       await new Promise((resolve) => window.setTimeout(resolve, 50));
       await action();
     }
-  }
+  }, []);
 
   const value = useMemo(
     () => ({ user, ready, refresh, logout, requestAuth }),

@@ -13,28 +13,26 @@ import { openUnsoldFloors, patchLotRow, weekFromNow } from "@/lib/openFloor";
 import { recordSoldLotSettlement } from "@/lib/recordSale";
 import { notifyOutbid } from "@/lib/notifyOutbid";
 import { mapLot, type LotRow } from "@/lib/mappers";
-import { hasAuctionRegistration } from "@/lib/auctionRegistrations";
+import { evaluateBidAuth } from "@/lib/auctionRegistrations";
 
 export const dynamic = "force-dynamic";
 
-function auctionTermsRequired() {
+function bidAuthResponse(auth: Awaited<ReturnType<typeof evaluateBidAuth>>) {
   return NextResponse.json(
     {
-      error: "Agree to this auction's terms and the Sunday $50 pre-authorization before placing a paddle.",
-      code: "AUCTION_TERMS_REQUIRED",
+      error: auth.error,
+      code: auth.code,
+      authStatus: auth.authStatus,
+      authorized: auth.authorized,
+      registered: auth.registered,
     },
-    { status: 402 },
+    { status: auth.code === "CASH_PENDING" ? 403 : 402 },
   );
 }
 
-async function requireAuctionRegistration(userId: string, eventId: string | null | undefined) {
-  if (!eventId) {
-    return NextResponse.json(
-      { error: "This lot is not filed in an auction yet." },
-      { status: 400 },
-    );
-  }
-  if (!(await hasAuctionRegistration(userId, eventId))) return auctionTermsRequired();
+async function requireBidAuthorization(userId: string, eventId: string | null | undefined) {
+  const auth = await evaluateBidAuth(userId, eventId);
+  if (!auth.ok) return bidAuthResponse(auth);
   return null;
 }
 
@@ -222,7 +220,7 @@ async function persistDemo(
     return NextResponse.json({ error: "Lot not found" }, { status: 404 });
   }
   const catalog = getAdminDemo().inventory.find((row) => row.id === lotId || row.slug === lotId);
-  const blocked = await requireAuctionRegistration(session.id, catalog?.eventId ?? null);
+  const blocked = await requireBidAuthorization(session.id, catalog?.eventId ?? null);
   if (blocked) return blocked;
   if (demo.status === "removed") {
     return NextResponse.json({ error: "This lot was removed from the sale." }, { status: 400 });
@@ -374,7 +372,7 @@ async function persistSupabase(
   if (lotError || !lot) {
     return NextResponse.json({ error: lotError?.message || "Lot not found" }, { status: 404 });
   }
-  const blocked = await requireAuctionRegistration(session.id, (lot.event_id as string | null) ?? null);
+  const blocked = await requireBidAuthorization(session.id, (lot.event_id as string | null) ?? null);
   if (blocked) return blocked;
   const resolvedId = String(lot.id);
   if (lot.status === "removed") {

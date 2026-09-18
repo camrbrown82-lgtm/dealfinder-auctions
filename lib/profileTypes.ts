@@ -19,11 +19,12 @@ export type BidderProfile = {
   preauthAmount: number;
   hasCardOnFile: boolean;
   preauthTermsAgreed: boolean;
+  trustedCashUser: boolean;
 };
 
 export type ProfileInput = Omit<
   BidderProfile,
-  "id" | "email" | "status" | "preauthStatus" | "preauthAmount" | "hasCardOnFile"
+  "id" | "email" | "status" | "preauthStatus" | "preauthAmount" | "hasCardOnFile" | "trustedCashUser"
 >;
 
 export function emptyProfileInput(): ProfileInput {

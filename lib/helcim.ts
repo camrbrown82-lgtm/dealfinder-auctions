@@ -15,6 +15,7 @@ export type HelcimSession = {
   bidderId: string;
   purpose: HelcimPurpose;
   lotId: string | null;
+  eventId?: string | null;
   amount: number;
   currency: string;
   invoiceNumber: string;
@@ -269,6 +270,7 @@ export async function readHelcimSession(checkoutToken: string): Promise<HelcimSe
     bidderId: String(data.bidder_id),
     purpose: data.purpose === "checkout_purchase" ? "checkout_purchase" : "bid_preauth",
     lotId: data.lot_id ? String(data.lot_id) : null,
+    eventId: data.event_id ? String(data.event_id) : null,
     amount: Number(data.amount),
     currency: String(data.currency || helcimCurrency()),
     invoiceNumber: String(data.invoice_number || ""),

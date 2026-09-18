@@ -87,6 +87,7 @@ export async function PATCH(request: NextRequest) {
           preauthAmount: Number(data.preauth_amount ?? session.preauthAmount) || session.preauthAmount,
           hasCardOnFile: Boolean(data.helcim_card_token),
           preauthTermsAgreed: patch.preauthTermsAgreed,
+          trustedCashUser: Boolean(data.trusted_cash_user) || session.trustedCashUser,
         },
       });
     }

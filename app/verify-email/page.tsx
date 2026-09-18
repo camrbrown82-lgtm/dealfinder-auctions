@@ -1,9 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@supabase/supabase-js";
+import { useBidder } from "@/components/BidderProvider";
 
 function browserAuth() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
@@ -14,34 +15,49 @@ function browserAuth() {
   });
 }
 
+function tokensFromLocation() {
+  const params = new URLSearchParams(window.location.search);
+  const hash = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+  return {
+    tokenHash: params.get("token_hash") || params.get("token") || hash.get("token_hash") || "",
+    type: params.get("type") || hash.get("type") || "signup",
+    accessToken: hash.get("access_token") || "",
+  };
+}
+
 export default function VerifyEmailPage() {
   const router = useRouter();
+  const { refresh } = useBidder();
   const [status, setStatus] = useState<"working" | "ok" | "pending" | "error">("working");
   const [message, setMessage] = useState("Confirming your email…");
   const [email, setEmail] = useState("");
   const [busy, setBusy] = useState(false);
+  const doneRef = useRef(false);
 
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const tokenHash = params.get("token_hash") || params.get("token") || "";
-    const type = params.get("type") || "signup";
     const supabase = browserAuth();
     let cancelled = false;
+    const { tokenHash, type, accessToken } = tokensFromLocation();
 
     async function finish(payload: { accessToken?: string; tokenHash?: string; type?: string }) {
+      if (doneRef.current || cancelled) return;
       const response = await fetch("/api/auth/verify", {
         method: "POST",
         credentials: "include",
+        cache: "no-store",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
       const json = await response.json();
-      if (cancelled) return;
+      if (cancelled || doneRef.current) return;
       if (!response.ok) {
         setStatus("pending");
         setMessage(json.error || "Check your inbox to verify your email.");
         return;
       }
+      doneRef.current = true;
+      await refresh();
+      window.dispatchEvent(new Event("dealfinder-auth"));
       setStatus("ok");
       setMessage("Email confirmed. Taking you to the live floor…");
       router.replace(json.redirect || "/live");
@@ -49,6 +65,13 @@ export default function VerifyEmailPage() {
 
     if (tokenHash) {
       void finish({ tokenHash, type });
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    if (accessToken) {
+      void finish({ accessToken });
       return () => {
         cancelled = true;
       };
@@ -77,7 +100,7 @@ export default function VerifyEmailPage() {
       cancelled = true;
       sub.subscription.unsubscribe();
     };
-  }, [router]);
+  }, [router, refresh]);
 
   async function resend() {
     setBusy(true);
@@ -88,6 +111,11 @@ export default function VerifyEmailPage() {
         body: JSON.stringify({ email }),
       });
       const json = await response.json();
+      if (json.alreadyVerified) {
+        setStatus("ok");
+        setMessage("This email is already verified. You can log in.");
+        return;
+      }
       if (!response.ok) throw new Error(json.error || "Could not resend.");
       setMessage("If that address is on file, we sent another DealFinder welcome with a Verify Account button.");
     } catch (error) {
@@ -104,7 +132,7 @@ export default function VerifyEmailPage() {
         <p className="font-display text-sm tracking-[0.3em] text-brand-red">CHECK YOUR INBOX</p>
         <h1 className="mt-2 font-display text-4xl leading-none text-brand-red">Verify your email</h1>
         <p className="mt-4 font-comic text-base">{message}</p>
-        {status !== "ok" && (
+        {status !== "ok" && status !== "working" && (
           <div className="mt-4 space-y-2 text-left">
             <label className="block font-comic text-sm font-bold">
               Email

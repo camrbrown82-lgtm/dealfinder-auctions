@@ -4,7 +4,24 @@ import { publicAppUrl } from "@/lib/appUrl";
 import { getSupabaseAuthClient } from "@/lib/supabaseClient";
 
 export function isAuthEmailConfirmed(user: User | null | undefined) {
-  return Boolean(user?.email_confirmed_at || user?.confirmed_at);
+  if (!user) return false;
+  const record = user as User & { confirmed_at?: string | null; email_confirmed_at?: string | null };
+  return Boolean(record.email_confirmed_at || record.confirmed_at);
+}
+
+export async function loadConfirmedAuthUser(supabase: SupabaseClient, userId: string) {
+  const current = await loadAuthUser(supabase, userId);
+  if (isAuthEmailConfirmed(current)) return current;
+  const { data, error } = await supabase.auth.admin.updateUserById(userId, { email_confirm: true });
+  if (error || !data.user) return current;
+  return data.user;
+}
+
+const OTP_TYPES: EmailOtpType[] = ["signup", "email", "magiclink", "invite", "recovery", "email_change"];
+
+export function otpTypesToTry(preferred?: string): EmailOtpType[] {
+  const first = otpType(preferred || "signup");
+  return [first, ...OTP_TYPES.filter((type) => type !== first)];
 }
 
 export function verifyEmailHref() {

@@ -38,6 +38,7 @@ export function setBidderCookie(response: NextResponse, userId: string) {
     sameSite: "lax",
     path: "/",
     maxAge: 60 * 60 * 24 * 30,
+    secure: process.env.NODE_ENV === "production",
   });
   return response;
 }
@@ -55,7 +56,7 @@ export async function getBidderSession(): Promise<BidderProfile | null> {
     const supabase = getSupabaseAdmin();
     if (supabase) {
       const authUser = await loadAuthUser(supabase, userId);
-      if (!isAuthEmailConfirmed(authUser)) return null;
+      if (!authUser || !isAuthEmailConfirmed(authUser)) return null;
       const { data, error } = await supabase
         .from("profiles")
         .select("*")
@@ -79,6 +80,7 @@ export async function getBidderSession(): Promise<BidderProfile | null> {
           preauthAmount: payment.preauthAmount || Number(data.preauth_amount ?? BID_PREAUTH_AMOUNT) || BID_PREAUTH_AMOUNT,
           hasCardOnFile: payment.hasCardOnFile,
           preauthTermsAgreed: agreed || Boolean(data.preauth_terms_agreed_at),
+          trustedCashUser: Boolean(data.trusted_cash_user),
         };
       }
     }

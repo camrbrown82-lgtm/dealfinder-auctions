@@ -2,6 +2,7 @@
 
 import { useAdminDesk } from "@/components/admin/AdminDesk";
 import { AdminShell } from "@/components/admin/AdminShell";
+import { CashAuthDesk } from "@/components/admin/CashAuthDesk";
 import { CustomerDesk } from "@/components/admin/CustomerDesk";
 
 export default function AdminCustomersPage() {
@@ -9,9 +10,12 @@ export default function AdminCustomersPage() {
   return (
     <AdminShell
       title="Customer directory"
-      subtitle="Bidder accounts, standing, and $50 pre-auth flags."
+      subtitle="Bidder accounts, cash bidding requests, and $50 pre-auth flags."
     >
-      <CustomerDesk onNotice={setNotice} />
+      <div className="space-y-8">
+        <CashAuthDesk onNotice={setNotice} />
+        <CustomerDesk onNotice={setNotice} />
+      </div>
     </AdminShell>
   );
 }
