@@ -58,7 +58,11 @@ export function CustomerDesk({ onNotice }: { onNotice: (message: string) => void
       onNotice(json.error || "Could not send reset.");
       return;
     }
-    onNotice(`Reset / alert queued for ${row.email}`);
+    onNotice(
+      json.devResetUrl
+        ? `Reset email queued for ${row.email}. Demo link: ${json.devResetUrl}`
+        : `Reset email sent to ${row.email}`,
+    );
   }
 
   return (
@@ -66,7 +70,7 @@ export function CustomerDesk({ onNotice }: { onNotice: (message: string) => void
       <div className="comic-panel p-4">
         <h2 className="font-display text-2xl text-brand-red sm:text-4xl">Customer management</h2>
         <p className="font-comic text-sm">
-          Suspended paddles are blocked on Place Bid. Reset queues a recovery alert.
+          Suspended paddles are blocked on Place Bid. Reset emails a one-hour password link.
         </p>
       </div>
       <div className="flex flex-wrap gap-2">
@@ -134,7 +138,7 @@ export function CustomerDesk({ onNotice }: { onNotice: (message: string) => void
                       className="comic-btn-invert !text-sm"
                       onClick={() => void reset(row)}
                     >
-                      Reset Password / Send Alert
+                      Email password reset
                     </button>
                   </div>
                 </td>

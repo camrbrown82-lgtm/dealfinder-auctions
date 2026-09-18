@@ -82,15 +82,15 @@ DealFinder Auctions`,
   },
   {
     id: "password_reset",
-    name: "Password Reset / Staff Alert",
+    name: "Password Reset",
     subject: "Reset your DealFinder paddle password",
     body: `{{customer_name}},
 
-Staff requested a password reset for this paddle.
+Use this link to set a new DealFinder paddle password. It expires in one hour.
 
-Set a new password: {{payment_link}}
+{{payment_link}}
 
-If you did not ask for this, tell the desk.
+If you did not ask for this, ignore the email — your password stays the same.
 
 DealFinder Auctions`,
   },

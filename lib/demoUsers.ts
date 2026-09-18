@@ -144,6 +144,14 @@ export function setDemoUserStatus(id: string, status: AccountStatus) {
   return next;
 }
 
+export function setDemoUserPassword(id: string, password: string) {
+  const current = store().get(id);
+  if (!current) return null;
+  const next = { ...current, passwordHash: hashPassword(password) };
+  store().set(id, next);
+  return next;
+}
+
 export function ensureSeedBidders() {
   if (store().size > 0) return;
   const sample = [

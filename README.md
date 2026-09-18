@@ -38,6 +38,26 @@ Copy `.env.example` to `.env.local` and fill the Helcim block. On Vercel, add th
 
 Without Supabase keys the UI runs in demo mode (in-memory mock lots).
 
+### Forgot password
+
+Log in → **Forgot password?** sends the `password_reset` template (Resend when `RESEND_API_KEY` is set). The link opens `/reset-password` and expires in one hour. Without Resend, the link is stored in the admin demo outbox and shown on this machine so you can still test the flow.
+
+Set `NEXT_PUBLIC_SITE_URL` to the public domain so emails do not point at localhost.
+
+### Run SQL from this repo
+
+Copy `.env.example` to `.env.local` and paste the Supabase URL, anon key, service role key, and `DATABASE_URL` (Project Settings → Database → URI). Then:
+
+```bash
+npm run sql -- ping
+npm run sql -- --from profiles --limit 5
+npm run sql -- supabase/sql-editor-password-reset.sql
+npm run sql -- supabase/sql-editor-helcim.sql
+npm run sql -- -c "select count(*) from public.profiles"
+```
+
+`ping` and `--from` use the service role over HTTPS. File / `-c` queries need `DATABASE_URL`.
+
 ### Helcim SQL editor queries
 
 Paste `supabase/sql-editor-helcim.sql` into the Supabase SQL editor.
@@ -60,4 +80,4 @@ Paste `supabase/sql-editor-helcim.sql` into the Supabase SQL editor.
 - 2026-09-03 — Prompt 4: auction lots get a red/cream comic room, bids-table realtime, +2:00 anti-snipe in the last two minutes, and live vs absentee max auto-increment bidding.
 - 2026-09-03 — Prompt 5: password-gated admin desk with AI queue edits, auction event scheduler, inventory search/removal/bulk seed, and consignor payout report.
 - 2026-09-15 — Helcim card checkout everywhere payments were prompted; $50 bid pre-auth with disclaimer; cash and e-Transfer removed; hold released after hammer checkout.
-- 2026-09-15 — Sunday-only $50 pre-auth: checkbox agreement at bid time, hold on auction-end day, denied hold or checkout forfeits the paddle.
+- 2026-09-18 — Login forgot-password emails a one-hour reset link; SQL runner talks to Supabase from this machine.

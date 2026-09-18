@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start -H 0.0.0.0 -p 43173",
     "lint": "next lint",
-    "import-customers": "npx --yes tsx scripts/import-customers.ts"
+    "import-customers": "npx --yes tsx scripts/import-customers.ts",
+    "sql": "npx --yes tsx scripts/run-sql.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.4",
@@ -15,11 +16,13 @@
     "openai": "^4.67.3",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
+    "pg": "^8.13.1",
     "resend": "^6.26.0"
   },
   "devDependencies": {
     "@types/node": "^20.16.11",
     "@types/react": "^18.3.11",
+    "@types/pg": "^8.11.10",
     "@types/react-dom": "^18.3.1",
     "autoprefixer": "^10.4.20",
     "postcss": "^8.4.47",
