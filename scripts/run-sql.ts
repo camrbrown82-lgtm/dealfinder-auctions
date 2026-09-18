@@ -172,7 +172,11 @@ async function execSql(sql: string) {
     );
   }
   const client = new pg.Client({
-    connectionString,
+    connectionString: connectionString
+      .replace(/[?&]sslmode=[^&]*/gi, "")
+      .replace(/[?&]uselibpqcompat=[^&]*/gi, "")
+      .replace(/\?&/, "?")
+      .replace(/[?&]$/, ""),
     ssl: { rejectUnauthorized: false },
   });
   await client.connect();
