@@ -4,6 +4,8 @@ import { fetchLiveCatalog } from "@/lib/lots";
 import { pickSaleWindow } from "@/lib/liveSales";
 
 export const dynamic = "force-dynamic";
+export const fetchCache = "force-no-store";
+export const revalidate = 0;
 
 export default async function LiveAuctionsPage() {
   const catalog = await fetchLiveCatalog();

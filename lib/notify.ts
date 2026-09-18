@@ -48,15 +48,16 @@ ${ship ? "" : `<p>${escapeHtml(PICKUP_INSTRUCTIONS)}</p>`}
 }
 
 export async function sendWelcomeEmail(to: string, name: string) {
+  const live = `${publicAppUrl()}/live`;
   return sendTransactionalEmail({
     templateId: "welcome",
     to,
     vars: {
       customer_name: name || "Bidder",
-      item_title: "the floor",
+      item_title: "",
       winning_bid: "",
-      payment_link: `${publicAppUrl()}/live`,
-      lot_link: `${publicAppUrl()}/live`,
+      payment_link: live,
+      lot_link: live,
     },
   });
 }

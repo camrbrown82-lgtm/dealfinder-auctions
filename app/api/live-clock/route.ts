@@ -1,10 +1,14 @@
 import { NextResponse } from "next/server";
 import { fetchLiveCatalog } from "@/lib/lots";
+import { pickSaleWindow } from "@/lib/liveSales";
+import { isSupabaseConfigured } from "@/lib/supabaseClient";
 import { isAuctionEndDay } from "@/lib/auctionEndDay";
 import { runSundayPreauthSweep } from "@/lib/sundayPreauth";
 import { closeEndedSoldLots } from "@/lib/closeEndedLots";
 
 export const dynamic = "force-dynamic";
+export const fetchCache = "force-no-store";
+export const revalidate = 0;
 
 declare global {
   // eslint-disable-next-line no-var
@@ -21,15 +25,16 @@ export async function GET() {
     }
   }
   const catalog = await fetchLiveCatalog();
+  const sales = pickSaleWindow(catalog.events);
+  const supabaseHost = (process.env.NEXT_PUBLIC_SUPABASE_URL || "")
+    .replace(/^https?:\/\//, "")
+    .split("/")[0];
   return NextResponse.json(
     {
-      lots: catalog.lots.map((lot) => ({
-        id: lot.id,
-        currentBid: lot.currentBid,
-        endsAt: lot.endsAt,
-        highBidder: lot.highBidder ?? null,
-        status: lot.status ?? "live",
-      })),
+      source: isSupabaseConfigured ? "supabase" : "demo",
+      supabaseHost,
+      lots: catalog.lots,
+      sales,
       floor: catalog.floor ?? null,
     },
     { headers: { "Cache-Control": "no-store" } },

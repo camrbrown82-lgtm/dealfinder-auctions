@@ -35,6 +35,7 @@ export function AuthModal({
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [completing, setCompleting] = useState(false);
+  const [needsVerification, setNeedsVerification] = useState(false);
   const router = useRouter();
 
   function goHome() {
@@ -75,6 +76,11 @@ export function AuthModal({
           body: JSON.stringify({ email, password }),
         });
         const json = await response.json();
+        if (json.needsVerification) {
+          setNeedsVerification(true);
+          setError(json.error || "Check your inbox to verify your email.");
+          return;
+        }
         if (!response.ok) throw new Error(json.error || "Could not log in.");
         const me = await fetch("/api/auth", { credentials: "include" }).then((r) => r.json());
         if (!me.user) throw new Error("Session missing after login.");
@@ -105,6 +111,11 @@ export function AuthModal({
         body: JSON.stringify({ email, password, ...profile }),
       });
       const json = await response.json();
+      if (json.needsVerification) {
+        setNeedsVerification(true);
+        setError("Check your inbox to verify your email before you can bid.");
+        return;
+      }
       if (!response.ok) throw new Error(json.error || "Could not sign up.");
       const me = await fetch("/api/auth", { credentials: "include" }).then((r) => r.json());
       if (!me.user) throw new Error("Session missing after signup.");
@@ -146,12 +157,54 @@ export function AuthModal({
         </div>
 
         <form onSubmit={onSubmit} className="space-y-3 p-4">
+          {needsVerification ? (
+            <div className="space-y-3">
+              <p className="border-4 border-black bg-white px-3 py-2 font-comic text-sm font-bold">
+                Check your inbox to verify your email before you can use this paddle. Nothing is charged for signing up.
+              </p>
+              {error && (
+                <p className="border-4 border-black bg-white px-3 py-2 font-comic text-sm font-bold text-[#FF0000]">
+                  {error}
+                </p>
+              )}
+              <button
+                type="button"
+                className="comic-btn"
+                disabled={busy || !email}
+                onClick={async () => {
+                  setBusy(true);
+                  setError(null);
+                  try {
+                    const response = await fetch("/api/auth", {
+                      method: "PATCH",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ email }),
+                    });
+                    const json = await response.json();
+                    if (!response.ok) throw new Error(json.error || "Could not resend.");
+                    setError("We sent another confirmation link.");
+                  } catch (err) {
+                    setError(err instanceof Error ? err.message : "Could not resend.");
+                  } finally {
+                    setBusy(false);
+                  }
+                }}
+              >
+                {busy ? "Sending…" : "Resend confirmation"}
+              </button>
+              <button type="button" className="comic-btn-invert" onClick={onClose}>
+                Keep browsing
+              </button>
+            </div>
+          ) : (
+            <>
           <div className="flex gap-2">
             <button
               type="button"
               className={mode === "login" ? "comic-btn !text-base" : "comic-btn-invert !text-base"}
               onClick={() => {
                 setCompleting(false);
+                setNeedsVerification(false);
                 onMode("login");
               }}
             >
@@ -160,7 +213,10 @@ export function AuthModal({
             <button
               type="button"
               className={mode === "signup" ? "comic-btn !text-base" : "comic-btn-invert !text-base"}
-              onClick={() => onMode("signup")}
+              onClick={() => {
+                setNeedsVerification(false);
+                onMode("signup");
+              }}
             >
               Sign Up
             </button>
@@ -224,6 +280,8 @@ export function AuthModal({
               Keep browsing
             </button>
           </div>
+            </>
+          )}
         </form>
       </div>
     </div>

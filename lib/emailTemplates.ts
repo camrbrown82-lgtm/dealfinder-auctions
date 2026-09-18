@@ -79,9 +79,13 @@ DealFinder Auctions`,
     subject: "You're on the floor — DealFinder Auctions",
     body: `Hey {{customer_name}},
 
-Your bidder card is live. Browse lots, drop a paddle, and keep an eye on the clock.
+Welcome to DealFinder Auctions. Your account is created.
 
-If we need a payment, Helcim checkout is here: {{payment_link}}
+Confirm your email if we sent a verification link, then browse live lots and bid when you are ready.
+
+Nothing is charged for signing up.
+
+Live lots: {{lot_link}}
 
 DealFinder Auctions`,
   },
@@ -128,12 +132,16 @@ export function mergeEmailTemplates(
   const byId = new Map(rows.map((row) => [row.id, row]));
   const merged = DEFAULT_EMAIL_TEMPLATES.map((base) => {
     const row = byId.get(base.id);
+    const body =
+      row && !(base.id === "welcome" && /helcim|payment_link|checkout/i.test(row.body))
+        ? row.body
+        : base.body;
     return row
       ? {
           id: base.id,
           name: row.name?.trim() || base.name,
-          subject: row.subject,
-          body: row.body,
+          subject: base.id === "welcome" ? base.subject : row.subject,
+          body,
         }
       : { ...base };
   });

@@ -13,9 +13,63 @@ import {
 import { normalizePaymentMethod, type PaymentMethod } from "@/lib/profileTypes";
 import { persistTermsAgreement } from "@/lib/helcim";
 import { sendWelcomeEmail } from "@/lib/notify";
+import {
+  isAuthEmailConfirmed,
+  markWelcomeSent,
+  verifyEmailHref,
+  welcomeAlreadySent,
+} from "@/lib/authEmail";
 import { getSupabaseAdmin, getSupabaseAuthClient, isSupabaseConfigured } from "@/lib/supabaseClient";
 
-export const dynamic = "force-dynamic";
+function verificationResponse() {
+  return NextResponse.json(
+    {
+      error: "Check your inbox to verify your email before you can use this paddle.",
+      needsVerification: true,
+      verifyHref: verifyEmailHref(),
+    },
+    { status: 403 },
+  );
+}
+
+async function upsertBidderProfile(
+  supabase: NonNullable<ReturnType<typeof getSupabaseAdmin>>,
+  userId: string,
+  email: string,
+  fields: ReturnType<typeof profileFields>,
+) {
+  const row = {
+    id: userId,
+    email,
+    full_name: fields.fullName,
+    phone: fields.phone,
+    street: fields.street,
+    city: fields.city,
+    province: fields.province,
+    postal_code: fields.postalCode.toUpperCase(),
+    payment_method: fields.paymentMethod,
+    preauth_status: "none",
+    preauth_amount: 50,
+    preauth_terms_agreed_at: fields.preauthTermsAgreed ? new Date().toISOString() : null,
+  };
+  let { error } = await supabase.from("profiles").upsert(row);
+  if (error && /payment_method|preauth|enum|column|schema/i.test(error.message)) {
+    const { preauth_status: _s, preauth_amount: _a, payment_method: _m, ...legacy } = row;
+    ({ error } = await supabase.from("profiles").upsert(legacy));
+  }
+  return error;
+}
+
+async function sendWelcomeOnce(
+  supabase: NonNullable<ReturnType<typeof getSupabaseAdmin>>,
+  userId: string,
+  email: string,
+  name: string,
+) {
+  if (await welcomeAlreadySent(supabase, userId)) return;
+  await sendWelcomeEmail(email, name);
+  await markWelcomeSent(supabase, userId);
+}
 
 type AuthBody = {
   email?: string;
@@ -63,9 +117,22 @@ export async function POST(request: NextRequest) {
     if (authClient) {
       const { data, error } = await authClient.auth.signInWithPassword({ email, password });
       if (error || !data.user) {
+        const pending = /email not confirmed|confirm your email|not verified/i.test(error?.message ?? "");
+        if (pending) return verificationResponse();
         return NextResponse.json(
           { error: error?.message || "Could not log in." },
           { status: 401 },
+        );
+      }
+      if (!isAuthEmailConfirmed(data.user)) return verificationResponse();
+      const admin = getSupabaseAdmin();
+      if (admin) {
+        const profile = await admin.from("profiles").select("full_name").eq("id", data.user.id).maybeSingle();
+        await sendWelcomeOnce(
+          admin,
+          data.user.id,
+          email,
+          String(profile.data?.full_name || data.user.user_metadata?.full_name || email),
         );
       }
       const response = NextResponse.json({ ok: true });
@@ -109,50 +176,46 @@ export async function PUT(request: NextRequest) {
 
   if (isSupabaseConfigured) {
     const supabase = getSupabaseAdmin();
-    if (supabase) {
-      const created = await supabase.auth.admin.createUser({
+    const authClient = getSupabaseAuthClient();
+    if (supabase && authClient) {
+      const created = await authClient.auth.signUp({
         email,
         password,
-        email_confirm: true,
-        user_metadata: { full_name: fields.fullName },
+        options: {
+          data: { full_name: fields.fullName },
+          emailRedirectTo: verifyEmailHref(),
+        },
       });
       if (created.error || !created.data.user) {
-        const duplicate = /already/i.test(created.error?.message ?? "");
-        if (duplicate) {
-          return NextResponse.json(
-            { error: created.error?.message || "Could not sign up." },
-            { status: 400 },
-          );
-        }
-      } else {
-        const userId = created.data.user.id;
-        const row = {
-          id: userId,
-          email,
-          full_name: fields.fullName,
-          phone: fields.phone,
-          street: fields.street,
-          city: fields.city,
-          province: fields.province,
-          postal_code: fields.postalCode.toUpperCase(),
-          payment_method: fields.paymentMethod,
-          preauth_status: "none",
-          preauth_amount: 50,
-          preauth_terms_agreed_at: fields.preauthTermsAgreed ? new Date().toISOString() : null,
-        };
-        let { error } = await supabase.from("profiles").upsert(row);
-        if (error && /payment_method|preauth|enum|column|schema/i.test(error.message)) {
-          const { preauth_status: _s, preauth_amount: _a, payment_method: _m, ...legacy } = row;
-          ({ error } = await supabase.from("profiles").upsert(legacy));
-        }
-        if (error) {
-          return NextResponse.json({ error: error.message }, { status: 400 });
-        }
-        await persistTermsAgreement(userId, fields.preauthTermsAgreed);
-        void sendWelcomeEmail(email, fields.fullName);
-        const response = NextResponse.json({ ok: true });
+        return NextResponse.json(
+          { error: created.error?.message || "Could not sign up." },
+          { status: 400 },
+        );
+      }
+      if ((created.data.user.identities ?? []).length === 0) {
+        return NextResponse.json(
+          { error: "An account with that email already exists. Log in, or check your inbox to verify." },
+          { status: 400 },
+        );
+      }
+      const userId = created.data.user.id;
+      const error = await upsertBidderProfile(supabase, userId, email, fields);
+      if (error) {
+        return NextResponse.json({ error: error.message }, { status: 400 });
+      }
+      await persistTermsAgreement(userId, fields.preauthTermsAgreed);
+
+      if (isAuthEmailConfirmed(created.data.user) && created.data.session) {
+        await sendWelcomeOnce(supabase, userId, email, fields.fullName);
+        const response = NextResponse.json({ ok: true, verified: true });
         return setBidderCookie(response, userId);
       }
+
+      return NextResponse.json({
+        ok: true,
+        needsVerification: true,
+        verifyHref: verifyEmailHref(),
+      });
     }
   }
 
@@ -171,6 +234,27 @@ export async function PUT(request: NextRequest) {
       { status: 400 },
     );
   }
+}
+
+export async function PATCH(request: NextRequest) {
+  const body = (await request.json()) as { email?: string; action?: string };
+  const email = String(body.email ?? "").trim().toLowerCase();
+  if (!email) {
+    return NextResponse.json({ error: "Email is required." }, { status: 400 });
+  }
+  const authClient = getSupabaseAuthClient();
+  if (!authClient) {
+    return NextResponse.json({ error: "Auth is not configured." }, { status: 400 });
+  }
+  const { error } = await authClient.auth.resend({
+    type: "signup",
+    email,
+    options: { emailRedirectTo: verifyEmailHref() },
+  });
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 400 });
+  }
+  return NextResponse.json({ ok: true, needsVerification: true });
 }
 
 export async function DELETE() {

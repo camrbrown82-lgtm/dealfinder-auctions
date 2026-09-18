@@ -25,7 +25,9 @@ export function getSupabaseClient(): SupabaseClient {
     );
   }
 
-  return createClient(url, anonKey);
+  return createClient(url, anonKey, {
+    global: { fetch: (input, init) => fetch(input, { ...init, cache: "no-store" }) },
+  });
 }
 
 export function getSupabaseAuthClient(): SupabaseClient | null {
@@ -34,12 +36,16 @@ export function getSupabaseAuthClient(): SupabaseClient | null {
   if (!url || !anonKey) return null;
   return createClient(url, anonKey, {
     auth: { persistSession: false, autoRefreshToken: false },
+    global: { fetch: (input, init) => fetch(input, { ...init, cache: "no-store" }) },
   });
 }
 
 export function getSupabaseAdmin(): SupabaseClient | null {
   const url = publicUrl();
-  const key = serviceRoleKey() || publicAnonKey();
+  const key = serviceRoleKey();
   if (!url || !key) return null;
-  return createClient(url, key, { auth: { persistSession: false } });
+  return createClient(url, key, {
+    auth: { persistSession: false },
+    global: { fetch: (input, init) => fetch(input, { ...init, cache: "no-store" }) },
+  });
 }

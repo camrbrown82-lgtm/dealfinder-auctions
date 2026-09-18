@@ -328,6 +328,7 @@ type AdminBody = {
   relist?: boolean;
   lotIds?: string[];
   lotStart?: string | number;
+  purgeTestData?: boolean;
 };
 
 function collectLotIds(body: AdminBody) {
@@ -368,6 +369,48 @@ export async function POST(request: NextRequest) {
   if (body.action === "seed") {
     const seeded = seedDemoLots();
     return NextResponse.json({ ok: true, seeded });
+  }
+
+  if (body.action === "purge-test-data") {
+    const removed: Record<string, number> = {};
+    if (isSupabaseConfigured && supabase) {
+      const tables = [
+        "bids",
+        "absentee_bids",
+        "auction_registrations",
+        "lots",
+        "consignments",
+        "auction_events",
+        "settlement_invoices",
+        "settlement_archives",
+        "helcim_sessions",
+        "helcim_transactions",
+        "profiles",
+      ];
+      for (const table of tables) {
+        const { data: rows } = await supabase.from(table).select("*");
+        const ids = (rows ?? []).map((row) => row.id ?? row.checkout_token ?? row.invoice_number).filter(Boolean);
+        if (ids.length && rows?.[0] && "id" in (rows[0] as object)) {
+          await supabase.from(table).delete().in("id", ids);
+        } else if (table === "helcim_sessions" && ids.length) {
+          await supabase.from(table).delete().in("checkout_token", ids);
+        } else if (ids.length) {
+          await supabase.from(table).delete().in("invoice_number", ids);
+        }
+        const leftover = await supabase.from(table).select("*");
+        removed[table] = leftover.data?.length ?? leftover.error?.message?.length ?? 0;
+      }
+      const listed = await supabase.auth.admin.listUsers({ perPage: 200 });
+      for (const user of listed.data?.users ?? []) {
+        await supabase.auth.admin.deleteUser(user.id);
+      }
+      await supabase.from("house_desk_settings").update({ next_lot_seq: 1 }).eq("id", 1);
+    }
+    const demoStore = getAdminDemo();
+    demoStore.inventory = [];
+    demoStore.queue = [];
+    demoStore.events = [];
+    return NextResponse.json({ ok: true, remaining: removed, source: isSupabaseConfigured ? "supabase" : "demo" });
   }
 
   if (body.action === "saveHouseSettings") {

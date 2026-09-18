@@ -5,6 +5,7 @@ import { getDemoUser, publicProfile } from "@/lib/demoUsers";
 import { normalizePaymentMethod, type BidderProfile } from "@/lib/profileTypes";
 import { BID_PREAUTH_AMOUNT } from "@/lib/helcimCopy";
 import { loadBidderPayment, loadTermsAgreed } from "@/lib/helcim";
+import { isAuthEmailConfirmed, loadAuthUser } from "@/lib/authEmail";
 import { getSupabaseAdmin, isSupabaseConfigured } from "@/lib/supabaseClient";
 
 export const BIDDER_COOKIE = "df_bidder";
@@ -53,6 +54,8 @@ export async function getBidderSession(): Promise<BidderProfile | null> {
   if (isSupabaseConfigured) {
     const supabase = getSupabaseAdmin();
     if (supabase) {
+      const authUser = await loadAuthUser(supabase, userId);
+      if (!isAuthEmailConfirmed(authUser)) return null;
       const { data, error } = await supabase
         .from("profiles")
         .select("*")

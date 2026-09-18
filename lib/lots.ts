@@ -8,6 +8,7 @@ import { MOCK_LOTS, getLotById, filterLots, lotImages, uniqueImageUrls, type Auc
 import { ensureWeeklySales } from "@/lib/weeklySales";
 
 function withGallery(lot: AuctionLot): AuctionLot {
+  if (isSupabaseConfigured) return lot;
   if (lotImages(lot).length > 1) return lot;
   const mock = MOCK_LOTS.find(
     (row) => row.id === lot.id || row.slug === lot.slug || row.slug === lot.id || row.id === lot.slug,
