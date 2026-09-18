@@ -20,7 +20,7 @@ type BidderContextValue = {
   ready: boolean;
   refresh: () => Promise<BidderProfile | null>;
   logout: () => Promise<void>;
-  requestAuth: (after?: () => void | Promise<void>, mode?: AuthMode) => void;
+  requestAuth: (after?: () => void | Promise<void>, mode?: AuthMode, resumeBid?: boolean) => void;
 };
 
 const BidderContext = createContext<BidderContextValue | null>(null);
@@ -52,9 +52,9 @@ export function BidderProvider({ children }: { children: ReactNode }) {
     void refresh();
   }, [refresh]);
 
-  const requestAuth = useCallback((after?: () => void | Promise<void>, preferred?: AuthMode) => {
+  const requestAuth = useCallback((after?: () => void | Promise<void>, preferred?: AuthMode, asBid?: boolean) => {
     pendingRef.current = after ?? null;
-    setResumeBid(Boolean(after));
+    setResumeBid(asBid ?? Boolean(after));
     setMode(preferred ?? "signup");
     setModalOpen(true);
   }, []);

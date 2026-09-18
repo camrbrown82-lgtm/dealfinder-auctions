@@ -21,7 +21,7 @@ export function ConsignLink({
     }
     requestAuth(() => {
       router.push("/consignor");
-    }, "login");
+    }, "login", false);
   }
 
   return (
