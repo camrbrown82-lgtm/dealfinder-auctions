@@ -64,8 +64,8 @@ export function AuctionRoom({ lot }: { lot: AuctionLot }) {
   const ensureBidRef = useRef<() => Promise<void>>(async () => undefined);
 
   const nextBid = useMemo(
-    () => nextLiveAmount(currentBid, lot.minIncrement),
-    [currentBid, lot.minIncrement],
+    () => nextLiveAmount(currentBid, lot.minIncrement, highBidder || highBidderId),
+    [currentBid, lot.minIncrement, highBidder, highBidderId],
   );
   const extras = extraLotImages(lot);
   const hasWinner = Boolean(highBidder || highBidderId);
@@ -572,8 +572,10 @@ export function AuctionRoom({ lot }: { lot: AuctionLot }) {
 
         {mode === "live" ? (
           <p className="font-comic text-sm">
-            Next live paddle: <strong>{formatCurrency(nextBid)}</strong> (+
-            {formatCurrency(lot.minIncrement)})
+            Next live paddle: <strong>{formatCurrency(nextBid)}</strong>
+            {highBidder || highBidderId
+              ? ` (+${formatCurrency(lot.minIncrement)})`
+              : " (starting price)"}
           </p>
         ) : (
           <label className="block font-comic text-sm font-bold">

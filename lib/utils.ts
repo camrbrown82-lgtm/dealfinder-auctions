@@ -314,7 +314,8 @@ export function formatCurrency(amount: number, currency = "CAD") {
   }).format(amount);
 }
 
-export function nextBidAmount(currentBid: number, minIncrement: number) {
+export function nextBidAmount(currentBid: number, minIncrement: number, highBidder?: string | null) {
+  if (!highBidder) return currentBid > 0 ? currentBid : minIncrement;
   return currentBid + minIncrement;
 }
 
