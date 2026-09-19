@@ -26,7 +26,7 @@ export function BidPaymentModal({
   useEffect(() => {
     if (!open) return;
     function onKey(event: KeyboardEvent) {
-      if (event.key === "Escape" && !busy) onClose();
+      if (event.key === "Escape") onClose();
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -52,7 +52,6 @@ export function BidPaymentModal({
           <button
             type="button"
             onClick={onClose}
-            disabled={busy}
             className="comic-btn-invert shrink-0 !px-3 !py-1 !text-3xl leading-none"
             aria-label="Back to the bidding floor"
           >
@@ -67,8 +66,8 @@ export function BidPaymentModal({
           <p className="border-4 border-black bg-white px-3 py-2">{PREAUTH_DISCLAIMER}</p>
           {pendingCash ? (
             <p className="border-4 border-black bg-brand-cream px-3 py-2 font-bold">
-              Cash pickup is waiting on desk approval. You cannot bid until staff approve this
-              auction (or mark you as a trusted cash bidder).
+              Cash-on-pickup is with the desk. Closing this window does not cancel that request.
+              Keep browsing; you can bid after staff approve this auction.
             </p>
           ) : null}
           {error ? (
@@ -86,10 +85,10 @@ export function BidPaymentModal({
               {busy ? "Working…" : `Authorize ${formatCurrency(BID_PREAUTH_AMOUNT)} card hold`}
             </button>
             <button type="button" className="comic-btn-invert" disabled={busy || pendingCash} onClick={onCash}>
-              Request cash on pickup
+              {busy ? "Sending request…" : "Request cash on pickup"}
             </button>
-            <button type="button" className="comic-btn-invert" disabled={busy} onClick={onClose}>
-              {pendingCash ? "Back to the floor" : "Not now"}
+            <button type="button" className="comic-btn-invert" onClick={onClose}>
+              Back to the floor
             </button>
           </div>
         </div>

@@ -194,11 +194,7 @@ async function persistAuth(
   };
   let { error } = await supabase.from("auction_registrations").upsert(payload, { onConflict: "user_id,event_id" });
   if (error && /payment_method|auth_status/i.test(error.message)) {
-    const { payment_method: _p, auth_status: _a, ...rest } = payload;
-    ({ error } = await supabase.from("auction_registrations").upsert(rest, { onConflict: "user_id,event_id" }));
-  }
-  if (error && /auction_registrations|schema cache|does not exist/i.test(error.message)) {
-    return row;
+    throw new Error("Cash pickup requests need payment columns on auction_registrations. Run the Helcim SQL in Supabase.");
   }
   if (error) throw new Error(error.message);
   return row;

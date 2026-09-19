@@ -177,12 +177,17 @@ export function HelcimPayModal({
           window.removeEventListener("message", onMessage);
           destroyHelcimIframe();
           setBusy(false);
-          setMessage(String(event.data.eventMessage || "Card was declined."));
-          onDeclinedRef.current?.();
+          if (purpose === "checkout_purchase") {
+            setMessage(String(event.data.eventMessage || "Card was declined."));
+            onDeclinedRef.current?.();
+          } else {
+            onClose();
+          }
         } else if (event.data.eventStatus === "HIDE") {
           window.removeEventListener("message", onMessage);
           destroyHelcimIframe();
           setBusy(false);
+          onClose();
         }
       };
       window.addEventListener("message", onMessage);
@@ -292,13 +297,12 @@ export function HelcimPayModal({
             <button
               type="button"
               className="comic-btn-invert"
-              disabled={busy}
               onClick={() => {
                 destroyHelcimIframe();
                 onClose();
               }}
             >
-              Cancel
+              Back to the floor
             </button>
           </div>
         </div>

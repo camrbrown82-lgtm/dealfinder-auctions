@@ -413,15 +413,15 @@ export function AuctionRoom({ lot }: { lot: AuctionLot }) {
       if (!response.ok) throw new Error(json.error || "Could not request cash approval.");
       setAuthorized(Boolean(json.authorized));
       setAuthStatus(String(json.authStatus || "pending"));
-      setPayOpen(false);
       setPayError(null);
       if (json.authorized) {
+        setPayOpen(false);
         await refresh();
         await placeBid();
         return;
       }
       setMessage(
-        "Cash-on-pickup is with the desk. Keep browsing — you can bid after they approve this auction.",
+        "Cash-on-pickup is with the desk. Close this window to keep browsing — that does not cancel the request.",
       );
     } catch (error) {
       setPayError(error instanceof Error ? error.message : "Could not request cash approval.");
@@ -636,7 +636,10 @@ export function AuctionRoom({ lot }: { lot: AuctionLot }) {
         open={helcimOpen}
         purpose="bid_preauth"
         eventId={lot.eventId ?? undefined}
-        onClose={() => setHelcimOpen(false)}
+        onClose={() => {
+          setHelcimOpen(false);
+          setPayOpen(true);
+        }}
         onComplete={async () => {
           setHelcimOpen(false);
           setAuthorized(true);
