@@ -155,6 +155,42 @@ Review and approve or reject: {{payment_link}}
 
 DealFinder Auctions`,
   },
+  {
+    id: "cash_bid_received",
+    name: "Cash Bid Request Received",
+    subject: "Cash pickup bidding is with the desk — {{item_title}}",
+    body: `Hi {{customer_name}},
+
+DealFinder received your cash-on-pickup request for {{item_title}}. The desk still has to approve it. We will email you when you can bid.
+
+Browse live lots: {{lot_link}}
+
+DealFinder Auctions`,
+  },
+  {
+    id: "cash_bid_approved",
+    name: "Cash Bid Approved",
+    subject: "You can bid with cash pickup — {{item_title}}",
+    body: `Hi {{customer_name}},
+
+You are approved to bid with cash on pickup for {{item_title}}. Open the lot and place your bid. Pay in cash when you pick up after the sale.
+
+Live lots: {{lot_link}}
+
+DealFinder Auctions`,
+  },
+  {
+    id: "cash_bid_rejected",
+    name: "Cash Bid Rejected",
+    subject: "Cash pickup bidding was not approved — {{item_title}}",
+    body: `Hi {{customer_name}},
+
+The desk did not approve cash-on-pickup bidding for {{item_title}}. You can still bid by authorizing the $50 Helcim card hold.
+
+Live lots: {{lot_link}}
+
+DealFinder Auctions`,
+  },
 ];
 
 export function slugifyTemplateId(name: string) {

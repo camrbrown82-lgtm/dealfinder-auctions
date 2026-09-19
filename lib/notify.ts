@@ -371,7 +371,7 @@ export async function sendCashBidAuthEmail(input: {
   eventId: string;
   requestedAt: string;
 }) {
-  const desk = `${publicAppUrl()}/admin/customers`;
+  const desk = `${publicAppUrl()}/admin`;
   const to = adminNotifyEmail();
   const when = new Date(input.requestedAt).toLocaleString("en-CA", { timeZone: "America/Edmonton" });
   return sendTransactionalEmail({
@@ -390,6 +390,81 @@ export async function sendCashBidAuthEmail(input: {
     htmlOverride: `<p><strong>${escapeHtml(input.name)}</strong> (${escapeHtml(input.email)}) asked to bid with cash on pickup.</p>
 <p>Auction: <strong>${escapeHtml(input.auctionLabel)}</strong><br/>Requested: ${escapeHtml(when)}</p>
 <p><a href="${escapeHtml(desk)}" style="color:#111111;font-weight:bold;">Open cash bidding queue</a></p>`,
+  });
+}
+
+export async function sendCashBidReceivedEmail(input: {
+  to: string;
+  name: string;
+  auctionLabel: string;
+}) {
+  const live = `${publicAppUrl()}/live`;
+  return sendTransactionalEmail({
+    templateId: "cash_bid_received",
+    to: input.to,
+    forceDeliver: true,
+    simpleLayout: true,
+    vars: {
+      customer_name: input.name || "Bidder",
+      item_title: input.auctionLabel,
+      winning_bid: input.auctionLabel,
+      payment_link: live,
+      lot_link: live,
+    },
+    htmlOverride: `<p>Hi ${escapeHtml(input.name || "there")},</p>
+<p>DealFinder received your <strong>cash-on-pickup</strong> request for <strong>${escapeHtml(input.auctionLabel)}</strong>.</p>
+<p>The desk still has to approve it. You will get another email when you can bid. Until then you can keep browsing the floor.</p>
+<p><a href="${escapeHtml(live)}" style="color:#111111;font-weight:bold;">Back to live lots</a></p>`,
+  });
+}
+
+export async function sendCashBidDecisionEmail(input: {
+  to: string;
+  name: string;
+  auctionLabel: string;
+  approved: boolean;
+  permanent?: boolean;
+}) {
+  const live = `${publicAppUrl()}/live`;
+  if (!input.approved) {
+    return sendTransactionalEmail({
+      templateId: "cash_bid_rejected",
+      to: input.to,
+      forceDeliver: true,
+      simpleLayout: true,
+      vars: {
+        customer_name: input.name || "Bidder",
+        item_title: input.auctionLabel,
+        winning_bid: input.auctionLabel,
+        payment_link: live,
+        lot_link: live,
+      },
+      htmlOverride: `<p>Hi ${escapeHtml(input.name || "there")},</p>
+<p>The desk did not approve cash-on-pickup bidding for <strong>${escapeHtml(input.auctionLabel)}</strong>.</p>
+<p>You can still bid on that sale by authorizing the $50 Helcim card hold from the lot page.</p>
+<p><a href="${escapeHtml(live)}" style="color:#111111;font-weight:bold;">Open live lots</a></p>`,
+    });
+  }
+  const extra = input.permanent
+    ? " This paddle is now trusted for cash pickup on future DealFinder sales too."
+    : " This approval is for this auction.";
+  return sendTransactionalEmail({
+    templateId: "cash_bid_approved",
+    to: input.to,
+    forceDeliver: true,
+    simpleLayout: true,
+    vars: {
+      customer_name: input.name || "Bidder",
+      item_title: input.auctionLabel,
+      winning_bid: input.auctionLabel,
+      payment_link: live,
+      lot_link: live,
+    },
+    htmlOverride: `<p>Hi ${escapeHtml(input.name || "there")},</p>
+<p>You are approved to bid with <strong>cash on pickup</strong> on <strong>${escapeHtml(input.auctionLabel)}</strong>.</p>
+<p>${escapeHtml(extra)}</p>
+<p>Go back to the lot and place your bid. Pay in cash when you pick up after the sale.</p>
+<p><a href="${escapeHtml(live)}" style="color:#111111;font-weight:bold;">Open live lots</a></p>`,
   });
 }
 

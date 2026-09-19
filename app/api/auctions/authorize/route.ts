@@ -9,7 +9,10 @@ import { getBidderSession, bidderUnauthorized } from "@/lib/bidderAuth";
 import { getAdminDemo } from "@/lib/demoAdminStore";
 import { isHelcimConfigured } from "@/lib/helcim";
 import { mapAuctionEvent } from "@/lib/mapAuctionEvent";
-import { sendCashBidAuthEmail } from "@/lib/notify";
+import {
+  sendCashBidAuthEmail,
+  sendCashBidReceivedEmail,
+} from "@/lib/notify";
 import { isProfileComplete } from "@/lib/profileTypes";
 import { getSupabaseAdmin, isSupabaseConfigured } from "@/lib/supabaseClient";
 import type { AuctionEvent } from "@/lib/utils";
@@ -60,12 +63,19 @@ export async function POST(request: NextRequest) {
   if (body.method === "cash") {
     const result = await requestCashBidAuth(session.id, eventId);
     if (!result.autoApproved) {
-      void sendCashBidAuthEmail({
+      const auctionLabel = [event.auctionNumber, event.name].filter(Boolean).join(" · ") || eventId;
+      const requestedAt = result.row.preauthAgreedAt || new Date().toISOString();
+      await sendCashBidAuthEmail({
         name: session.fullName,
         email: session.email,
-        auctionLabel: [event.auctionNumber, event.name].filter(Boolean).join(" · ") || eventId,
+        auctionLabel,
         eventId,
-        requestedAt: result.row.preauthAgreedAt || new Date().toISOString(),
+        requestedAt,
+      });
+      await sendCashBidReceivedEmail({
+        to: session.email,
+        name: session.fullName,
+        auctionLabel,
       });
     }
     const status = await evaluateBidAuth(session.id, eventId);
