@@ -203,8 +203,8 @@ export function EmailEngine({ onNotice }: { onNotice: (message: string) => void 
       <div className="comic-panel p-4">
         <h2 className="font-display text-4xl text-brand-red">Email template & marketing engine</h2>
         <p className="font-comic text-sm">
-          Variables: {TEMPLATE_VARIABLES.join(" ")}. Logo is inlined in every send. Paste HTML
-          or import a file if you already have house templates.
+          Pick a template from the menu, then edit it in the builder. Logo is inlined in every send.
+          Paste HTML or import a file if you already have house templates.
         </p>
       </div>
 
@@ -244,17 +244,24 @@ export function EmailEngine({ onNotice }: { onNotice: (message: string) => void 
         </div>
       </div>
 
-      <div className="flex flex-wrap gap-2">
-        {templates.map((row) => (
-          <button
-            key={row.id}
-            type="button"
-            className={row.id === active ? "comic-btn" : "comic-btn-invert"}
-            onClick={() => setActive(row.id)}
+      <div className="comic-panel space-y-3 p-4">
+        <label className="block font-comic font-bold">
+          Email template
+          <select
+            value={active}
+            onChange={(e) => setActive(e.target.value)}
+            className="mt-1 w-full border-4 border-black bg-white px-3 py-2 font-normal"
           >
-            {row.name}
-          </button>
-        ))}
+            {templates.map((row) => (
+              <option key={row.id} value={row.id}>
+                {row.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <p className="font-comic text-sm">
+          Variables: {TEMPLATE_VARIABLES.join(" ")}. Edit the selected template below.
+        </p>
       </div>
 
       {current && (
