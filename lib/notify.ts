@@ -201,6 +201,33 @@ export async function notifyConsignmentApproved(input: {
   });
 }
 
+export async function sendPasswordResetEmail(input: { to: string; name?: string; resetHref: string }) {
+  const displayName = input.name || "Bidder";
+  return sendTransactionalEmail({
+    templateId: "password_reset",
+    to: input.to,
+    forceDeliver: true,
+    simpleLayout: true,
+    vars: {
+      customer_name: displayName,
+      item_title: "",
+      winning_bid: "",
+      payment_link: input.resetHref,
+      lot_link: input.resetHref,
+    },
+    htmlOverride: `<p>Hi ${escapeHtml(displayName)},</p>
+<p>Use this button to choose a new DealFinder paddle password. It expires soon.</p>
+<table role="presentation" cellpadding="0" cellspacing="0" align="center" style="margin:28px auto;">
+  <tr>
+    <td align="center" style="background:#111111;padding:12px 22px;">
+      <a href="${escapeHtml(input.resetHref)}" style="color:#ffffff;text-decoration:none;font-family:Arial,Helvetica,sans-serif;font-size:16px;font-weight:bold;">Reset password</a>
+    </td>
+  </tr>
+</table>
+<p>If you did not ask for this, you can ignore the email.</p>`,
+  });
+}
+
 export async function sendWelcomeEmail(to: string, name: string, verifyHref?: string) {
   const live = `${publicAppUrl()}/live`;
   const displayName = name || "Bidder";

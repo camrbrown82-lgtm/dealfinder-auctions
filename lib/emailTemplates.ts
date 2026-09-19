@@ -117,17 +117,18 @@ DealFinder Auctions
   },
   {
     id: "password_reset",
-    name: "Password Reset / Staff Alert",
+    name: "Password Reset",
     subject: "Reset your DealFinder paddle password",
-    body: `{{customer_name}},
+    body: `Hi {{customer_name}},
 
-Staff requested a password reset for this paddle.
+Use this link to choose a new DealFinder paddle password:
 
-Set a new password: {{payment_link}}
+{{payment_link}}
 
-If you did not ask for this, tell the desk.
+If you did not ask for this, you can ignore the email.
 
-DealFinder Auctions`,
+DealFinder Auctions
+529 Gateway Rd NE, Airdrie, AB T4B 0J6`,
   },
   {
     id: "cash_receipt",

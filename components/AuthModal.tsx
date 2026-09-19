@@ -35,11 +35,15 @@ export function AuthModal({
   const [busy, setBusy] = useState(false);
   const [completing, setCompleting] = useState(false);
   const [needsVerification, setNeedsVerification] = useState(false);
+  const [forgot, setForgot] = useState(false);
+  const [sentReset, setSentReset] = useState(false);
   const confirmedSession = Boolean(existing);
 
   useEffect(() => {
     if (!open) {
       setNeedsVerification(false);
+      setForgot(false);
+      setSentReset(false);
       setError(null);
       setBusy(false);
       return;
@@ -72,6 +76,20 @@ export function AuthModal({
     setBusy(true);
     setError(null);
     try {
+      if (forgot) {
+        const response = await fetch("/api/auth/forgot", {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email }),
+        });
+        const json = await response.json();
+        if (!response.ok) throw new Error(json.error || "Could not send reset email.");
+        setSentReset(true);
+        setError(json.message || "If that email is on a paddle, we sent a reset link.");
+        return;
+      }
+
       if (completing || (existing && !isProfileComplete(existing))) {
         const response = await fetch("/api/profile", {
           method: "PATCH",
@@ -174,7 +192,7 @@ export function AuthModal({
           <div>
             <p className="font-display text-sm tracking-[0.3em] text-brand-red">HOLD IT, PADDLE!</p>
             <h2 id="auth-modal-title" className="font-display text-4xl leading-none text-brand-red">
-              {mode === "login" ? "Log in to bid" : "Sign up to bid"}
+              {forgot ? "Forgot password" : mode === "login" ? "Log in to bid" : "Sign up to bid"}
             </h2>
             <p className="mt-1 font-comic text-sm">
               Browse free. Bids need a DealFinder account — we will fire your paddle
@@ -250,6 +268,8 @@ export function AuthModal({
               onClick={() => {
                 setCompleting(false);
                 setNeedsVerification(false);
+                setForgot(false);
+                setSentReset(false);
                 onMode("login");
               }}
             >
@@ -260,6 +280,8 @@ export function AuthModal({
               className={mode === "signup" ? "comic-btn !text-base" : "comic-btn-invert !text-base"}
               onClick={() => {
                 setNeedsVerification(false);
+                setForgot(false);
+                setSentReset(false);
                 onMode("signup");
               }}
             >
@@ -280,18 +302,40 @@ export function AuthModal({
                   autoComplete="email"
                 />
               </label>
-              <label className="block font-comic text-sm font-bold">
-                Password
-                <input
-                  type="password"
-                  required
-                  minLength={6}
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="mt-1 w-full border-4 border-black bg-white px-3 py-2 font-normal"
-                  autoComplete={mode === "login" ? "current-password" : "new-password"}
-                />
-              </label>
+              {!forgot ? (
+                <label className="block font-comic text-sm font-bold">
+                  Password
+                  <input
+                    type="password"
+                    required
+                    minLength={6}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    className="mt-1 w-full border-4 border-black bg-white px-3 py-2 font-normal"
+                    autoComplete={mode === "login" ? "current-password" : "new-password"}
+                  />
+                </label>
+              ) : null}
+              {mode === "login" && !forgot ? (
+                <button
+                  type="button"
+                  className="font-comic text-sm font-bold underline"
+                  onClick={() => {
+                    setForgot(true);
+                    setSentReset(false);
+                    setError(null);
+                  }}
+                >
+                  Forgot password?
+                </button>
+              ) : null}
+              {forgot ? (
+                <p className="font-comic text-sm">
+                  {sentReset
+                    ? "Check inbox and spam for Reset password."
+                    : "Enter your paddle email. We will send a reset link if that address is on file."}
+                </p>
+              ) : null}
             </>
           )}
 
@@ -313,13 +357,15 @@ export function AuthModal({
             >
               {busy
                 ? "Working…"
-                : mode === "login"
-                  ? resumeBid
-                    ? "Log In & Bid"
-                    : "Log In"
-                  : resumeBid
-                    ? "Create Account & Bid"
-                    : "Create Account"}
+                : forgot
+                  ? "Send reset link"
+                  : mode === "login"
+                    ? resumeBid
+                      ? "Log In & Bid"
+                      : "Log In"
+                    : resumeBid
+                      ? "Create Account & Bid"
+                      : "Create Account"}
             </button>
             <button type="button" className="comic-btn-invert" onClick={onClose}>
               Keep browsing
