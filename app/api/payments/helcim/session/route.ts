@@ -4,6 +4,7 @@ import { invoiceFees } from "@/lib/invoiceFees";
 import { isPaymentTestMode } from "@/lib/paymentMode";
 import { invoiceNumber } from "@/lib/payments";
 import {
+  helcimApiBase,
   helcimCurrency,
   initializeHelcimCheckout,
   isHelcimConfigured,
