@@ -5,6 +5,7 @@ import { startingBidFromBuyNow } from "@/lib/buyNow";
 import { getSupabaseAdmin, isSupabaseConfigured } from "@/lib/supabaseClient";
 import { persistPublicImageUrls } from "@/lib/consignmentStorage";
 import { getBidderSession } from "@/lib/bidderAuth";
+import type { SaleChannel } from "@/lib/saleChannel";
 import {
   DEFAULT_COMMISSION_RATE,
   MOCK_CONSIGNMENTS,
@@ -25,6 +26,7 @@ function demoItems(): ConsignorItem[] {
     startingBid: 50,
     buyNowPrice: 80,
     commissionRate: DEFAULT_COMMISSION_RATE,
+    saleChannel: item.saleChannel ?? "auction",
   }));
 
   const fromLots: ConsignorItem[] = MOCK_LOTS.map((lot) => ({
@@ -92,8 +94,14 @@ export async function GET() {
 
   const items: ConsignorItem[] = ownQueue.map((row) => {
     const lot = lotByConsignment.get(row.id);
+    const saleChannel = row.sale_channel === "buy_now" ? "buy_now" : "auction";
     let pipelineStatus: ConsignorItem["pipelineStatus"] = consignmentToPipeline(row.status);
-    if (row.status === "approved" && !lot) pipelineStatus = "pending_approval";
+    if (saleChannel === "buy_now" && (row.status === "pending" || row.status === "held")) {
+      pipelineStatus = "buy_now_pending";
+    }
+    if (row.status === "approved" && !lot) {
+      pipelineStatus = saleChannel === "buy_now" ? "buy_now_pending" : "pending_approval";
+    }
     if (lot?.status === "paused" || lot?.status === "draft") pipelineStatus = "scheduled";
     if (lot?.status === "live") pipelineStatus = "live";
     if (lot?.status === "ended") pipelineStatus = "sold";
@@ -106,6 +114,7 @@ export async function GET() {
       startingBid: Number(row.starting_bid ?? lot?.starting_bid ?? 0),
       buyNowPrice: Number(row.buy_now_price ?? row.reserve_price ?? 0),
       commissionRate: Number(row.commission_rate ?? DEFAULT_COMMISSION_RATE),
+      saleChannel,
     };
   });
 
@@ -152,6 +161,8 @@ export async function POST(request: NextRequest) {
     listingGrade?: string;
     itemDetails?: string;
     notes?: string;
+    saleChannel?: "auction" | "buy_now";
+    requestBuyNow?: boolean;
   };
 
   const consignorName = session.fullName.trim() || body.consignorName?.trim();
@@ -195,6 +206,8 @@ export async function POST(request: NextRequest) {
 
   const listingGrade = parseListingGrade(body.listingGrade);
   const itemDetails = String(body.itemDetails ?? body.notes ?? "").trim();
+  const saleChannel: SaleChannel =
+    body.saleChannel === "buy_now" || body.requestBuyNow ? "buy_now" : "auction";
 
   const payload = {
     consignor_name: consignorName,
@@ -214,16 +227,18 @@ export async function POST(request: NextRequest) {
     commission_rate: Number(body.commissionRate) || DEFAULT_COMMISSION_RATE,
     image_urls: imageUrls,
     status: "pending" as const,
+    sale_channel: saleChannel,
   };
 
   const item: ConsignorItem = {
     id: crypto.randomUUID(),
     title,
     consignor: consignorName,
-    pipelineStatus: "pending_approval",
+    pipelineStatus: saleChannel === "buy_now" ? "buy_now_pending" : "pending_approval",
     startingBid: starting,
     buyNowPrice: buyNow,
     commissionRate: payload.commission_rate,
+    saleChannel,
   };
 
   if (!isSupabaseConfigured || !supabase) {
@@ -244,6 +259,7 @@ export async function POST(request: NextRequest) {
       listingGrade,
       notes: itemDetails || null,
       condition: listingGrade,
+      saleChannel,
     });
     return NextResponse.json({ source: "demo", item });
   }
@@ -263,6 +279,10 @@ export async function POST(request: NextRequest) {
   }
   if (error && /contact_email|owner_id/i.test(error.message)) {
     const { contact_email: _e, owner_id: _o, ...rest } = payload;
+    ({ data, error } = await supabase.from("consignments").insert(rest).select("id").single());
+  }
+  if (error && /sale_channel/i.test(error.message)) {
+    const { sale_channel: _c, ...rest } = payload;
     ({ data, error } = await supabase.from("consignments").insert(rest).select("id").single());
   }
 

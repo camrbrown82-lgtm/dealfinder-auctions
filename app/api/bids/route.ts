@@ -199,6 +199,12 @@ export async function POST(request: NextRequest) {
   if (!lotId) {
     return NextResponse.json({ error: "lotId is required" }, { status: 400 });
   }
+  if (body.mode === "buy_now") {
+    return NextResponse.json(
+      { error: "Buy now is only available on the Buy Now page." },
+      { status: 400 },
+    );
+  }
 
   const supabase = getSupabaseAdmin();
   if (isSupabaseConfigured && supabase) {

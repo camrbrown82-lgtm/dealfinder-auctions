@@ -13,7 +13,6 @@ import { fulfillmentInstructions } from "@/lib/payments";
 import type { FulfillmentChoice } from "@/lib/payments";
 import { profileAddress } from "@/lib/profileTypes";
 import { getSupabaseClient, isSupabaseConfigured } from "@/lib/supabaseClient";
-import { buyNowPriceOf, canBuyNow } from "@/lib/buyNow";
 import { recordInterest } from "@/lib/interest";
 import { LotImage } from "@/components/LotImage";
 import { auctionTermsPack, type AuctionTermsPack } from "@/lib/auctionTerms";
@@ -55,9 +54,8 @@ export function AuctionRoom({ lot }: { lot: AuctionLot }) {
   const [agreeOpen, setAgreeOpen] = useState(false);
   const [agreeBusy, setAgreeBusy] = useState(false);
   const [agreeError, setAgreeError] = useState<string | null>(null);
-  const [limitOpen, setLimitOpen] = useState(false);
   const pendingBid = useRef<{
-    mode: "live" | "absentee" | "buy_now";
+    mode: "live" | "absentee";
     amount: number;
     maxAmount: number;
   } | null>(null);
@@ -69,7 +67,6 @@ export function AuctionRoom({ lot }: { lot: AuctionLot }) {
     () => nextLiveAmount(currentBid, lot.minIncrement),
     [currentBid, lot.minIncrement],
   );
-  const buyNow = buyNowPriceOf(lot);
   const extras = extraLotImages(lot);
   const hasWinner = Boolean(highBidder || highBidderId);
   const soldClosed = status === "ended" && hasWinner;
@@ -83,8 +80,6 @@ export function AuctionRoom({ lot }: { lot: AuctionLot }) {
           highBidder === user.fullName ||
           highBidder === user.email),
     );
-  const showBuyNow = open && canBuyNow(currentBid, buyNow);
-
   useEffect(() => {
     if (!user || !lot.eventId) {
       setRegistered(false);
@@ -267,10 +262,6 @@ export function AuctionRoom({ lot }: { lot: AuctionLot }) {
           setAgreeOpen(true);
           throw new Error("Agree to this auction's terms, then authorize payment before the bid is submitted.");
         }
-        if (json.code === "BUY_NOW_LIMIT") {
-          setLimitOpen(true);
-          throw new Error(text);
-        }
         if (json.code === "CASH_PENDING") {
           setPayOpen(true);
           setAuthStatus("pending");
@@ -294,13 +285,6 @@ export function AuctionRoom({ lot }: { lot: AuctionLot }) {
         setFeed((current) => [...json.events.slice().reverse(), ...current].slice(0, 12));
       }
       if (json.status) setStatus(json.status);
-      if (json.boughtNow) {
-        setStatus("ended");
-        setMessage(
-          `Reserved for ${formatCurrency(json.currentBid)}. No payment now — your Sunday invoice will include this lot.`,
-        );
-        return;
-      }
       setMessage(
         json.extended
           ? `Bid in. Clock extended +2:00 (anti-snipe). High ${formatCurrency(json.currentBid)}`
@@ -569,19 +553,6 @@ export function AuctionRoom({ lot }: { lot: AuctionLot }) {
             Absentee max
           </button>
         </div>
-        {showBuyNow && buyNow ? (
-          <button
-            type="button"
-            className="comic-btn w-full"
-            disabled={busy}
-            onClick={() => {
-              pendingBid.current = { mode: "buy_now", amount: buyNow, maxAmount: buyNow };
-              void ensureBid();
-            }}
-          >
-            Buy now {formatCurrency(buyNow)}
-          </button>
-        ) : null}
 
         <p className="font-comic text-sm">
           {user ? (
@@ -675,21 +646,6 @@ export function AuctionRoom({ lot }: { lot: AuctionLot }) {
           await placeBid();
         }}
       />
-
-      {limitOpen ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="comic-panel max-w-lg space-y-3 p-5">
-            <p className="font-display text-3xl">Buy-Now limit reached</p>
-            <p className="font-comic text-sm">
-              You have reached your standard Buy-Now reservation limit for this auction. Please
-              await auction settlement or contact management to upgrade to Trusted Status.
-            </p>
-            <button type="button" className="comic-btn" onClick={() => setLimitOpen(false)}>
-              Close
-            </button>
-          </div>
-        </div>
-      ) : null}
 
       <div className="comic-panel p-4">
         <p className="font-display text-2xl">Bid tape</p>

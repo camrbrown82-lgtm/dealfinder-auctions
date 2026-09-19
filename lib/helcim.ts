@@ -482,8 +482,19 @@ export async function markLotPaid(lotId: string, transactionId: string) {
     .update({
       paid_at: paidAt,
       helcim_purchase_transaction_id: transactionId,
+      buy_now_status: "sold",
     })
     .eq("id", lotId);
+  if (error && /buy_now_status/i.test(error.message)) {
+    await supabase
+      .from("lots")
+      .update({
+        paid_at: paidAt,
+        helcim_purchase_transaction_id: transactionId,
+      })
+      .eq("id", lotId);
+    return { paidAt, transactionId };
+  }
   if (error && /paid_at|helcim_purchase/i.test(error.message)) {
     return { paidAt, transactionId };
   }

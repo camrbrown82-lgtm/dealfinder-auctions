@@ -156,6 +156,14 @@ async function insertLotRow(
     const { item_details: _d, ...rest } = insertRow;
     ({ data, error } = await supabase.from("lots").insert(rest).select("*").single());
   }
+  if (isMissingColumn(error, "sale_channel")) {
+    const { sale_channel: _c, buy_now_status: _s, ...rest } = insertRow;
+    ({ data, error } = await supabase.from("lots").insert(rest).select("*").single());
+  }
+  if (isMissingColumn(error, "buy_now_status")) {
+    const { buy_now_status: _s, ...rest } = insertRow;
+    ({ data, error } = await supabase.from("lots").insert(rest).select("*").single());
+  }
   if (isUniqueConflict(error)) {
     const suffix = crypto.randomUUID().slice(0, 8);
     ({ data, error } = await supabase
@@ -320,6 +328,7 @@ type AdminBody = {
   defaultStartingBid?: number;
   nextLotNumber?: string;
   postLive?: boolean;
+  saleChannel?: "auction" | "buy_now";
   listingGrade?: string;
   itemDetails?: string;
   tcTemplateType?: string;
@@ -661,9 +670,10 @@ export async function POST(request: NextRequest) {
     const listingGrade = parseListingGrade(body.listingGrade);
     const itemDetails = String(body.itemDetails ?? "").trim();
     const description = withListedGrade(body.description ?? "", listingGrade);
-    const sale = await resolveSaleEvent(supabase, demo, body.eventId);
+    const saleChannel = body.saleChannel === "buy_now" ? "buy_now" : "auction";
+    const sale = saleChannel === "buy_now" ? null : await resolveSaleEvent(supabase, demo, body.eventId);
     const status: LotStatus = "live";
-    const endsAt = sale?.endsAt ?? new Date(Date.now() + 1000 * 60 * 60 * 24).toISOString();
+    const endsAt = sale?.endsAt ?? new Date(Date.now() + 1000 * 60 * 60 * 24 * 365).toISOString();
 
     if (isSupabaseConfigured && supabase) {
       const claimed = await allocateFromHouse(supabase, demo, body.lotNumber);
@@ -694,16 +704,18 @@ export async function POST(request: NextRequest) {
           image_url: image,
           image_urls: images,
           starting_bid: starting,
-          current_bid: starting,
+          current_bid: saleChannel === "buy_now" ? buyNow || starting : starting,
           reserve_price: buyNow || null,
           buy_now_price: buyNow || null,
           min_increment: 5,
           ends_at: eventEnds,
           status,
-          event_id: eventId,
+          event_id: saleChannel === "buy_now" ? null : eventId,
           lot_number: lotNumber,
           listing_grade: listingGrade,
           item_details: itemDetails || null,
+          sale_channel: saleChannel,
+          buy_now_status: saleChannel === "buy_now" ? "listed" : null,
         };
       const { data, error } = await insertLotRow(supabase, insertRow);
       if (error) {
@@ -717,14 +729,16 @@ export async function POST(request: NextRequest) {
         claimed.existing,
       );
       const lot = mapLot(data as LotRow);
+      lot.saleChannel = saleChannel;
+      lot.buyNowStatus = saleChannel === "buy_now" ? "listed" : lot.buyNowStatus;
       if (sale) attachLotToSale(lot, sale);
       return NextResponse.json(
         withHouseSettings(
           {
             ok: true,
             lot,
-            href: "/live",
-            auctionLabel: auctionLabel(sale, lot),
+            href: saleChannel === "buy_now" ? "/buy-now" : "/live",
+            auctionLabel: saleChannel === "buy_now" ? "Buy Now" : auctionLabel(sale, lot),
             saleStartsAt: sale?.startsAt ?? null,
             postedLive: true,
           },
@@ -745,20 +759,22 @@ export async function POST(request: NextRequest) {
       category: body.category ?? "Oddities",
       image,
       images,
-      currentBid: starting,
+      currentBid: saleChannel === "buy_now" ? buyNow || starting : starting,
       minIncrement: 5,
       endsAt,
       consignor: body.consignorName?.trim() || "House stock",
       description,
       status,
-      eventId: sale?.id || null,
+      eventId: saleChannel === "buy_now" ? null : sale?.id || null,
       lotNumber,
-      auctionNumber: sale?.auctionNumber ?? null,
+      auctionNumber: saleChannel === "buy_now" ? null : sale?.auctionNumber ?? null,
       startingBid: starting,
       reservePrice: buyNow || null,
       buyNowPrice: buyNow || null,
       listingGrade,
       itemDetails: itemDetails || null,
+      saleChannel,
+      buyNowStatus: saleChannel === "buy_now" ? "listed" : null,
     };
     if (sale) attachLotToSale(lot, sale);
     addDemoLot(lot);
@@ -768,8 +784,8 @@ export async function POST(request: NextRequest) {
         {
           ok: true,
           lot,
-          href: "/live",
-          auctionLabel: auctionLabel(sale, lot),
+          href: saleChannel === "buy_now" ? "/buy-now" : "/live",
+          auctionLabel: saleChannel === "buy_now" ? "Buy Now" : auctionLabel(sale, lot),
           saleStartsAt: sale?.startsAt ?? null,
           postedLive: true,
         },
@@ -874,9 +890,10 @@ export async function PATCH(request: NextRequest) {
       if (body.consignorName != null) item.consignor = body.consignorName.trim();
       if (body.status) item.status = body.status as ConsignmentStatus;
       if (body.status === "approved") {
+        const listBuyNow = body.saleChannel === "buy_now" || item.saleChannel === "buy_now";
         const claimed = await allocateFromHouse(null, demo);
         const lotNumber = claimed.lotNumber;
-        const event = await resolveSaleEvent(null, demo, body.eventId);
+        const event = listBuyNow ? null : await resolveSaleEvent(null, demo, body.eventId);
         const { image, images } = lotPhotos(item.imageUrls);
         const lot: AuctionLot = {
           id: `lot-${item.id}`,
@@ -897,6 +914,8 @@ export async function PATCH(request: NextRequest) {
           buyNowPrice: item.buyNowPrice ?? item.reservePrice ?? null,
           listingGrade: item.listingGrade,
           itemDetails: item.notes ?? null,
+          saleChannel: listBuyNow ? "buy_now" : "auction",
+          buyNowStatus: listBuyNow ? "listed" : null,
         };
         if (event) applyEventToLot(lot, event);
         addDemoLot(lot);
@@ -905,8 +924,8 @@ export async function PATCH(request: NextRequest) {
           return NextResponse.json({
             ok: true,
             lot,
-            href: "/live",
-            auctionLabel: auctionLabel(event, lot),
+            href: listBuyNow ? "/buy-now" : "/live",
+            auctionLabel: listBuyNow ? "Buy Now" : auctionLabel(event, lot),
             saleStartsAt: event?.startsAt ?? null,
             postedLive: lot.status === "live",
           });
@@ -925,6 +944,7 @@ export async function PATCH(request: NextRequest) {
         updates.buy_now_price = buyNow || null;
       }
       if (body.consignorName != null) updates.consignor_name = body.consignorName.trim();
+      if (body.saleChannel) updates.sale_channel = body.saleChannel;
       if (body.status) updates.status = body.status;
       let { data: consignment, error } = await supabase
         .from("consignments")
@@ -941,11 +961,21 @@ export async function PATCH(request: NextRequest) {
           .select("*")
           .single());
       }
+      if (isMissingColumn(error, "sale_channel")) {
+        const { sale_channel: _ch, ...rest } = updates;
+        ({ data: consignment, error } = await supabase
+          .from("consignments")
+          .update(rest)
+          .eq("id", body.id)
+          .select("*")
+          .single());
+      }
       if (error) {
         return NextResponse.json({ error: error.message }, { status: 400 });
       }
       if (body.status === "approved" && consignment) {
         const row = consignment as ConsignmentRow;
+        const listBuyNow = body.saleChannel === "buy_now" || row.sale_channel === "buy_now";
         const reserve = Number(row.buy_now_price ?? row.reserve_price ?? 0);
         const starting =
           Number(row.starting_bid ?? row.estimated_low) ||
@@ -957,10 +987,10 @@ export async function PATCH(request: NextRequest) {
           photos = row.image_urls ?? [];
         }
         const { image, images } = lotPhotos(photos);
-        const event = await resolveSaleEvent(supabase, demo, body.eventId);
+        const event = listBuyNow ? null : await resolveSaleEvent(supabase, demo, body.eventId);
         const eventId = event ? asEventUuid(event.id) ?? event.id : null;
         const eventEnds =
-          event?.endsAt ?? new Date(Date.now() + 1000 * 60 * 60 * 24).toISOString();
+          event?.endsAt ?? new Date(Date.now() + 1000 * 60 * 60 * 24 * (listBuyNow ? 365 : 1)).toISOString();
         const houseStatus: LotStatus = "live";
         const { data: existingRows, error: existingError } = await supabase
           .from("lots")
@@ -977,10 +1007,13 @@ export async function PATCH(request: NextRequest) {
             ends_at: eventEnds,
             title: row.title,
             description: row.description ?? existing.description,
-            current_bid: starting || Number(existing.current_bid),
+            current_bid: listBuyNow ? reserve || starting || Number(existing.current_bid) : starting || Number(existing.current_bid),
             starting_bid: starting || Number(existing.starting_bid),
+            sale_channel: listBuyNow ? "buy_now" : "auction",
+            buy_now_status: listBuyNow ? "listed" : null,
           };
           if (eventId) reopen.event_id = eventId;
+          if (listBuyNow) reopen.event_id = null;
           reopen.image_url = image;
           reopen.image_urls = images;
           const patched = await patchLotRow(String(existing.id), reopen);
@@ -1005,8 +1038,8 @@ export async function PATCH(request: NextRequest) {
           return NextResponse.json({
             ok: true,
             lot,
-            href: "/live",
-            auctionLabel: auctionLabel(event, lot),
+            href: listBuyNow ? "/buy-now" : "/live",
+            auctionLabel: listBuyNow ? "Buy Now" : auctionLabel(event, lot),
             saleStartsAt: event?.startsAt ?? null,
             postedLive: true,
           });
@@ -1023,16 +1056,18 @@ export async function PATCH(request: NextRequest) {
             image_url: image,
             image_urls: images,
             starting_bid: starting,
-            current_bid: starting,
+            current_bid: listBuyNow ? reserve || starting : starting,
             reserve_price: reserve || null,
             buy_now_price: reserve || null,
             min_increment: 5,
             ends_at: eventEnds,
             status: houseStatus,
-            event_id: eventId,
+            event_id: listBuyNow ? null : eventId,
             lot_number: lotNumber,
             listing_grade: parseListingGrade(row.listing_grade ?? row.condition),
             item_details: String(row.notes ?? "").trim() || null,
+            sale_channel: listBuyNow ? "buy_now" : "auction",
+            buy_now_status: listBuyNow ? "listed" : null,
           };
           let { data: lotRow, error: lotError } = await insertLotRow(supabase, insertRow);
           if (lotError || !lotRow) {
@@ -1062,8 +1097,8 @@ export async function PATCH(request: NextRequest) {
           return NextResponse.json({
             ok: true,
             lot,
-            href: "/live",
-            auctionLabel: auctionLabel(event, lot),
+            href: listBuyNow ? "/buy-now" : "/live",
+            auctionLabel: listBuyNow ? "Buy Now" : auctionLabel(event, lot),
             saleStartsAt: event?.startsAt ?? null,
             postedLive: houseStatus === "live",
           });
@@ -1101,6 +1136,14 @@ export async function PATCH(request: NextRequest) {
       const buyNow = Number(body.buyNowPrice ?? body.reservePrice) || 0;
       lot.reservePrice = buyNow || null;
       lot.buyNowPrice = buyNow || null;
+    }
+    if (body.saleChannel) {
+      lot.saleChannel = body.saleChannel;
+      lot.buyNowStatus = body.saleChannel === "buy_now" ? lot.buyNowStatus ?? "listed" : null;
+      if (body.saleChannel === "buy_now") {
+        lot.eventId = null;
+        lot.auctionNumber = null;
+      }
     }
     if (body.lotNumber != null) lot.lotNumber = body.lotNumber.trim();
     if (body.category) lot.category = body.category;
@@ -1167,6 +1210,11 @@ export async function PATCH(request: NextRequest) {
         const buyNow = Number(body.buyNowPrice ?? body.reservePrice) || 0;
         updates.reserve_price = buyNow || null;
         updates.buy_now_price = buyNow || null;
+      }
+      if (body.saleChannel) {
+        updates.sale_channel = body.saleChannel;
+        updates.buy_now_status = body.saleChannel === "buy_now" ? "listed" : null;
+        if (body.saleChannel === "buy_now") updates.event_id = null;
       }
       if (body.lotNumber != null) updates.lot_number = body.lotNumber.trim();
       if (body.category) updates.category = body.category;

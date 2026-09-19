@@ -20,6 +20,7 @@ const GROUPS: NavGroup[] = [
       { href: "/admin/inventories", label: "Auction inventories" },
       { href: "/admin/auctions", label: "Auction desk" },
       { href: "/admin/intake", label: "Warehouse AI generator" },
+      { href: "/admin/buy-now", label: "Buy Now" },
       { href: "/admin/consignments", label: "Consignment pipeline" },
       { href: "/operations-guide", label: "Operations guide" },
     ],

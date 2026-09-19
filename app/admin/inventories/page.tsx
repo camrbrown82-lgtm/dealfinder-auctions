@@ -102,7 +102,7 @@ export default function AdminInventoriesPage() {
 
   const filteredInventory = useMemo(() => {
     const q = search.trim().toLowerCase();
-    let list = data.inventory;
+    let list = data.inventory.filter((lot) => lot.saleChannel !== "buy_now");
     if (filter === "unsold") list = list.filter(lotIsUnsoldOrNoBid);
     if (!q) return list;
     return list.filter(
@@ -123,7 +123,9 @@ export default function AdminInventoriesPage() {
         (event) => !event.archivedAt || filteredInventory.some((lot) => lot.eventId === event.id),
       );
   const selectedCount = selectedIds.size;
-  const selectedUnsold = data.inventory.filter((lot) => selectedIds.has(lot.id) && lotIsUnsoldOrNoBid(lot));
+  const selectedUnsold = data.inventory.filter(
+    (lot) => selectedIds.has(lot.id) && lot.saleChannel !== "buy_now" && lotIsUnsoldOrNoBid(lot),
+  );
 
   return (
     <AdminShell

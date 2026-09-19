@@ -28,10 +28,11 @@ export default function AdminConsignmentsPage() {
     setDrafts(next);
   }, [data.queue]);
 
-  async function approveIntoSale(eventId: string) {
-    const pending = pickingRef.current;
-    if (!pending) return;
-    const { item, draft } = pending;
+  async function approveItem(item: Consignment, draft: ReviewDraft, eventId?: string) {
+    if (item.saleChannel !== "buy_now" && !eventId) {
+      setPicking({ item, draft });
+      return;
+    }
     const json = await mutate("/api/admin", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -44,13 +45,24 @@ export default function AdminConsignmentsPage() {
         startingBid: Number(draft.startingBid) || 0,
         buyNowPrice: Number(draft.buyNowPrice) || 0,
         consignorName: draft.consignorName,
+        saleChannel: item.saleChannel === "buy_now" ? "buy_now" : "auction",
         eventId,
       }),
     });
     if (!json) return;
     setPicking(null);
     const lotNo = json.lot?.lotNumber ? `Lot ${json.lot.lotNumber}` : draft.title;
-    setNotice(`Approved ${lotNo} into ${json.auctionLabel ?? "the selected sale"}.`);
+    setNotice(
+      item.saleChannel === "buy_now"
+        ? `Approved ${lotNo} onto Buy Now.`
+        : `Approved ${lotNo} into ${json.auctionLabel ?? "the selected sale"}.`,
+    );
+  }
+
+  async function approveIntoSale(eventId: string) {
+    const pending = pickingRef.current;
+    if (!pending) return;
+    await approveItem(pending.item, pending.draft, eventId);
   }
 
   const openEvents = data.events.filter((event) => !event.archivedAt);
@@ -65,7 +77,7 @@ export default function AdminConsignmentsPage() {
         drafts={drafts}
         consignors={data.consignors ?? []}
         onDraft={(id, draft) => setDrafts((current) => ({ ...current, [id]: draft }))}
-        onApprove={(item, draft) => setPicking({ item, draft })}
+        onApprove={(item, draft) => void approveItem(item, draft)}
         onHold={(item, draft) =>
           void mutate("/api/admin", {
             method: "PATCH",

@@ -17,7 +17,7 @@ export function LiveMonitor({
   const [auditLot, setAuditLot] = useState<MonitorLot | null>(null);
   const [bids, setBids] = useState<AdminBid[]>([]);
   const [busy, setBusy] = useState(false);
-  const [drafts, setDrafts] = useState<Record<string, { start: string; reserve: string }>>({});
+  const [drafts, setDrafts] = useState<Record<string, { start: string }>>({});
 
   async function load() {
     const response = await fetch("/api/admin/monitor", { credentials: "include", cache: "no-store" });
@@ -29,7 +29,6 @@ export function LiveMonitor({
     for (const lot of json.lots as MonitorLot[]) {
       next[lot.id] = {
         start: String(lot.startingBid),
-        reserve: String(lot.buyNowPrice ?? lot.reservePrice),
       };
     }
     setDrafts(next);
@@ -94,8 +93,6 @@ export function LiveMonitor({
         entity: "lot",
         id: lot.id,
         startingBid: Number(draft?.start) || 0,
-        buyNowPrice: Number(draft?.reserve) || 0,
-        reservePrice: Number(draft?.reserve) || 0,
       }),
     });
     const json = await response.json();
@@ -103,7 +100,7 @@ export function LiveMonitor({
       onNotice(json.error || "Could not update pricing.");
       return;
     }
-    onNotice(`Updated starting bid / buy now on ${lot.title}`);
+    onNotice(`Updated starting bid on ${lot.title}`);
     await load();
   }
 
@@ -124,7 +121,7 @@ export function LiveMonitor({
               <th className="border-b-4 border-black p-3">High paddle</th>
               <th className="border-b-4 border-black p-3">Max / current</th>
               <th className="border-b-4 border-black p-3">Clock</th>
-              <th className="border-b-4 border-black p-3">Modify start / buy now</th>
+              <th className="border-b-4 border-black p-3">Modify start</th>
               <th className="border-b-4 border-black p-3">Audit</th>
             </tr>
           </thead>
@@ -132,7 +129,6 @@ export function LiveMonitor({
             {lots.map((lot) => {
               const draft = drafts[lot.id] ?? {
                 start: String(lot.startingBid),
-                reserve: String(lot.buyNowPrice ?? lot.reservePrice),
               };
               return (
                 <tr key={lot.id} className="bg-[#FFF7D1]">
@@ -161,20 +157,6 @@ export function LiveMonitor({
                             setDrafts((current) => ({
                               ...current,
                               [lot.id]: { ...draft, start: e.target.value },
-                            }))
-                          }
-                          className="mt-1 w-24 border-4 border-black bg-white px-2 py-1"
-                        />
-                      </label>
-                      <label>
-                        Buy now
-                        <input
-                          type="number"
-                          value={draft.reserve}
-                          onChange={(e) =>
-                            setDrafts((current) => ({
-                              ...current,
-                              [lot.id]: { ...draft, reserve: e.target.value },
                             }))
                           }
                           className="mt-1 w-24 border-4 border-black bg-white px-2 py-1"

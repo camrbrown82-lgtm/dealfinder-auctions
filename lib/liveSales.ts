@@ -44,6 +44,7 @@ export function lotsForSale(lots: AuctionLot[], sale: SaleWindowItem | undefined
     sale.event.auctionNumber === FIRST_WEEKLY_SALE.legacyNumber ||
     sale.event.name === FIRST_WEEKLY_SALE.name;
   return lots.filter((lot) => {
+    if (lot.saleChannel === "buy_now") return false;
     if (lot.status === "removed" || lot.status === "draft" || lot.status === "ended") return false;
     if (lotWasSold(lot)) return false;
     if (lot.eventId === sale.event.id) return true;

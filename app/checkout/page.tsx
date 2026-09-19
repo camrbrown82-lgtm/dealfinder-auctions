@@ -141,10 +141,9 @@ export default function CheckoutPage() {
       <div className="comic-panel p-4">
         <h1 className="font-display text-5xl text-brand-red">Winning checkout</h1>
         <p className="font-comic text-sm">
-          Invoices settle by Helcim card after Sunday close, or you can request cash on pickup
-          once the consolidated invoice is emailed. After each hammer, pick local pickup or
-          shipping. Pickup is hammer + 15% premium + GST. Shipping adds a $10 handling fee,
-          estimated carrier postage, and GST.
+          Auction hammers settle after Sunday&apos;s consolidated invoice. Buy Now purchases can
+          be paid immediately. After each claim, pick local pickup or shipping. Pickup is hammer
+          + 15% premium + GST. Shipping adds a $10 handling fee, estimated carrier postage, and GST.
         </p>
       </div>
 
@@ -170,8 +169,12 @@ export default function CheckoutPage() {
       {wins.length === 0 ? (
         <p className="font-comic">
           No hammers on your paddle yet.{" "}
+          <Link href="/buy-now" className="font-bold underline">
+            Browse Buy Now
+          </Link>{" "}
+          or{" "}
           <Link href="/live" className="font-bold underline">
-            Browse live lots
+            live lots
           </Link>
           .
         </p>

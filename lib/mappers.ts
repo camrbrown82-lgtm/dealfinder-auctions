@@ -1,4 +1,5 @@
 import { listingGradeFromSources } from "@/lib/listingGrade";
+import { asBuyNowStatus, asSaleChannel } from "@/lib/saleChannel";
 import { parseLotEndMs, uniqueImageUrls, type AuctionLot, type Consignment, type LotCategory, type LotStatus } from "@/lib/utils";
 
 function isoEndsAt(value: string | null | undefined) {
@@ -35,6 +36,8 @@ export type LotRow = {
   helcim_purchase_transaction_id?: string | null;
   shipping_cost?: number | string | null;
   sale_source?: string | null;
+  sale_channel?: string | null;
+  buy_now_status?: string | null;
 };
 
 export type ConsignmentRow = {
@@ -56,6 +59,7 @@ export type ConsignmentRow = {
   status: Consignment["status"];
   contact_email?: string | null;
   owner_id?: string | null;
+  sale_channel?: string | null;
 };
 
 function asUrlList(value: unknown): string[] {
@@ -102,6 +106,8 @@ export function mapLot(row: LotRow): AuctionLot {
     helcimPurchaseTransactionId: row.helcim_purchase_transaction_id ?? null,
     shippingCost: Number(row.shipping_cost ?? 0) || 0,
     saleSource: row.sale_source === "buy_now" ? "buy_now" : "bid",
+    saleChannel: asSaleChannel(row.sale_channel),
+    buyNowStatus: asBuyNowStatus(row.buy_now_status),
   };
 }
 
@@ -123,5 +129,6 @@ export function mapConsignment(row: ConsignmentRow): Consignment {
     commissionRate: row.commission_rate == null ? null : Number(row.commission_rate),
     imageUrls: row.image_urls ?? [],
     status: row.status,
+    saleChannel: asSaleChannel(row.sale_channel),
   };
 }

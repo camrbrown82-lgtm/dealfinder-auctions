@@ -20,8 +20,10 @@ export async function GET() {
       const id = row.lot_id as string;
       count.set(id, (count.get(id) ?? 0) + 1);
     }
-    const lots: MonitorLot[] = ((data ?? []) as LotRow[]).map((row) => {
-      const lot = mapLot(row);
+    const lots: MonitorLot[] = ((data ?? []) as LotRow[])
+      .map((row) => mapLot(row))
+      .filter((lot) => lot.saleChannel !== "buy_now")
+      .map((lot) => {
       return {
         id: lot.id,
         title: lot.title,
@@ -44,7 +46,7 @@ export async function GET() {
   stampAuctionNumbers(demo);
   const clocks = listDemoLots();
   const lots: MonitorLot[] = demo.inventory
-    .filter((lot) => lot.status === "live" || lot.status === "paused")
+    .filter((lot) => lot.saleChannel !== "buy_now" && (lot.status === "live" || lot.status === "paused"))
     .map((lot) => {
       const clock = getDemoLot(lot.id);
       return {
