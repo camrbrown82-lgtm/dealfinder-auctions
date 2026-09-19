@@ -59,7 +59,7 @@ export async function POST(request: NextRequest) {
 
   if (body.method === "cash") {
     const result = await requestCashBidAuth(session.id, eventId);
-    if (result.created && !result.autoApproved) {
+    if (!result.autoApproved) {
       void sendCashBidAuthEmail({
         name: session.fullName,
         email: session.email,

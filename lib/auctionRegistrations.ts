@@ -217,11 +217,9 @@ export async function requestCashBidAuth(userId: string, eventId: string) {
     const row = await persistAuth(userId, eventId, { paymentMethod: "cash", authStatus: "approved" });
     return { row, created: false, autoApproved: true as const };
   }
-  if (existing?.authStatus === "pending") {
-    return { row: existing, created: false, autoApproved: false as const };
-  }
+  const alreadyPending = existing?.authStatus === "pending" && existing.paymentMethod === "cash";
   const row = await persistAuth(userId, eventId, { paymentMethod: "cash", authStatus: "pending" });
-  return { row, created: true, autoApproved: false as const };
+  return { row, created: !alreadyPending, autoApproved: false as const, notify: true as const };
 }
 
 export async function decideCashBidAuth(

@@ -81,11 +81,11 @@ export function BidPaymentModal({
             </p>
           ) : null}
           <div className="flex flex-col gap-2">
-            <button type="button" className="comic-btn" disabled={busy || pendingCash} onClick={onHelcim}>
+            <button type="button" className="comic-btn" disabled={busy} onClick={onHelcim}>
               {busy ? "Working…" : `Authorize ${formatCurrency(BID_PREAUTH_AMOUNT)} card hold`}
             </button>
-            <button type="button" className="comic-btn-invert" disabled={busy || pendingCash} onClick={onCash}>
-              {busy ? "Sending request…" : "Request cash on pickup"}
+            <button type="button" className="comic-btn-invert" disabled={busy} onClick={onCash}>
+              {busy ? "Sending request…" : pendingCash ? "Send cash request to the desk again" : "Request cash on pickup"}
             </button>
             <button type="button" className="comic-btn-invert" onClick={onClose}>
               Back to the floor
