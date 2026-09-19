@@ -413,16 +413,15 @@ export function AuctionRoom({ lot }: { lot: AuctionLot }) {
       if (!response.ok) throw new Error(json.error || "Could not request cash approval.");
       setAuthorized(Boolean(json.authorized));
       setAuthStatus(String(json.authStatus || "pending"));
+      setPayOpen(false);
+      setPayError(null);
       if (json.authorized) {
-        setPayOpen(false);
         await refresh();
         await placeBid();
         return;
       }
-      setPayError(
-        json.autoApproved
-          ? null
-          : "Cash request sent to the desk. You can bid after they approve this auction.",
+      setMessage(
+        "Cash-on-pickup is with the desk. Keep browsing — you can bid after they approve this auction.",
       );
     } catch (error) {
       setPayError(error instanceof Error ? error.message : "Could not request cash approval.");

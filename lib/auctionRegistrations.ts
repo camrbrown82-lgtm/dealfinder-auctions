@@ -184,15 +184,20 @@ async function persistAuth(
   memory().set(key(userId, eventId), row);
   const supabase = getSupabaseAdmin();
   if (!isSupabaseConfigured || !supabase) return row;
-  const { error } = await supabase
-    .from("auction_registrations")
-    .update({
-      payment_method: row.paymentMethod,
-      auth_status: row.authStatus,
-    })
-    .eq("user_id", userId)
-    .eq("event_id", eventId);
-  if (error && /payment_method|auth_status|schema cache|does not exist/i.test(error.message)) {
+  const payload: Record<string, unknown> = {
+    user_id: userId,
+    event_id: eventId,
+    terms_agreed_at: row.termsAgreedAt,
+    preauth_agreed_at: row.preauthAgreedAt || new Date().toISOString(),
+    payment_method: row.paymentMethod,
+    auth_status: row.authStatus,
+  };
+  let { error } = await supabase.from("auction_registrations").upsert(payload, { onConflict: "user_id,event_id" });
+  if (error && /payment_method|auth_status/i.test(error.message)) {
+    const { payment_method: _p, auth_status: _a, ...rest } = payload;
+    ({ error } = await supabase.from("auction_registrations").upsert(rest, { onConflict: "user_id,event_id" }));
+  }
+  if (error && /auction_registrations|schema cache|does not exist/i.test(error.message)) {
     return row;
   }
   if (error) throw new Error(error.message);

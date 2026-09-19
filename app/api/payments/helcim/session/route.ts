@@ -193,8 +193,17 @@ export async function POST(request: NextRequest) {
       disclaimerTitle: PREAUTH_DISCLAIMER_TITLE,
     });
   } catch (error) {
+    const host = (() => {
+      try {
+        return new URL(helcimApiBase().startsWith("http") ? helcimApiBase() : `https://${helcimApiBase()}`).host;
+      } catch {
+        return "helcim";
+      }
+    })();
+    const detail = error instanceof Error ? error.message : "Could not start Helcim checkout.";
+    const kind = body.purpose === "bid_preauth" ? "the $50 bid pre-auth" : "checkout";
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Could not start Helcim checkout." },
+      { error: `Helcim (${host}) could not start ${kind}: ${detail}` },
       { status: 400 },
     );
   }

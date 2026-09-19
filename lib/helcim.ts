@@ -147,8 +147,12 @@ async function helcimFetch(path: string, init: RequestInit & { idempotency?: boo
   if (!response.ok) {
     let message = text || `Helcim HTTP ${response.status}`;
     if (json && typeof json === "object") {
-      const row = json as { message?: unknown; error?: unknown };
-      if (typeof row.message === "string" && row.message.trim()) message = row.message;
+      const row = json as { message?: unknown; error?: unknown; errors?: unknown };
+      if (Array.isArray(row.errors) && row.errors.length) {
+        message = row.errors
+          .map((item) => (typeof item === "string" ? item : JSON.stringify(item)))
+          .join(" ");
+      } else if (typeof row.message === "string" && row.message.trim()) message = row.message;
       else if (typeof row.error === "string" && row.error.trim()) message = row.error;
     }
     throw new Error(message);
@@ -170,8 +174,8 @@ export async function initializeHelcimCheckout(input: {
     paymentMethod: "cc",
     language: "en",
   };
-  if (input.invoiceNumber) body.invoiceNumber = input.invoiceNumber;
-  if (input.customerCode) body.customerCode = input.customerCode;
+  // Helcim treats invoiceNumber / customerCode as existing Helcim records.
+  // Our DF-HOLD ids are local only; sending them makes initialize return 400.
   const json = (await helcimFetch("/helcim-pay/initialize", {
     method: "POST",
     body: JSON.stringify(body),
