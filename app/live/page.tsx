@@ -1,7 +1,16 @@
+import type { Metadata } from "next";
 import { ConsignLink } from "@/components/ConsignLink";
 import { LiveGrid } from "@/components/LiveGrid";
 import { fetchLiveCatalog } from "@/lib/lots";
 import { pickSaleWindow } from "@/lib/liveSales";
+import { pageMetadata } from "@/lib/seo";
+
+export const metadata: Metadata = pageMetadata({
+  title: "Live auctions",
+  description:
+    "Watch the DealFinder Auctions live floor in Airdrie, AB. Bid on collectibles, comics, toys, and local consignments before Sunday close.",
+  path: "/live",
+});
 
 export const dynamic = "force-dynamic";
 export const fetchCache = "force-no-store";

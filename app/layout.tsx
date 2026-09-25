@@ -3,6 +3,9 @@ import Script from "next/script";
 import { Bangers, Comic_Neue } from "next/font/google";
 import { AppShell } from "@/components/AppShell";
 import { BidderProvider } from "@/components/BidderProvider";
+import { JsonLd } from "@/components/JsonLd";
+import { SITE } from "@/lib/site";
+import { SITE_DESCRIPTION, SITE_ORIGIN, SITE_TITLE, pageMetadata } from "@/lib/seo";
 import "./globals.css";
 
 const bangers = Bangers({
@@ -18,9 +21,15 @@ const comicNeue = Comic_Neue({
 });
 
 export const metadata: Metadata = {
-  title: "DealFinder Auctions",
-  description: "Live pop-art auctions. Consign. Bid. Boom.",
-  icons: { icon: "/logo.webp" },
+  metadataBase: new URL(SITE_ORIGIN),
+  applicationName: SITE.name,
+  ...pageMetadata({ path: "/" }),
+  title: {
+    default: SITE_TITLE,
+    template: `%s | ${SITE.name}`,
+  },
+  description: SITE_DESCRIPTION,
+  icons: { icon: "/logo.webp", apple: "/logo.png" },
 };
 
 export default function RootLayout({
@@ -31,6 +40,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={`${bangers.variable} ${comicNeue.variable}`}>
+        <JsonLd />
         <Script
           src={
             process.env.NEXT_PUBLIC_HELCIM_PAY_JS ||

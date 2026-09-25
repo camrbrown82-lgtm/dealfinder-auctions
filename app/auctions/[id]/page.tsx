@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { LotGallery } from "@/components/LotGallery";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -5,12 +6,32 @@ import { InterestBeacon } from "@/components/InterestBeacon";
 import { AuctionRoom } from "@/components/AuctionRoom";
 import { fetchLot } from "@/lib/lots";
 import { listingGradeOf } from "@/lib/listingGrade";
+import { lotImages } from "@/lib/utils";
+import { pageMetadata } from "@/lib/seo";
 
 export const dynamic = "force-dynamic";
 
 type PageProps = {
   params: { id: string };
 };
+
+export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
+  const lot = await fetchLot(params.id);
+  if (!lot) {
+    return pageMetadata({
+      title: "Lot not found",
+      path: `/auctions/${params.id}`,
+      index: false,
+    });
+  }
+  const image = lotImages(lot)[0] || lot.image;
+  return pageMetadata({
+    title: lot.title,
+    description: lot.description,
+    path: `/auctions/${lot.slug || lot.id}`,
+    image: image || "/logo.png",
+  });
+}
 
 export default async function AuctionLotPage({ params }: PageProps) {
   const lot = await fetchLot(params.id);
