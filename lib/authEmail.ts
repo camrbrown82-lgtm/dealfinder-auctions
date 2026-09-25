@@ -28,12 +28,17 @@ export function verifyEmailHref() {
   return `${publicAppUrl()}/verify-email`;
 }
 
+export function resetPasswordHref() {
+  return `${publicAppUrl()}/reset-password`;
+}
+
 export function confirmationPageHref(tokenHash: string, type: string) {
   const params = new URLSearchParams({
     token_hash: tokenHash,
     type: otpType(type),
   });
-  return `${verifyEmailHref()}?${params.toString()}`;
+  const landing = otpType(type) === "recovery" ? resetPasswordHref() : verifyEmailHref();
+  return `${landing}?${params.toString()}`;
 }
 
 function otpType(value: string): EmailOtpType {
@@ -89,7 +94,12 @@ function hrefFromGeneratedLink(properties: LinkProperties | undefined, raw?: unk
   if (!action) return null;
   try {
     const url = new URL(action);
-    url.searchParams.set("redirect_to", verifyEmailHref());
+    url.searchParams.set(
+      "redirect_to",
+      otpType(bag.verification_type || extra.verification_type || "signup") === "recovery"
+        ? resetPasswordHref()
+        : verifyEmailHref(),
+    );
     return url.toString();
   } catch {
     return action;
@@ -127,6 +137,19 @@ export async function generateVerifyLink(supabase: SupabaseClient, email: string
   });
   if (error) return { verifyHref: null as string | null, error: error.message };
   return { verifyHref: hrefFromGeneratedLink(data.properties, data), error: null as string | null };
+}
+
+export async function generateRecoveryLink(supabase: SupabaseClient, email: string) {
+  const { data, error } = await supabase.auth.admin.generateLink({
+    type: "recovery",
+    email,
+    options: { redirectTo: resetPasswordHref() },
+  });
+  if (error) return { resetHref: null as string | null, error: error.message };
+  return {
+    resetHref: hrefFromGeneratedLink(data.properties, { ...data, verification_type: "recovery" }),
+    error: null as string | null,
+  };
 }
 
 export async function fallbackSupabaseConfirmEmail(email: string) {

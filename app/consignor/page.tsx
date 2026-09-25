@@ -47,6 +47,7 @@ export default function ConsignorPage() {
   const [termsOpen, setTermsOpen] = useState(false);
   const [itemDetails, setItemDetails] = useState("");
   const [listingGrade, setListingGrade] = useState<ListingGrade>("Used");
+  const [requestBuyNow, setRequestBuyNow] = useState(false);
 
   const commissionRate = Number(commissionPercent) / 100 || DEFAULT_COMMISSION_RATE;
   const buyNow = Number(buyNowPrice) || 0;
@@ -175,6 +176,8 @@ export default function ConsignorPage() {
           itemDetails,
           imageUrls,
           termsAccepted: true,
+          saleChannel: requestBuyNow ? "buy_now" : "auction",
+          requestBuyNow,
         }),
       });
       const json = await parseApiJson<{ item?: ConsignorItem; error?: string }>(response);
@@ -185,7 +188,12 @@ export default function ConsignorPage() {
       writeLocal(item);
       setItems((current) => [item, ...current.filter((row) => row.id !== item.id)]);
       setTermsOpen(false);
-      setNotice("Submitted for pending approval. DealFinder will assign lot # and sale date.");
+      setNotice(
+        requestBuyNow
+          ? "Submitted as Buy Now, pending admin approval. It will not appear on the storefront until DealFinder approves it."
+          : "Submitted for pending approval. DealFinder will assign lot # and sale date.",
+      );
+      setRequestBuyNow(false);
       setTitle("");
       setDescription("");
       setBuyNowPrice("");
@@ -338,6 +346,20 @@ export default function ConsignorPage() {
             />
           </label>
 
+          <label className="flex items-start gap-2 font-comic text-sm font-bold">
+            <input
+              type="checkbox"
+              className="mt-1 h-4 w-4"
+              checked={requestBuyNow}
+              onChange={(e) => setRequestBuyNow(e.target.checked)}
+            />
+            <span>
+              Set as Buy Now, pending admin approval
+              <span className="block font-normal">
+                Staff must approve before this item appears on the public Buy Now page.
+              </span>
+            </span>
+          </label>
           <div className="border-4 border-black bg-brand-cream p-3 font-comic text-sm">
             <p className="font-display text-lg">Commission breakdown</p>
             <Row label="At buy now" split={breakdown.buyNow} />
@@ -384,7 +406,9 @@ export default function ConsignorPage() {
           and moves into that week&apos;s auction inventory.
         </p>
         <StatusTable
-          items={items.filter((item) => item.pipelineStatus === "pending_approval")}
+          items={items.filter(
+            (item) => item.pipelineStatus === "pending_approval" || item.pipelineStatus === "buy_now_pending",
+          )}
           empty="Nothing waiting on approval."
         />
       </section>
@@ -395,7 +419,9 @@ export default function ConsignorPage() {
           Filed into a sale by DealFinder. Check here for scheduled, live, or sold status.
         </p>
         <StatusTable
-          items={items.filter((item) => item.pipelineStatus !== "pending_approval")}
+          items={items.filter(
+            (item) => item.pipelineStatus !== "pending_approval" && item.pipelineStatus !== "buy_now_pending",
+          )}
           empty="No accepted lots yet."
         />
       </section>

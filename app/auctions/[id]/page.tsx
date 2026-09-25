@@ -4,8 +4,10 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { InterestBeacon } from "@/components/InterestBeacon";
 import { AuctionRoom } from "@/components/AuctionRoom";
+import { BuyNowStore } from "@/components/BuyNowStore";
 import { fetchLot } from "@/lib/lots";
 import { listingGradeOf } from "@/lib/listingGrade";
+import { isBuyNowChannel } from "@/lib/saleChannel";
 import { lotImages } from "@/lib/utils";
 import { pageMetadata } from "@/lib/seo";
 
@@ -41,8 +43,11 @@ export default async function AuctionLotPage({ params }: PageProps) {
     <div className="space-y-6">
       <InterestBeacon lot={lot} />
       <div className="comic-panel px-4 py-5">
-        <Link href="/live" className="font-display text-lg text-brand-red underline">
-          ← Back to live lots
+        <Link
+          href={isBuyNowChannel(lot) ? "/buy-now" : "/live"}
+          className="font-display text-lg text-brand-red underline"
+        >
+          {isBuyNowChannel(lot) ? "← Back to Buy Now" : "← Back to live lots"}
         </Link>
         <p className="mt-3 inline-block border-4 border-black bg-white px-3 py-1 font-display text-brand-red shadow-comic-red-sm">
           {listingGradeOf(lot)}
@@ -74,7 +79,7 @@ export default async function AuctionLotPage({ params }: PageProps) {
           </div>
         </div>
 
-        <AuctionRoom lot={lot} />
+        {isBuyNowChannel(lot) ? <BuyNowStore lots={[lot]} compact /> : <AuctionRoom lot={lot} />}
       </div>
     </div>
   );

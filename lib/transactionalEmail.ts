@@ -42,7 +42,11 @@ export async function sendTransactionalEmail(input: {
     input.simpleLayout ||
       input.templateId === "welcome" ||
       input.templateId === "consignment_approved" ||
-      input.templateId === "cash_bid_auth",
+      input.templateId === "cash_bid_auth" ||
+      input.templateId === "cash_bid_received" ||
+      input.templateId === "cash_bid_approved" ||
+      input.templateId === "cash_bid_rejected" ||
+      input.templateId === "password_reset",
   );
   const html = simple ? buildSimpleEmailHtml(body, logoSrc) : buildEmailHtml(body, logoSrc);
   const text = looksLikeHtml(body) ? htmlToText(html) : body.replaceAll("{{logo}}", "");

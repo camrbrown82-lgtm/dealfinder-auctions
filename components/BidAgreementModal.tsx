@@ -50,12 +50,22 @@ export function BidAgreementModal({
         aria-labelledby="bid-terms-title"
         className="flex max-h-[92vh] w-full max-w-3xl flex-col overflow-hidden comic-panel"
       >
-        <div className="shrink-0 border-b-4 border-black bg-brand-cream px-4 py-3">
-          <p className="font-display text-sm tracking-[0.25em] text-brand-red">BEFORE YOU BID</p>
-          <h2 id="bid-terms-title" className="font-display text-3xl leading-none text-brand-red sm:text-4xl">
-            {terms.title}
-          </h2>
-          <p className="mt-2 font-comic text-sm">{terms.intro}</p>
+        <div className="flex shrink-0 items-start justify-between gap-3 border-b-4 border-black bg-brand-cream px-4 py-3">
+          <div>
+            <p className="font-display text-sm tracking-[0.25em] text-brand-red">BEFORE YOU BID</p>
+            <h2 id="bid-terms-title" className="font-display text-3xl leading-none text-brand-red sm:text-4xl">
+              {terms.title}
+            </h2>
+            <p className="mt-2 font-comic text-sm">{terms.intro}</p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="comic-btn-invert shrink-0 !px-3 !py-1 !text-3xl leading-none"
+            aria-label="Back to the bidding floor"
+          >
+            X
+          </button>
         </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto bg-white p-4 font-comic text-sm leading-relaxed">
@@ -100,7 +110,7 @@ export function BidAgreementModal({
               {busy ? "Saving…" : "Agree and continue"}
             </button>
             <button type="button" className="comic-btn-invert" disabled={busy} onClick={onClose}>
-              Cancel
+              Back to the floor
             </button>
           </div>
         </div>

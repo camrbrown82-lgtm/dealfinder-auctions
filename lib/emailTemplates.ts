@@ -119,15 +119,16 @@ DealFinder Auctions
     id: "password_reset",
     name: "Password Reset",
     subject: "Reset your DealFinder paddle password",
-    body: `{{customer_name}},
+    body: `Hi {{customer_name}},
 
-Use this link to set a new DealFinder paddle password. It expires in one hour.
+Use this link to choose a new DealFinder paddle password:
 
 {{payment_link}}
 
-If you did not ask for this, ignore the email — your password stays the same.
+If you did not ask for this, you can ignore the email.
 
-DealFinder Auctions`,
+DealFinder Auctions
+529 Gateway Rd NE, Airdrie, AB T4B 0J6`,
   },
   {
     id: "cash_receipt",
@@ -151,6 +152,42 @@ Auction: {{winning_bid}}
 Requested: {{invoice_total}}
 
 Review and approve or reject: {{payment_link}}
+
+DealFinder Auctions`,
+  },
+  {
+    id: "cash_bid_received",
+    name: "Cash Bid Request Received",
+    subject: "Cash pickup bidding is with the desk — {{item_title}}",
+    body: `Hi {{customer_name}},
+
+DealFinder received your cash-on-pickup request for {{item_title}}. The desk still has to approve it. We will email you when you can bid.
+
+Browse live lots: {{lot_link}}
+
+DealFinder Auctions`,
+  },
+  {
+    id: "cash_bid_approved",
+    name: "Cash Bid Approved",
+    subject: "You can bid with cash pickup — {{item_title}}",
+    body: `Hi {{customer_name}},
+
+You are approved to bid with cash on pickup for {{item_title}}. Open the lot and place your bid. Pay in cash when you pick up after the sale.
+
+Live lots: {{lot_link}}
+
+DealFinder Auctions`,
+  },
+  {
+    id: "cash_bid_rejected",
+    name: "Cash Bid Rejected",
+    subject: "Cash pickup bidding was not approved — {{item_title}}",
+    body: `Hi {{customer_name}},
+
+The desk did not approve cash-on-pickup bidding for {{item_title}}. You can still bid by authorizing the $50 Helcim card hold.
+
+Live lots: {{lot_link}}
 
 DealFinder Auctions`,
   },

@@ -118,7 +118,7 @@ export function AdminAiIntake({
     }
   }
 
-  async function submit(postLive: boolean) {
+  async function submit(postLive: boolean, saleChannel: "auction" | "buy_now" = "auction") {
     setError(null);
     setSubmitting(true);
     try {
@@ -147,6 +147,7 @@ export function AdminAiIntake({
           imageUrls,
           lotNumber,
           postLive,
+          saleChannel,
         }),
       });
       const json = await response.json();
@@ -166,10 +167,12 @@ export function AdminAiIntake({
       setItemDetails("");
       setListingGrade("Used");
       await onPosted(
-        postLive
-          ? `Posted ${lotNumber} live onto ${json.auctionLabel ?? "the next weekly sale"}.`
-          : `Saved ${lotNumber} onto ${json.auctionLabel ?? "the next weekly sale"}.`,
-        json.lot,
+        saleChannel === "buy_now"
+          ? `Saved ${lotNumber} to Buy Now.`
+          : postLive
+            ? `Posted ${lotNumber} live onto ${json.auctionLabel ?? "the next weekly sale"}.`
+            : `Saved ${lotNumber} onto ${json.auctionLabel ?? "the next weekly sale"}.`,
+        saleChannel === "buy_now" ? undefined : json.lot,
       );
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not save lot.");
@@ -324,6 +327,14 @@ export function AdminAiIntake({
               onClick={() => void submit(true)}
             >
               Post live to site
+            </button>
+            <button
+              type="button"
+              className="comic-btn"
+              disabled={submitting}
+              onClick={() => void submit(true, "buy_now")}
+            >
+              Save to Buy Now
             </button>
           </div>
           {error && <p className="font-display text-xl text-[#FF0000]">{error}</p>}

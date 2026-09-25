@@ -18,6 +18,7 @@ import { invoicePaymentForLot, requestCashPayment } from "@/lib/cashPayment";
 import { estimateCarrierShipping } from "@/lib/shippingEstimate";
 import type { WinInvoice } from "@/lib/winTypes";
 import { invoiceReadyForEvent } from "@/lib/auctionCloseInvoices";
+import { invoiceReadyForSale } from "@/lib/saleChannel";
 import { isLotPaid, lotPaidRecord } from "@/lib/helcim";
 
 export const dynamic = "force-dynamic";
@@ -87,7 +88,8 @@ export async function GET() {
       includeHandling,
     });
     const settlement = await invoicePaymentForLot(lot.id, session);
-    const invoiceReady = await invoiceReadyForEvent(lot.eventId);
+    const invoiceReady =
+      invoiceReadyForSale(lot) || (await invoiceReadyForEvent(lot.eventId));
     wins.push({
       lotId: lot.id,
       title: lot.title,
@@ -177,7 +179,7 @@ export async function PATCH(request: NextRequest) {
 
   if (body.cash) {
     try {
-      if (!(await invoiceReadyForEvent(lot.eventId))) {
+      if (!invoiceReadyForSale(lot) && !(await invoiceReadyForEvent(lot.eventId))) {
         return NextResponse.json(
           { error: "Cash pickup and Helcim pay open after Sunday's consolidated invoice is sent." },
           { status: 400 },

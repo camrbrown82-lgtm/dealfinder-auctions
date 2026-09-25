@@ -184,16 +184,17 @@ async function persistAuth(
   memory().set(key(userId, eventId), row);
   const supabase = getSupabaseAdmin();
   if (!isSupabaseConfigured || !supabase) return row;
-  const { error } = await supabase
-    .from("auction_registrations")
-    .update({
-      payment_method: row.paymentMethod,
-      auth_status: row.authStatus,
-    })
-    .eq("user_id", userId)
-    .eq("event_id", eventId);
-  if (error && /payment_method|auth_status|schema cache|does not exist/i.test(error.message)) {
-    return row;
+  const payload: Record<string, unknown> = {
+    user_id: userId,
+    event_id: eventId,
+    terms_agreed_at: row.termsAgreedAt,
+    preauth_agreed_at: row.preauthAgreedAt || new Date().toISOString(),
+    payment_method: row.paymentMethod,
+    auth_status: row.authStatus,
+  };
+  let { error } = await supabase.from("auction_registrations").upsert(payload, { onConflict: "user_id,event_id" });
+  if (error && /payment_method|auth_status/i.test(error.message)) {
+    throw new Error("Cash pickup requests need payment columns on auction_registrations. Run the Helcim SQL in Supabase.");
   }
   if (error) throw new Error(error.message);
   return row;
@@ -216,11 +217,9 @@ export async function requestCashBidAuth(userId: string, eventId: string) {
     const row = await persistAuth(userId, eventId, { paymentMethod: "cash", authStatus: "approved" });
     return { row, created: false, autoApproved: true as const };
   }
-  if (existing?.authStatus === "pending") {
-    return { row: existing, created: false, autoApproved: false as const };
-  }
+  const alreadyPending = existing?.authStatus === "pending" && existing.paymentMethod === "cash";
   const row = await persistAuth(userId, eventId, { paymentMethod: "cash", authStatus: "pending" });
-  return { row, created: true, autoApproved: false as const };
+  return { row, created: !alreadyPending, autoApproved: false as const, notify: true as const };
 }
 
 export async function decideCashBidAuth(

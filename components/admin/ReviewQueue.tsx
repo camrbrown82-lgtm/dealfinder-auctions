@@ -90,7 +90,9 @@ function ReviewCard({
         </div>
       ) : null}
       <div className="min-w-0 flex-1 space-y-3">
-        <p className="font-display text-sm tracking-widest text-brand-red">{item.status.toUpperCase()}</p>
+        <p className="font-display text-sm tracking-widest text-brand-red">
+          {item.saleChannel === "buy_now" ? "BUY NOW PENDING" : item.status.toUpperCase()}
+        </p>
         <OwnerPicker
           value={draft.consignorName ?? ""}
           consignors={consignors}
@@ -135,7 +137,7 @@ function ReviewCard({
         </label>
         <div className="flex flex-wrap gap-2">
           <button type="button" className="comic-btn !text-base" onClick={onApprove}>
-            Approve into a sale
+            {item.saleChannel === "buy_now" ? "Approve to Buy Now" : "Approve into a sale"}
           </button>
           <button type="button" className="comic-btn-invert !text-base" onClick={onHold}>
             Hold

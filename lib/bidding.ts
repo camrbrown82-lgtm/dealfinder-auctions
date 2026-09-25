@@ -24,7 +24,12 @@ export type AuctionClock = {
   absentees: AbsenteeMax[];
 };
 
-export function nextLiveAmount(currentBid: number, minIncrement: number) {
+export function openingAsk(currentBid: number, minIncrement: number) {
+  return currentBid > 0 ? currentBid : minIncrement;
+}
+
+export function nextLiveAmount(currentBid: number, minIncrement: number, highBidder?: string | null) {
+  if (!highBidder) return openingAsk(currentBid, minIncrement);
   return currentBid + minIncrement;
 }
 
@@ -46,7 +51,9 @@ function upsertAbsentee(list: AbsenteeMax[], bidder: string, max: number) {
 }
 
 function bestChallenger(state: AuctionClock) {
-  const floor = state.currentBid + state.minIncrement;
+  const floor = state.highBidder
+    ? state.currentBid + state.minIncrement
+    : openingAsk(state.currentBid, state.minIncrement);
   const challengers = state.absentees
     .filter((row) => row.bidder !== state.highBidder && row.max >= floor)
     .sort((a, b) => b.max - a.max || a.bidder.localeCompare(b.bidder));
@@ -59,7 +66,9 @@ function runProxy(state: AuctionClock, events: BidEvent[]) {
     guard += 1;
     const challenger = bestChallenger(state);
     if (!challenger) break;
-    const amount = state.currentBid + state.minIncrement;
+    const amount = state.highBidder
+      ? state.currentBid + state.minIncrement
+      : openingAsk(state.currentBid, state.minIncrement);
     if (amount > challenger.max) break;
     state.currentBid = amount;
     state.highBidder = challenger.bidder;
@@ -73,7 +82,7 @@ export function placeLiveBid(
   amount: number,
   now = Date.now(),
 ) {
-  const minimum = state.currentBid + state.minIncrement;
+  const minimum = nextLiveAmount(state.currentBid, state.minIncrement, state.highBidder);
   if (amount < minimum) {
     throw new Error(`Bid must be at least ${minimum}`);
   }
@@ -96,14 +105,14 @@ export function placeAbsenteeMax(
   maxAmount: number,
   now = Date.now(),
 ) {
-  const minimum = state.currentBid + state.minIncrement;
+  const minimum = nextLiveAmount(state.currentBid, state.minIncrement, state.highBidder);
   if (maxAmount < minimum) {
     throw new Error(`Absentee max must be at least ${minimum}`);
   }
 
   state.absentees = upsertAbsentee(state.absentees, bidder, maxAmount);
   const events: BidEvent[] = [];
-  const opening = state.currentBid + state.minIncrement;
+  const opening = nextLiveAmount(state.currentBid, state.minIncrement, state.highBidder);
   if (opening <= maxAmount) {
     state.currentBid = opening;
     state.highBidder = bidder;

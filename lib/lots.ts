@@ -4,6 +4,7 @@ import { mapAuctionEvent } from "@/lib/mapAuctionEvent";
 import { mapLot, type LotRow } from "@/lib/mappers";
 import { getDemoLot } from "@/lib/demoAuctionStore";
 import { getAdminDemo, stampAuctionNumbers } from "@/lib/demoAdminStore";
+import { isListedBuyNow } from "@/lib/saleChannel";
 import { MOCK_LOTS, getLotById, filterLots, lotImages, uniqueImageUrls, type AuctionEvent, type AuctionLot } from "@/lib/utils";
 import { ensureWeeklySales } from "@/lib/weeklySales";
 
@@ -35,7 +36,10 @@ export async function fetchLiveCatalog(): Promise<{
   if (!isSupabaseConfigured) {
     const demo = getAdminDemo();
     stampAuctionNumbers(demo);
-    return { lots: catalogLots(), events: demo.events };
+    return {
+      lots: catalogLots().filter((lot) => lot.saleChannel !== "buy_now"),
+      events: demo.events,
+    };
   }
 
   const supabase = getSupabaseAdmin();
@@ -70,9 +74,38 @@ export async function fetchLiveCatalog(): Promise<{
       lot.auctionNumber = row.event_id ? numbers.get(row.event_id) ?? null : lot.auctionNumber;
       return lot;
     })
-    .filter((lot) => lot.status !== "removed" && lot.status !== "draft" && lot.status !== "ended");
+    .filter(
+      (lot) =>
+        lot.saleChannel !== "buy_now" &&
+        lot.status !== "removed" &&
+        lot.status !== "draft" &&
+        lot.status !== "ended",
+    );
 
   return { lots, events, floor };
+}
+
+export async function fetchBuyNowLots(): Promise<AuctionLot[]> {
+  if (!isSupabaseConfigured) {
+    return catalogLots().filter(isListedBuyNow);
+  }
+
+  const supabase = getSupabaseAdmin();
+  if (!supabase) return [];
+
+  const { data, error } = await supabase
+    .from("lots")
+    .select("*")
+    .eq("sale_channel", "buy_now")
+    .eq("buy_now_status", "listed")
+    .order("created_at", { ascending: false });
+
+  if (error || !data) {
+    console.error("fetchBuyNowLots", error?.message);
+    return [];
+  }
+
+  return (data as LotRow[]).map((row) => withGallery(mapLot(row))).filter(isListedBuyNow);
 }
 
 export async function fetchLiveLots(): Promise<AuctionLot[]> {

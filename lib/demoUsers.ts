@@ -100,6 +100,7 @@ export function updateDemoUser(
       helcimCustomerCode?: string | null;
       preauthTransactionId?: string | null;
       preauthStatus?: PreauthStatus;
+      passwordHash?: string;
     }
   >,
 ) {

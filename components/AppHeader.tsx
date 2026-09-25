@@ -36,14 +36,14 @@ export function AppHeader() {
         <Link href="/live" className={navClass}>
           Live
         </Link>
+        <Link href="/buy-now" className={navClass}>
+          Buy Now
+        </Link>
         <ConsignLink className={navClass}>Consign</ConsignLink>
         {user ? (
           <>
             <Link href="/profile" className={navClass}>
               Profile
-            </Link>
-            <Link href="/checkout" className={navClass}>
-              Checkout
             </Link>
             <button type="button" className={navClass} onClick={() => void logout()}>
               Log out

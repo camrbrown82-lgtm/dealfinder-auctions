@@ -345,9 +345,7 @@ function LotCard({
               {formatCurrency(lot.currentBid)}
             </p>
             <p className="h-4 truncate font-comic text-[10px] font-bold leading-4">
-              {lot.buyNowPrice || lot.reservePrice
-                ? `Buy now ${formatCurrency(lot.buyNowPrice || lot.reservePrice || 0)}`
-                : "\u00a0"}
+              Bid only
             </p>
           </div>
           <LotTimer endsAt={lot.endsAt} compact />

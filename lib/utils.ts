@@ -1,4 +1,5 @@
 import type { ListingGrade } from "@/lib/listingGrade";
+import type { BuyNowStatus, SaleChannel } from "@/lib/saleChannel";
 
 export type AuctionCategory =
   | "All"
@@ -44,6 +45,8 @@ export type AuctionLot = {
   helcimPurchaseTransactionId?: string | null;
   shippingCost?: number | null;
   saleSource?: "bid" | "buy_now" | null;
+  saleChannel?: SaleChannel;
+  buyNowStatus?: BuyNowStatus | null;
 };
 
 export type AuctionEvent = {
@@ -84,9 +87,10 @@ export type Consignment = {
   imageUrls: string[];
   status: ConsignmentStatus;
   listingGrade?: ListingGrade;
+  saleChannel?: SaleChannel;
 };
 
-export type PipelineStatus = "pending_approval" | "scheduled" | "live" | "sold";
+export type PipelineStatus = "pending_approval" | "buy_now_pending" | "scheduled" | "live" | "sold";
 
 export type ConsignorItem = {
   id: string;
@@ -96,6 +100,7 @@ export type ConsignorItem = {
   startingBid: number;
   buyNowPrice: number;
   commissionRate: number;
+  saleChannel?: SaleChannel;
 };
 
 export function uniqueImageUrls(urls: Array<string | null | undefined>): string[] {
@@ -309,7 +314,8 @@ export function formatCurrency(amount: number, currency = "CAD") {
   }).format(amount);
 }
 
-export function nextBidAmount(currentBid: number, minIncrement: number) {
+export function nextBidAmount(currentBid: number, minIncrement: number, highBidder?: string | null) {
+  if (!highBidder) return currentBid > 0 ? currentBid : minIncrement;
   return currentBid + minIncrement;
 }
 
@@ -319,7 +325,11 @@ export function getLotById(id: string) {
 
 export function filterLots(lots: AuctionLot[], category: AuctionCategory) {
   const live = lots.filter(
-    (lot) => lot.status !== "draft" && lot.status !== "ended" && lot.status !== "removed",
+    (lot) =>
+      lot.saleChannel !== "buy_now" &&
+      lot.status !== "draft" &&
+      lot.status !== "ended" &&
+      lot.status !== "removed",
   );
   if (category === "All") return live;
   return live.filter((lot) => lot.category === category);
@@ -390,6 +400,7 @@ export const DEFAULT_COMMISSION_RATE = 0.2;
 
 export function pipelineLabel(status: PipelineStatus) {
   if (status === "pending_approval") return "Pending approval";
+  if (status === "buy_now_pending") return "Buy now pending approval";
   if (status === "scheduled") return "Scheduled by DealFinder";
   if (status === "live") return "Live auction";
   return "Sold";
