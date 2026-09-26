@@ -9,7 +9,7 @@ import { requestStudioImage } from "@/lib/studioClient";
 import { requestCatalog } from "@/lib/aiIntakeClient";
 import { mergeAiRuns, type AiRun } from "@/lib/aiRuns";
 import { AiFeedback } from "@/components/AiFeedback";
-import { ListingGradeFields } from "@/components/ListingGradeFields";
+import { ItemDetailsField, ListingConditionField } from "@/components/ListingGradeFields";
 import { type ListingGrade } from "@/lib/listingGrade";
 import { listingImages, parsePastedImageUrls } from "@/lib/imageUrls";
 
@@ -194,8 +194,9 @@ export function AdminAiIntake({
         listing shot, then save. These lots are already paid for by the house, so there is no
         consignor commission.
       </p>
-      <form onSubmit={onSubmit} className="grid gap-6 lg:grid-cols-2">
-        <div className="comic-panel space-y-4 p-5">
+      <form onSubmit={onSubmit} className="space-y-6">
+        <div className="grid items-stretch gap-6 lg:grid-cols-2">
+        <div className="comic-panel flex h-full flex-col space-y-4 p-5">
           {workspace && (
             <div className="comic-photo-stage min-h-[22rem]">
               {workingImage ? (
@@ -229,22 +230,11 @@ export function AdminAiIntake({
             }}
           />
           <ImageUrlPaste value={imageUrlText} onChange={setImageUrlText} />
-          <ListingGradeFields
-            details={itemDetails}
-            grade={listingGrade}
-            onDetails={setItemDetails}
-            onGrade={setListingGrade}
-          />
-          <button
-            type="button"
-            className="comic-btn w-full"
-            onClick={() => void autoGenerate()}
-            disabled={generating}
-          >
-            {generating ? "Cataloging + studio photo…" : "Auto-Generate Details"}
-          </button>
+          <div className="flex-1">
+            <ItemDetailsField details={itemDetails} onDetails={setItemDetails} />
+          </div>
         </div>
-        <div className="comic-panel space-y-4 p-5">
+        <div className="comic-panel flex h-full flex-col space-y-4 p-5">
           <label className="block font-comic font-bold">
             Title
             <input
@@ -316,28 +306,6 @@ export function AdminAiIntake({
           {compsNote && (
             <p className="border-4 border-black bg-[#FFF7D1] p-3 font-comic text-sm">{compsNote}</p>
           )}
-          <div className="flex flex-wrap gap-2">
-            <button type="submit" className="comic-btn-invert" disabled={submitting}>
-              {submitting ? "Saving…" : "Save to inventory"}
-            </button>
-            <button
-              type="button"
-              className="comic-btn"
-              disabled={submitting}
-              onClick={() => void submit(true)}
-            >
-              Post live to site
-            </button>
-            <button
-              type="button"
-              className="comic-btn"
-              disabled={submitting}
-              onClick={() => void submit(true, "buy_now")}
-            >
-              Save to Buy Now
-            </button>
-          </div>
-          {error && <p className="font-display text-xl text-[#FF0000]">{error}</p>}
           {aiRun && !generating ? (
             <AiFeedback
               staff
@@ -345,6 +313,40 @@ export function AdminAiIntake({
               summary={[title, description, compsNote].filter(Boolean).join(" · ")}
             />
           ) : null}
+        </div>
+        </div>
+        <div className="comic-panel space-y-4 p-5">
+          <ListingConditionField grade={listingGrade} onGrade={setListingGrade} />
+          <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
+            <button
+              type="button"
+              className="comic-btn w-full sm:flex-1"
+              onClick={() => void autoGenerate()}
+              disabled={generating}
+            >
+              {generating ? "Cataloging + studio photo…" : "Auto-Generate Details"}
+            </button>
+            <button type="submit" className="comic-btn-invert w-full sm:flex-1" disabled={submitting}>
+              {submitting ? "Saving…" : "Save to inventory"}
+            </button>
+            <button
+              type="button"
+              className="comic-btn w-full sm:flex-1"
+              disabled={submitting}
+              onClick={() => void submit(true)}
+            >
+              Post live to site
+            </button>
+            <button
+              type="button"
+              className="comic-btn w-full sm:flex-1"
+              disabled={submitting}
+              onClick={() => void submit(true, "buy_now")}
+            >
+              Save to Buy Now
+            </button>
+          </div>
+          {error && <p className="font-display text-xl text-[#FF0000]">{error}</p>}
         </div>
       </form>
     </section>

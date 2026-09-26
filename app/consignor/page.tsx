@@ -14,7 +14,7 @@ import { requestCatalog } from "@/lib/aiIntakeClient";
 import { parseApiJson } from "@/lib/apiJson";
 import { requestStudioImage } from "@/lib/studioClient";
 import { mergeAiRuns, type AiRun } from "@/lib/aiRuns";
-import { ListingGradeFields } from "@/components/ListingGradeFields";
+import { ItemDetailsField, ListingConditionField } from "@/components/ListingGradeFields";
 import { type ListingGrade } from "@/lib/listingGrade";
 import {
   DEFAULT_COMMISSION_RATE,
@@ -315,8 +315,9 @@ export default function ConsignorPage() {
         </p>
       </div>
 
-      <form onSubmit={onSubmit} className="grid gap-6 lg:grid-cols-2">
-        <div className="comic-panel space-y-4 p-6">
+      <form onSubmit={onSubmit} className="space-y-6">
+        <div className="grid items-stretch gap-6 lg:grid-cols-2">
+        <div className="comic-panel flex h-full flex-col space-y-4 p-6">
           <ConsignorNameField value={consignorName} />
           <div className="comic-photo-stage min-h-[16rem]">
             {studioImageUrl || resolvedImageUrls[0] || filePreview ? (
@@ -346,23 +347,12 @@ export default function ConsignorPage() {
             }}
           />
           <ImageUrlPaste value={imageUrlText} onChange={setImageUrlText} />
-          <ListingGradeFields
-            details={itemDetails}
-            grade={listingGrade}
-            onDetails={setItemDetails}
-            onGrade={setListingGrade}
-          />
-          <button
-            type="button"
-            className="comic-btn w-full"
-            onClick={() => void autoGenerate()}
-            disabled={generating}
-          >
-            {generating ? "Cataloging + studio photo…" : "Auto-Generate Details"}
-          </button>
+          <div className="flex-1">
+            <ItemDetailsField details={itemDetails} onDetails={setItemDetails} />
+          </div>
         </div>
 
-        <div className="comic-panel space-y-4 p-6">
+        <div className="comic-panel flex h-full flex-col space-y-4 p-6">
           <label className="block font-comic font-bold">
             Title
             <input
@@ -475,10 +465,24 @@ export default function ConsignorPage() {
               summary={[title, description, compsNote].filter(Boolean).join(" · ")}
             />
           ) : null}
+        </div>
+        </div>
 
-          <button type="submit" className="comic-btn w-full" disabled={submitting}>
-            {submitting ? "Submitting…" : "Submit for approval"}
-          </button>
+        <div className="comic-panel space-y-4 p-6">
+          <ListingConditionField grade={listingGrade} onGrade={setListingGrade} />
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+            <button
+              type="button"
+              className="comic-btn w-full sm:flex-1"
+              onClick={() => void autoGenerate()}
+              disabled={generating}
+            >
+              {generating ? "Cataloging + studio photo…" : "Auto-Generate Details"}
+            </button>
+            <button type="submit" className="comic-btn w-full sm:flex-1" disabled={submitting}>
+              {submitting ? "Submitting…" : "Submit for approval"}
+            </button>
+          </div>
         </div>
       </form>
 
