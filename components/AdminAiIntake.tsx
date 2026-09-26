@@ -317,7 +317,7 @@ export function AdminAiIntake({
         </div>
         <div className="comic-panel space-y-4 p-5">
           <ListingConditionField grade={listingGrade} onGrade={setListingGrade} />
-          <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
+          <div className="flex flex-row flex-wrap items-end gap-3">
             <button
               type="button"
               className="comic-btn w-full sm:flex-1"

@@ -470,7 +470,7 @@ export default function ConsignorPage() {
 
         <div className="comic-panel space-y-4 p-6">
           <ListingConditionField grade={listingGrade} onGrade={setListingGrade} />
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+          <div className="flex flex-row items-end gap-3">
             <button
               type="button"
               className="comic-btn w-full sm:flex-1"
