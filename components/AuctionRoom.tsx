@@ -578,6 +578,7 @@ export function AuctionRoom({ lot }: { lot: AuctionLot }) {
             {highBidder || highBidderId
               ? ` (+${formatCurrency(increment)})`
               : " (starting price)"}
+            . Current step ${increment}.
             <span className="mt-1 block">Increments: {INCREMENT_TABLE_COPY}.</span>
           </p>
         ) : (
@@ -595,7 +596,7 @@ export function AuctionRoom({ lot }: { lot: AuctionLot }) {
             />
             <span className="mt-1 block font-normal">
               We auto-increment against other paddles up to this ceiling ({INCREMENT_TABLE_COPY}).
-              Current step is {formatCurrency(increment)}. Your max stays hidden.
+              Current step is ${increment}. Your max stays hidden.
             </span>
           </label>
         )}

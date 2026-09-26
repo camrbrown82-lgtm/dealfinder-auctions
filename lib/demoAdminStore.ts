@@ -9,7 +9,8 @@ import {
 import { registerDemoLot, seedDemoBidTape } from "@/lib/demoAuctionStore";
 import { suggestLotNumber } from "@/lib/catalogNumbers";
 import { DEFAULT_HOUSE_STARTING_BID, type HouseDeskSettings } from "@/lib/houseDesk";
-import { WEEKLY_SALES } from "@/lib/weeklySales";
+import { currentLiveSale } from "@/lib/liveSales";
+import { nextWeeklySale, WEEKLY_SALES } from "@/lib/weeklySales";
 import { termsTextFor } from "@/lib/tcTemplates";
 
 export type AdminDemoState = {
@@ -40,16 +41,20 @@ export function getAdminDemo(): AdminDemoState {
       termsAndConditions: termsTextFor("standard"),
       bidderTerms: termsTextFor("standard"),
     }));
-    const nextId = events[0]?.id;
+    const live = currentLiveSale(events) ?? nextWeeklySale(events) ?? events[0];
+    const past = events.find((event) => new Date(event.endsAt).getTime() < Date.now()) ?? events[0];
     globalThis.__dealfinderAdminDemo = {
       queue: clone(MOCK_CONSIGNMENTS),
-      inventory: clone(MOCK_LOTS).map((lot) => ({
-        ...lot,
-        eventId: nextId,
-        auctionNumber: events[0]?.auctionNumber ?? "AU-2026-0920",
-        endsAt: events[0]?.endsAt ?? lot.endsAt,
-        status: lot.status === "ended" ? "ended" : "live",
-      })),
+      inventory: clone(MOCK_LOTS).map((lot) => {
+        const sale = lot.status === "ended" ? past : live;
+        return {
+          ...lot,
+          eventId: sale?.id,
+          auctionNumber: sale?.auctionNumber ?? lot.auctionNumber,
+          endsAt: sale?.endsAt ?? lot.endsAt,
+          status: lot.status === "ended" ? "ended" : "live",
+        };
+      }),
       events,
       houseSettings: {
         defaultStartingBid: DEFAULT_HOUSE_STARTING_BID,
