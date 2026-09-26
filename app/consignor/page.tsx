@@ -1,9 +1,9 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { ImageUrlPaste } from "@/components/ImageUrlPaste";
 import { PhotoDropzone } from "@/components/PhotoDropzone";
-import { moneySplit } from "@/lib/commission";
+import { houseCommissionPercent } from "@/lib/commission";
 import { ConsignmentTermsModal } from "@/components/ConsignmentTermsModal";
 import { AiFeedback } from "@/components/AiFeedback";
 import { ConsignorNameField } from "@/components/ConsignorNameField";
@@ -24,6 +24,8 @@ import {
 } from "@/lib/utils";
 
 const LOCAL_KEY = "dealfinder-consignor-items";
+const BATCH_KEY = "dealfinder-consignment-batch";
+const BATCH_FLAG_KEY = "dealfinder-consignment-batch-on";
 
 export default function ConsignorPage() {
   const { user, ready, requestAuth } = useBidder();
@@ -35,7 +37,6 @@ export default function ConsignorPage() {
   const [description, setDescription] = useState("");
   const [buyNowPrice, setBuyNowPrice] = useState("");
   const [marketValue, setMarketValue] = useState("");
-  const [commissionPercent, setCommissionPercent] = useState("20");
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [generating, setGenerating] = useState(false);
@@ -49,18 +50,12 @@ export default function ConsignorPage() {
   const [itemDetails, setItemDetails] = useState("");
   const [listingGrade, setListingGrade] = useState<ListingGrade>("Used");
   const [requestBuyNow, setRequestBuyNow] = useState(false);
+  const [multipleItems, setMultipleItems] = useState(false);
+  const [batchItems, setBatchItems] = useState<ConsignorItem[]>([]);
+  const [emailingBatch, setEmailingBatch] = useState(false);
 
-  const commissionRate = Number(commissionPercent) / 100 || DEFAULT_COMMISSION_RATE;
   const buyNow = Number(buyNowPrice) || 0;
-  const market = Number(marketValue) || 0;
-
-  const breakdown = useMemo(
-    () => ({
-      buyNow: moneySplit(buyNow, commissionRate),
-      market: moneySplit(market, commissionRate),
-    }),
-    [buyNow, market, commissionRate],
-  );
+  const housePercent = houseCommissionPercent(DEFAULT_COMMISSION_RATE);
 
   async function loadItems() {
     const local = readLocal(consignorName || user?.fullName || "");
@@ -77,6 +72,16 @@ export default function ConsignorPage() {
     );
     setItems(merged);
   }
+
+  useEffect(() => {
+    setMultipleItems(readBatchFlag());
+    setBatchItems(readBatch());
+  }, []);
+
+  useEffect(() => {
+    writeBatchFlag(multipleItems);
+    writeBatch(batchItems);
+  }, [multipleItems, batchItems]);
 
   useEffect(() => {
     if (user?.fullName) setConsignorName(user.fullName);
@@ -182,14 +187,21 @@ export default function ConsignorPage() {
           title,
           description,
           buyNowPrice: buyNow,
-          commissionRate,
-          estimatedMarketValue: market,
+          estimatedMarketValue: Number(marketValue) || 0,
           listingGrade,
           itemDetails,
           imageUrls,
           termsAccepted: true,
           saleChannel: requestBuyNow ? "buy_now" : "auction",
           requestBuyNow,
+          sendConfirmation: !multipleItems,
+          batchItems: !multipleItems
+            ? batchItems.map((row) => ({
+                title: row.title,
+                startingBid: row.startingBid,
+                buyNowPrice: row.buyNowPrice,
+              }))
+            : undefined,
         }),
       });
       const json = await parseApiJson<{ item?: ConsignorItem; error?: string }>(response);
@@ -200,11 +212,23 @@ export default function ConsignorPage() {
       writeLocal(item);
       setItems((current) => [item, ...current.filter((row) => row.id !== item.id)]);
       setTermsOpen(false);
-      setNotice(
-        requestBuyNow
-          ? "Submitted as Buy Now, pending admin approval. It will not appear on the storefront until DealFinder approves it."
-          : "Submitted for pending approval. DealFinder will assign lot # and sale date.",
-      );
+      if (multipleItems) {
+        setBatchItems((current) => [item, ...current.filter((row) => row.id !== item.id)]);
+        setNotice(
+          "Saved to this consignment list. Add another item, or click I’m done adding items — email my list.",
+        );
+      } else if (batchItems.length) {
+        setBatchItems([]);
+        setNotice(
+          "Submitted. Combined confirmation emailed for every item in this list, including this one.",
+        );
+      } else {
+        setNotice(
+          requestBuyNow
+            ? "Submitted as Buy Now, pending admin approval. A confirmation email is on the way."
+            : "Submitted for pending approval. A confirmation email is on the way. DealFinder will assign lot # and sale date.",
+        );
+      }
       setRequestBuyNow(false);
       setTitle("");
       setDescription("");
@@ -221,6 +245,38 @@ export default function ConsignorPage() {
       setError(err instanceof Error ? err.message : "Submit failed");
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  async function emailMyList() {
+    if (batchItems.length === 0) return;
+    setError(null);
+    setEmailingBatch(true);
+    try {
+      const response = await fetch("/api/consignments/confirmation", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          items: batchItems.map((row) => ({
+            id: row.id,
+            title: row.title,
+            startingBid: row.startingBid,
+            buyNowPrice: row.buyNowPrice,
+          })),
+        }),
+      });
+      const json = await parseApiJson<{ error?: string }>(response);
+      if (!response.ok) {
+        throw new Error(json.error || "Could not send confirmation email");
+      }
+      setBatchItems([]);
+      setMultipleItems(false);
+      setNotice("Combined confirmation emailed for every item in this list.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not send confirmation email");
+    } finally {
+      setEmailingBatch(false);
     }
   }
 
@@ -351,18 +407,14 @@ export default function ConsignorPage() {
           {compsNote && (
             <p className="border-4 border-black bg-brand-cream p-3 font-comic text-sm">{compsNote}</p>
           )}
-          <label className="block font-comic font-bold">
-            House commission ({commissionPercent}%)
-            <input
-              type="range"
-              min={10}
-              max={30}
-              step={1}
-              value={commissionPercent}
-              onChange={(e) => setCommissionPercent(e.target.value)}
-              className="mt-2 w-full"
-            />
-          </label>
+          <div className="border-4 border-black bg-brand-cream p-3 font-comic text-sm">
+            <p className="font-display text-lg">House commission ({housePercent}%)</p>
+            <p>
+              The agreed house rate is in the consignor agreement you accept on submit — typically{" "}
+              {housePercent}% of the hammer. You cannot pick a custom percent here. Final commission
+              is based on the sale price.
+            </p>
+          </div>
 
           <label className="flex items-start gap-2 font-comic text-sm font-bold">
             <input
@@ -378,11 +430,44 @@ export default function ConsignorPage() {
               </span>
             </span>
           </label>
-          <div className="border-4 border-black bg-brand-cream p-3 font-comic text-sm">
-            <p className="font-display text-lg">Commission breakdown</p>
-            <Row label="At buy now" split={breakdown.buyNow} />
-            <Row label="At market value" split={breakdown.market} />
-          </div>
+
+          <label className="flex items-start gap-2 font-comic text-sm font-bold">
+            <input
+              type="checkbox"
+              className="mt-1 h-4 w-4"
+              checked={multipleItems}
+              onChange={(e) => setMultipleItems(e.target.checked)}
+            />
+            <span>
+              I have multiple items to consign
+              <span className="block font-normal">
+                Leave this checked while you add more items. We hold the confirmation email and send
+                one list when you finish.
+              </span>
+            </span>
+          </label>
+
+          {batchItems.length > 0 && (
+            <div className="border-4 border-black bg-white p-3 font-comic text-sm">
+              <p className="font-display text-lg">This consignment list</p>
+              <ul className="mt-2 list-disc space-y-1 pl-5">
+                {batchItems.map((row) => (
+                  <li key={row.id}>
+                    {row.title} — starting bid {formatCurrency(row.startingBid)} · buy now{" "}
+                    {formatCurrency(row.buyNowPrice)}
+                  </li>
+                ))}
+              </ul>
+              <button
+                type="button"
+                className="comic-btn mt-3 w-full"
+                disabled={emailingBatch}
+                onClick={() => void emailMyList()}
+              >
+                {emailingBatch ? "Emailing…" : "I’m done adding items — email my list"}
+              </button>
+            </div>
+          )}
 
           {aiRun && !generating ? (
             <AiFeedback
@@ -502,23 +587,6 @@ function StatusTable({ items, empty }: { items: ConsignorItem[]; empty: string }
   );
 }
 
-function Row({
-  label,
-  split,
-}: {
-  label: string;
-  split: { house: number; consignor: number };
-}) {
-  return (
-    <p className="mt-1 flex justify-between gap-4">
-      <span>{label}</span>
-      <span>
-        House {formatCurrency(split.house)} · You {formatCurrency(split.consignor)}
-      </span>
-    </p>
-  );
-}
-
 function readLocal(name: string): ConsignorItem[] {
   if (typeof window === "undefined") return [];
   try {
@@ -540,5 +608,40 @@ function writeLocal(item: ConsignorItem) {
     window.localStorage.setItem(LOCAL_KEY, JSON.stringify([item, ...list]));
   } catch {
     /* ignore quota */
+  }
+}
+
+function readBatch(): ConsignorItem[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.sessionStorage.getItem(BATCH_KEY);
+    return raw ? (JSON.parse(raw) as ConsignorItem[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeBatch(items: ConsignorItem[]) {
+  try {
+    window.sessionStorage.setItem(BATCH_KEY, JSON.stringify(items));
+  } catch {
+    /* ignore quota */
+  }
+}
+
+function readBatchFlag() {
+  if (typeof window === "undefined") return false;
+  try {
+    return window.sessionStorage.getItem(BATCH_FLAG_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function writeBatchFlag(on: boolean) {
+  try {
+    window.sessionStorage.setItem(BATCH_FLAG_KEY, on ? "1" : "0");
+  } catch {
+    /* ignore */
   }
 }

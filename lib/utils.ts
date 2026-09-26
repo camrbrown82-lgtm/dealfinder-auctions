@@ -88,6 +88,7 @@ export type Consignment = {
   status: ConsignmentStatus;
   listingGrade?: ListingGrade;
   saleChannel?: SaleChannel;
+  contactEmail?: string | null;
 };
 
 export type PipelineStatus = "pending_approval" | "buy_now_pending" | "scheduled" | "live" | "sold";

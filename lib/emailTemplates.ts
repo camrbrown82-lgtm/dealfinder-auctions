@@ -17,6 +17,10 @@ export const TEMPLATE_VARIABLES = [
   "{{cash_link}}",
   "{{invoice_total}}",
   "{{verify_link}}",
+  "{{starting_bid}}",
+  "{{buy_now}}",
+  "{{commission_note}}",
+  "{{item_list}}",
 ] as const;
 
 export const DEFAULT_EMAIL_TEMPLATES: EmailTemplate[] = [
@@ -108,7 +112,31 @@ If you did not create this account, you can ignore this message.
 
 Good news: DealFinder approved {{item_title}} and filed it into the live sale.
 
+Starting bid: {{starting_bid}}
+Buy now: {{buy_now}}
+
+{{item_list}}
+
+{{commission_note}}
+
 View the lot: {{lot_link}}
+
+Track your consignments after you log in: {{payment_link}}
+
+DealFinder Auctions
+529 Gateway Rd NE, Airdrie, AB T4B 0J6`,
+  },
+  {
+    id: "consignment_received",
+    name: "Consignment Received",
+    subject: "We received your consignment — {{item_title}}",
+    body: `Hi {{customer_name}},
+
+DealFinder received your consignment submission.
+
+{{item_list}}
+
+{{commission_note}}
 
 Track your consignments after you log in: {{payment_link}}
 

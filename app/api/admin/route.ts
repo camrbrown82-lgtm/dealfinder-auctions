@@ -925,6 +925,24 @@ export async function PATCH(request: NextRequest) {
         if (event) applyEventToLot(lot, event);
         addDemoLot(lot);
         await commitHouseLot(null, demo, claimed.settings, lotNumber, claimed.existing);
+        void notifyConsignmentApproved({
+          supabase,
+          row: {
+            consignor_name: item.consignor,
+            contact_email: item.contactEmail,
+            title: item.title,
+            starting_bid: item.startingBid,
+            buy_now_price: item.buyNowPrice,
+            reserve_price: item.reservePrice,
+            commission_rate: item.commissionRate,
+          },
+          lotId: lot.id,
+          slug: lot.slug,
+          lotTitle: lot.title,
+          startingBid: lot.startingBid ?? item.startingBid ?? 0,
+          buyNowPrice: Number(lot.buyNowPrice ?? item.buyNowPrice ?? 0),
+          commissionRate: item.commissionRate ?? undefined,
+        });
         if (!isSupabaseConfigured || !supabase) {
           return NextResponse.json({
             ok: true,
@@ -1039,6 +1057,9 @@ export async function PATCH(request: NextRequest) {
             lotId: lot.id,
             slug: lot.slug,
             lotTitle: lot.title,
+            startingBid: lot.startingBid ?? starting,
+            buyNowPrice: Number(lot.buyNowPrice ?? reserve),
+            commissionRate: Number(row.commission_rate ?? 0) || undefined,
           });
           return NextResponse.json({
             ok: true,
@@ -1098,6 +1119,9 @@ export async function PATCH(request: NextRequest) {
             lotId: lot.id,
             slug: lot.slug,
             lotTitle: lot.title,
+            startingBid: lot.startingBid ?? starting,
+            buyNowPrice: Number(lot.buyNowPrice ?? reserve),
+            commissionRate: Number(row.commission_rate ?? 0) || undefined,
           });
           return NextResponse.json({
             ok: true,

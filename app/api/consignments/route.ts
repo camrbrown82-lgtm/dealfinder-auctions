@@ -6,6 +6,8 @@ import { getSupabaseAdmin, isSupabaseConfigured } from "@/lib/supabaseClient";
 import { persistPublicImageUrls } from "@/lib/consignmentStorage";
 import { getBidderSession } from "@/lib/bidderAuth";
 import type { SaleChannel } from "@/lib/saleChannel";
+import { sendConsignmentReceivedEmail } from "@/lib/notify";
+import { type ConsignmentMailLine } from "@/lib/commission";
 import {
   DEFAULT_COMMISSION_RATE,
   MOCK_CONSIGNMENTS,
@@ -154,7 +156,6 @@ export async function POST(request: NextRequest) {
     startingBid?: number;
     buyNowPrice?: number;
     reservePrice?: number;
-    commissionRate?: number;
     estimatedMarketValue?: number;
     imageUrls?: string[];
     termsAccepted?: boolean;
@@ -163,6 +164,12 @@ export async function POST(request: NextRequest) {
     notes?: string;
     saleChannel?: "auction" | "buy_now";
     requestBuyNow?: boolean;
+    sendConfirmation?: boolean;
+    batchItems?: Array<{
+      title?: string;
+      startingBid?: number;
+      buyNowPrice?: number;
+    }>;
   };
 
   const consignorName = session.fullName.trim() || body.consignorName?.trim();
@@ -224,7 +231,7 @@ export async function POST(request: NextRequest) {
     starting_bid: starting,
     reserve_price: buyNow,
     buy_now_price: buyNow,
-    commission_rate: Number(body.commissionRate) || DEFAULT_COMMISSION_RATE,
+    commission_rate: DEFAULT_COMMISSION_RATE,
     image_urls: imageUrls,
     status: "pending" as const,
     sale_channel: saleChannel,
@@ -260,8 +267,10 @@ export async function POST(request: NextRequest) {
       notes: itemDetails || null,
       condition: listingGrade,
       saleChannel,
+      contactEmail: session.email.trim().toLowerCase() || null,
     });
-    return NextResponse.json({ source: "demo", item });
+    const email = await maybeSendReceivedEmail(session.email, consignorName, item, body);
+    return NextResponse.json({ source: "demo", item, email });
   }
 
   let { data, error } = await supabase.from("consignments").insert(payload).select("id").single();
@@ -290,11 +299,59 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: error?.message || "Could not save consignment." }, { status: 400 });
   }
 
+  const saved = {
+    ...item,
+    id: data.id,
+  } satisfies ConsignorItem;
+  const email = await maybeSendReceivedEmail(session.email, consignorName, saved, body);
   return NextResponse.json({
     source: "supabase",
-    item: {
-      ...item,
-      id: data.id,
-    } satisfies ConsignorItem,
+    item: saved,
+    email,
   });
+}
+
+function asMailLines(
+  latest: ConsignorItem,
+  extras?: Array<{ title?: string; startingBid?: number; buyNowPrice?: number }>,
+): ConsignmentMailLine[] {
+  const siblings = (extras ?? [])
+    .map((row) => ({
+      title: String(row.title ?? "").trim(),
+      startingBid: Number(row.startingBid) || 0,
+      buyNowPrice: Number(row.buyNowPrice) || 0,
+    }))
+    .filter((row) => row.title);
+  const seen = new Set<string>();
+  const lines: ConsignmentMailLine[] = [];
+  for (const row of [...siblings, latest]) {
+    const key = `${row.title}|${row.startingBid}|${row.buyNowPrice}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    lines.push({
+      title: row.title,
+      startingBid: row.startingBid,
+      buyNowPrice: row.buyNowPrice,
+    });
+  }
+  return lines;
+}
+
+async function maybeSendReceivedEmail(
+  email: string,
+  name: string,
+  item: ConsignorItem,
+  body: {
+    sendConfirmation?: boolean;
+    batchItems?: Array<{ title?: string; startingBid?: number; buyNowPrice?: number }>;
+  },
+) {
+  if (body.sendConfirmation !== true) return { sent: false as const };
+  const result = await sendConsignmentReceivedEmail({
+    to: email,
+    name,
+    items: asMailLines(item, body.batchItems),
+    commissionRate: DEFAULT_COMMISSION_RATE,
+  });
+  return { sent: true as const, ...result };
 }

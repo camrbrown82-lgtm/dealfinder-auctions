@@ -84,6 +84,11 @@ export function EmailEngine({ onNotice }: { onNotice: (message: string) => void 
       payment_link: paymentLink,
       lot_link: "https://dealfinder-auctions.vercel.app/live",
       verify_link: "https://dealfinder-auctions.vercel.app/verify-email",
+      starting_bid: "$45",
+      buy_now: "$100",
+      commission_note:
+        "House commission follows the consignor agreement. DealFinder keeps 20% of the hammer on most sales and you receive the rest. Final commission is based on the sale price.",
+      item_list: `${itemTitle} — starting bid $45, buy now $100`,
     });
     return {
       subject: rendered.subject,

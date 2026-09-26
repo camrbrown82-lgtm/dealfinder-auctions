@@ -130,5 +130,6 @@ export function mapConsignment(row: ConsignmentRow): Consignment {
     imageUrls: row.image_urls ?? [],
     status: row.status,
     saleChannel: asSaleChannel(row.sale_channel),
+    contactEmail: row.contact_email ?? null,
   };
 }

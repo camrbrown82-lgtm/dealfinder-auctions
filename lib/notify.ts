@@ -1,6 +1,11 @@
 import { checkoutHref, lotHref, publicAppUrl } from "@/lib/appUrl";
+import {
+  consignmentCommissionNote,
+  consignmentItemListText,
+  type ConsignmentMailLine,
+} from "@/lib/commission";
 import { escapeHtml } from "@/lib/emailHtml";
-import { formatCurrency } from "@/lib/utils";
+import { DEFAULT_COMMISSION_RATE, formatCurrency } from "@/lib/utils";
 import { invoiceFees, type InvoiceFeeBreakdown } from "@/lib/invoiceFees";
 import { PICKUP_INSTRUCTIONS } from "@/lib/payments";
 import { adminNotifyEmail } from "@/lib/site";
@@ -85,15 +90,66 @@ ${verify}
 <p>If you did not create this account, you can ignore this message.</p>`;
 }
 
+function consignmentLinesHtml(items: ConsignmentMailLine[]) {
+  const rows = items
+    .map(
+      (item, index) =>
+        `<tr style="background:${index % 2 ? "#FFF7D1" : "#FFFFFF"};">
+<td style="padding:8px;border:2px solid #000;">${escapeHtml(item.title)}</td>
+<td style="padding:8px;border:2px solid #000;text-align:right;">${escapeHtml(formatCurrency(item.startingBid))}</td>
+<td style="padding:8px;border:2px solid #000;text-align:right;">${escapeHtml(formatCurrency(item.buyNowPrice))}</td>
+</tr>`,
+    )
+    .join("");
+  return `<table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="border-collapse:collapse;margin:16px 0;">
+<tr style="background:#FF0000;color:#FFFFFF;">
+<th style="padding:8px;border:2px solid #000;text-align:left;">Item</th>
+<th style="padding:8px;border:2px solid #000;text-align:right;">Starting bid</th>
+<th style="padding:8px;border:2px solid #000;text-align:right;">Buy now</th>
+</tr>
+${rows}
+</table>`;
+}
+
+function mailLines(items: ConsignmentMailLine[] | undefined, fallback: ConsignmentMailLine): ConsignmentMailLine[] {
+  if (items && items.length) return items;
+  return [fallback];
+}
+
 export function consignmentApprovedEmailHtml(input: {
   name: string;
   title: string;
   lotHref: string;
   dashboardHref: string;
+  items: ConsignmentMailLine[];
+  commissionNote: string;
 }) {
+  const heading =
+    input.items.length > 1
+      ? `Good news: DealFinder approved <strong>${input.items.length} consignments</strong> and filed them into the live sale.`
+      : `Good news: DealFinder approved <strong>${escapeHtml(input.title)}</strong> and filed it into the live sale.`;
   return `<p>Hi ${escapeHtml(input.name || "Consignor")},</p>
-<p>Good news: DealFinder approved <strong>${escapeHtml(input.title)}</strong> and filed it into the live sale.</p>
+<p>${heading}</p>
+${consignmentLinesHtml(input.items)}
+<p style="border:4px solid #000;background:#FFF7D1;padding:12px;font-weight:bold;">${escapeHtml(input.commissionNote)}</p>
 <p><a href="${escapeHtml(input.lotHref)}" style="color:#111111;font-weight:bold;">View the lot</a></p>
+<p>You can track your consignments after you log in: <a href="${escapeHtml(input.dashboardHref)}">${escapeHtml(input.dashboardHref)}</a></p>`;
+}
+
+export function consignmentReceivedEmailHtml(input: {
+  name: string;
+  dashboardHref: string;
+  items: ConsignmentMailLine[];
+  commissionNote: string;
+}) {
+  const heading =
+    input.items.length > 1
+      ? `DealFinder received <strong>${input.items.length} consignments</strong> from this batch.`
+      : `DealFinder received your consignment submission for <strong>${escapeHtml(input.items[0]?.title || "your item")}</strong>.`;
+  return `<p>Hi ${escapeHtml(input.name || "Consignor")},</p>
+<p>${heading}</p>
+${consignmentLinesHtml(input.items)}
+<p style="border:4px solid #000;background:#FFF7D1;padding:12px;font-weight:bold;">${escapeHtml(input.commissionNote)}</p>
 <p>You can track your consignments after you log in: <a href="${escapeHtml(input.dashboardHref)}">${escapeHtml(input.dashboardHref)}</a></p>`;
 }
 
@@ -103,10 +159,22 @@ export async function sendConsignmentApprovedEmail(input: {
   title: string;
   lotId?: string;
   slug?: string | null;
+  items?: ConsignmentMailLine[];
+  startingBid?: number;
+  buyNowPrice?: number;
+  commissionRate?: number;
 }) {
   const dashboard = `${publicAppUrl()}/consignor`;
   const link = input.lotId ? lotHref(input.slug || input.lotId) : dashboard;
   const displayName = input.name || "Consignor";
+  const items = mailLines(input.items, {
+    title: input.title,
+    startingBid: input.startingBid ?? 0,
+    buyNowPrice: input.buyNowPrice ?? 0,
+  });
+  const rate = input.commissionRate ?? DEFAULT_COMMISSION_RATE;
+  const note = consignmentCommissionNote(rate);
+  const first = items[0];
   return sendTransactionalEmail({
     templateId: "consignment_approved",
     to: input.to,
@@ -114,16 +182,62 @@ export async function sendConsignmentApprovedEmail(input: {
     simpleLayout: true,
     vars: {
       customer_name: displayName,
-      item_title: input.title,
-      winning_bid: "",
+      item_title: items.length === 1 ? first.title : `${items.length} consignments`,
+      winning_bid: formatCurrency(first.buyNowPrice),
       payment_link: dashboard,
       lot_link: link,
+      starting_bid: formatCurrency(first.startingBid),
+      buy_now: formatCurrency(first.buyNowPrice),
+      commission_note: note,
+      item_list: consignmentItemListText(items),
     },
     htmlOverride: consignmentApprovedEmailHtml({
       name: displayName,
-      title: input.title,
+      title: first.title,
       lotHref: link,
       dashboardHref: dashboard,
+      items,
+      commissionNote: note,
+    }),
+  });
+}
+
+export async function sendConsignmentReceivedEmail(input: {
+  to: string;
+  name: string;
+  items: ConsignmentMailLine[];
+  commissionRate?: number;
+}) {
+  const dashboard = `${publicAppUrl()}/consignor`;
+  const displayName = input.name || "Consignor";
+  const items = input.items.filter((item) => item.title.trim());
+  if (!items.length) {
+    return { ok: false, mode: "demo-outbox" as const, error: "No consignments to email" };
+  }
+  const rate = input.commissionRate ?? DEFAULT_COMMISSION_RATE;
+  const note = consignmentCommissionNote(rate);
+  const first = items[0];
+  return sendTransactionalEmail({
+    templateId: "consignment_received",
+    to: input.to,
+    forceDeliver: true,
+    simpleLayout: true,
+    vars: {
+      customer_name: displayName,
+      item_title: items.length === 1 ? first.title : `${items.length} consignments`,
+      winning_bid: formatCurrency(first.buyNowPrice),
+      payment_link: dashboard,
+      lot_link: dashboard,
+      starting_bid: formatCurrency(first.startingBid),
+      buy_now: formatCurrency(first.buyNowPrice),
+      commission_note: note,
+      item_list: consignmentItemListText(items),
+    },
+    htmlOverride: consignmentReceivedEmailHtml({
+      name: displayName,
+      dashboardHref: dashboard,
+      items,
+      commissionNote: note,
     }),
   });
 }
@@ -182,22 +296,43 @@ export async function notifyConsignmentApproved(input: {
     contact_email?: string | null;
     owner_id?: string | null;
     title?: string | null;
+    starting_bid?: number | string | null;
+    buy_now_price?: number | string | null;
+    reserve_price?: number | string | null;
+    commission_rate?: number | string | null;
   };
   lotId?: string;
   slug?: string | null;
   lotTitle?: string;
+  items?: ConsignmentMailLine[];
+  startingBid?: number;
+  buyNowPrice?: number;
+  commissionRate?: number;
 }) {
   const recipient = await resolveConsignorEmail(input.supabase, input.row);
   if (!recipient) {
     console.warn("consignment_approved_no_email", { title: input.row.title });
     return { ok: false, skipped: true as const };
   }
+  const startingBid =
+    input.startingBid ??
+    Number(input.row.starting_bid ?? 0);
+  const buyNowPrice =
+    input.buyNowPrice ??
+    Number(input.row.buy_now_price ?? input.row.reserve_price ?? 0);
+  const commissionRate =
+    input.commissionRate ??
+    (Number(input.row.commission_rate ?? DEFAULT_COMMISSION_RATE) || DEFAULT_COMMISSION_RATE);
   return sendConsignmentApprovedEmail({
     to: recipient.email,
     name: recipient.name,
     title: input.lotTitle || String(input.row.title ?? "your item"),
     lotId: input.lotId,
     slug: input.slug,
+    items: input.items,
+    startingBid,
+    buyNowPrice,
+    commissionRate,
   });
 }
 
