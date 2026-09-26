@@ -12,7 +12,7 @@ DealFinder is a **weekly timed auction** (typically Monday open through **Sunday
 - place a **$50 Helcim card hold** (pre-authorization, not a charge), or  
 - request **cash bidding** (desk must approve; trusted cash paddles skip the queue later).
 
-They then bid live, leave absentee maxes, or tap **Buy Now**. **Nothing is charged for a win or Buy Now until Sunday**, when one **consolidated invoice** is emailed per buyer. Helcim (card) or cash-on-pickup settles that invoice.
+They then bid live, leave a Max Bid, or tap **Buy Now**. **Nothing is charged for a win or Buy Now until Sunday**, when one **consolidated invoice** is emailed per buyer. Helcim (card) or cash-on-pickup settles that invoice.
 
 House-owned warehouse stock and consignor lots both sell on the same floor. House stock pays **no consignor commission**. Consignors are paid from hammer minus the agreed house commission.
 
@@ -58,7 +58,7 @@ Still before the bid posts:
 
 ### Step 6 — Bid
 - **Place Bid** — live increment.
-- **Absentee max** — hidden ceiling; the floor auto-increments against others.
+- **Max Bid** — hidden ceiling; the floor auto-increments against others.
 - If someone else outbids them they get an **outbid email** with a link back to the lot.
 - Anti-snipe: late bids can extend the clock.
 

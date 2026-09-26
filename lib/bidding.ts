@@ -111,7 +111,7 @@ export function placeAbsenteeMax(
 ) {
   const minimum = nextAsk(state);
   if (maxAmount < minimum) {
-    throw new Error(`Absentee max must be at least ${minimum}`);
+    throw new Error(`Max bid must be at least ${minimum}`);
   }
 
   state.absentees = upsertAbsentee(state.absentees, bidder, maxAmount);

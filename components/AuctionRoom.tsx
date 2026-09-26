@@ -551,7 +551,7 @@ export function AuctionRoom({ lot }: { lot: AuctionLot }) {
             className={mode === "absentee" ? "comic-btn !text-base" : "comic-btn-invert !text-base"}
             onClick={() => setMode("absentee")}
           >
-            Absentee max
+            Max Bid
           </button>
         </div>
 
@@ -565,7 +565,7 @@ export function AuctionRoom({ lot }: { lot: AuctionLot }) {
           ) : (
             <>
               Watch the room free. <strong>Place Bid</strong> or{" "}
-              <strong>Set Absentee Bid</strong> opens the paddle gate — log in first, then agree to
+              <strong>Max Bid</strong> opens the paddle gate — log in first, then agree to
               this auction&apos;s terms, then a $50 Helcim hold or cash-on-pickup approval, before
               the bid is submitted.
             </>
@@ -582,7 +582,7 @@ export function AuctionRoom({ lot }: { lot: AuctionLot }) {
           </p>
         ) : (
           <label className="block font-comic text-sm font-bold">
-            Maximum absentee bid ($)
+            Max Bid ($)
             <input
               type="number"
               min={nextBid}
@@ -607,7 +607,7 @@ export function AuctionRoom({ lot }: { lot: AuctionLot }) {
               ? `Place Bid ${formatCurrency(nextBid)}`
               : mode === "live"
                 ? `Place Bid ${formatCurrency(nextBid)}`
-                : "Set Absentee Bid"}
+                : "Set Max Bid"}
         </button>
         {!isSupabaseConfigured && (
           <p className="font-comic text-xs">
@@ -663,7 +663,7 @@ export function AuctionRoom({ lot }: { lot: AuctionLot }) {
             {feed.map((row, index) => (
               <li key={`${row.bidder}-${row.amount}-${index}`}>
                 <strong>{formatCurrency(row.amount)}</strong> · {row.bidder} ·{" "}
-                {row.kind === "absentee" ? "absentee auto" : "live"}
+                {row.kind === "absentee" ? "max bid" : "live"}
               </li>
             ))}
           </ul>

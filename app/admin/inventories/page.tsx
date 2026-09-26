@@ -47,7 +47,7 @@ export default function AdminInventoriesPage() {
   async function deleteLots(ids: string[]) {
     if (!ids.length) return;
     const label = ids.length === 1 ? "this lot" : `${ids.length} lots`;
-    if (!window.confirm(`Delete ${label} from inventory? Bids and absentee maxes on these lots are removed.`)) {
+    if (!window.confirm(`Delete ${label} from inventory? Bids and max bids on these lots are removed.`)) {
       return;
     }
     const json = await mutate("/api/admin", {
