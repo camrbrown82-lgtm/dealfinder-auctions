@@ -14,6 +14,7 @@ export type MonitorLot = {
   title: string;
   lotNumber?: string | null;
   auctionNumber?: string | null;
+  eventId?: string | null;
   status?: string;
   highBidder: string | null;
   currentBid: number;

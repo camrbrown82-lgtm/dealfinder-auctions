@@ -1,6 +1,6 @@
 import { lotClockEnded, lotWasSold } from "@/lib/settlements";
 import type { AuctionEvent, AuctionLot } from "@/lib/utils";
-import { FIRST_WEEKLY_SALE, isWeeklySale, nextWeeklySale } from "@/lib/weeklySales";
+import { FIRST_WEEKLY_SALE, isWeeklySale } from "@/lib/weeklySales";
 
 export type SaleKind = "past" | "live" | "upcoming";
 
@@ -9,30 +9,43 @@ export type SaleWindowItem = {
   kind: SaleKind;
 };
 
+/** Live only while startsAt <= now < endsAt. Exact close is past, not live. */
 export function saleKind(event: AuctionEvent, now = Date.now()): SaleKind {
   const start = new Date(event.startsAt).getTime();
   const end = new Date(event.endsAt).getTime();
-  if (end < now) return "past";
+  if (end <= now) return "past";
   if (start > now) return "upcoming";
   return "live";
 }
 
-/** Current sale plus up to two previous and two upcoming. */
-export function pickSaleWindow(events: AuctionEvent[], now = Date.now()): SaleWindowItem[] {
+function openWeeklyEvents(events: AuctionEvent[]) {
   const weekly = events.filter((event) => !event.archivedAt && isWeeklySale(event));
-  const sorted = (weekly.length ? weekly : events.filter((event) => !event.archivedAt)).sort(
+  return (weekly.length ? weekly : events.filter((event) => !event.archivedAt)).sort(
     (a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime(),
   );
-  return sorted.map((event) => ({
+}
+
+/**
+ * Public floor window: current in-progress weekly sale, at most two previous hammers
+ * for viewing, and later weekly sales as upcoming (never live).
+ */
+export function pickSaleWindow(events: AuctionEvent[], now = Date.now()): SaleWindowItem[] {
+  const classified = openWeeklyEvents(events).map((event) => ({
     event,
     kind: saleKind(event, now),
   }));
+  const past = classified.filter((item) => item.kind === "past").slice(-2);
+  const liveAll = classified.filter((item) => item.kind === "live");
+  const live = liveAll.slice(-1);
+  const upcoming = classified.filter((item) => item.kind === "upcoming");
+  return [...past, ...live, ...upcoming];
 }
 
 export function defaultSaleId(window: SaleWindowItem[]) {
+  const pastNewestFirst = [...window].filter((item) => item.kind === "past").reverse();
   return (
     window.find((item) => item.kind === "live") ??
-    window.find((item) => item.kind === "upcoming") ??
+    pastNewestFirst[0] ??
     window[0]
   )?.event.id;
 }
@@ -56,10 +69,8 @@ export function lotsForSale(lots: AuctionLot[], sale: SaleWindowItem | undefined
 
 /** The weekly sale whose clock is running right now, or null if none is live. */
 export function currentLiveSale(events: AuctionEvent[], now = Date.now()) {
-  const current = nextWeeklySale(events, now);
-  if (!current) return null;
-  if (new Date(current.startsAt).getTime() > now) return null;
-  return current;
+  const live = openWeeklyEvents(events).filter((event) => saleKind(event, now) === "live");
+  return live.at(-1) ?? null;
 }
 
 /** Admin floor: only lots actually running on the current live auction. */

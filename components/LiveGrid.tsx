@@ -59,6 +59,8 @@ export function LiveGrid({
   });
 
   const selected = floorSales.find((item) => item.event.id === saleId) ?? floorSales[0];
+  const liveSale = floorSales.find((item) => item.kind === "live");
+  const liveLabel = liveSale?.event.auctionNumber || liveSale?.event.name;
 
   useEffect(() => {
     setFloorLots(lots);
@@ -185,14 +187,15 @@ export function LiveGrid({
         <div className="comic-panel p-4">
           <p className="font-display text-lg">Auctions</p>
           <p className="font-comic text-sm">
-            Live now through <strong>Sep 20</strong>. Later weeks are Sep 27, Oct 4, Oct 11, and Oct
-            18.
+            {liveSale
+              ? `Live floor is ${liveLabel} only. Earlier weeks are viewing only (last two hammers). Later weeks are upcoming, not live.`
+              : "No weekly sale is live right now. Past weeks are viewing only; later weeks are upcoming."}
           </p>
           <div className="mt-3 flex flex-wrap gap-2">
             {floorSales.map((item) => {
               const active = item.event.id === selected?.event.id;
               const label =
-                item.kind === "past" ? "Previous" : item.kind === "live" ? "Live now" : "Upcoming";
+                item.kind === "past" ? "Viewing" : item.kind === "live" ? "Live now" : "Upcoming";
               return (
                 <button
                   key={item.event.id}
@@ -247,8 +250,9 @@ export function LiveGrid({
         </div>
         <p className="mt-3 font-comic text-sm font-bold">
           {visible.length} {visible.length === 1 ? "lot" : "lots"}
-          {selected?.kind === "past" ? " from this past sale" : ""}
-          {selected?.kind === "upcoming" ? " you can bid on early" : ""}
+          {selected?.kind === "past" ? " from this past sale (viewing only)" : ""}
+          {selected?.kind === "upcoming" ? " in this upcoming sale" : ""}
+          {selected?.kind === "live" ? " on the live floor" : ""}
           {query.trim() ? ` matching "${query.trim()}"` : ""}
           <span className="hidden sm:inline"> · {view} per row</span>
         </p>

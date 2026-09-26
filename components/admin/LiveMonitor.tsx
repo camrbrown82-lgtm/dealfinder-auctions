@@ -113,6 +113,14 @@ export function LiveMonitor({
     await load();
   }
 
+  const floorLots = lots.filter((lot) => {
+    if (!sale) return false;
+    if (lot.eventId && lot.eventId !== sale.id) return false;
+    if (sale.auctionNumber && lot.auctionNumber && lot.auctionNumber !== sale.auctionNumber) return false;
+    if (Date.parse(String(lot.endsAt ?? "")) <= Date.now()) return false;
+    return true;
+  });
+
   return (
     <section className="space-y-4">
       <div className="comic-panel p-4">
@@ -121,10 +129,10 @@ export function LiveMonitor({
         <p className="font-comic text-sm">
           {sale
             ? `Showing ${sale.auctionNumber ? `${sale.auctionNumber} · ` : ""}${sale.name} only. Ended leftovers stay in Auction inventories until you move them onto this sale.`
-            : "No weekly sale is live right now. Ended lots stay in Auction inventories."}
+            : "No weekly sale is live right now. Past and upcoming auctions stay out of Live Monitor."}
         </p>
       </div>
-      {lots.length === 0 ? (
+      {floorLots.length === 0 ? (
         <p className="comic-panel-sm p-4 font-comic text-sm">
           {sale
             ? "No lots are running on the current live auction."
@@ -144,7 +152,7 @@ export function LiveMonitor({
               </tr>
             </thead>
             <tbody>
-              {lots.map((lot) => {
+              {floorLots.map((lot) => {
                 const draft = drafts[lot.id] ?? {
                   start: String(lot.startingBid),
                 };

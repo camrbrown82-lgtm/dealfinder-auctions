@@ -30,6 +30,7 @@ function toMonitorLot(lot: AuctionLot, bidCount: number, extra?: Partial<Monitor
     title: lot.title,
     lotNumber: lot.lotNumber,
     auctionNumber: extra?.auctionNumber ?? lot.auctionNumber,
+    eventId: extra?.eventId ?? lot.eventId ?? null,
     status: extra?.status ?? lot.status,
     highBidder: extra?.highBidder ?? lot.highBidder ?? null,
     currentBid: extra?.currentBid ?? lot.currentBid,
@@ -48,19 +49,23 @@ export async function GET() {
   const supabase = getSupabaseAdmin();
   if (isSupabaseConfigured && supabase) {
     await ensureWeeklySales(supabase).catch(() => undefined);
-    const [{ data }, { data: bidCounts }, eventsRes] = await Promise.all([
-      supabase.from("lots").select("*").in("status", ["live", "paused"]),
+    const eventsRes = await supabase.from("auction_events").select("*").order("starts_at", { ascending: true });
+    const events: AuctionEvent[] = (eventsRes.data ?? []).map((row) =>
+      mapAuctionEvent(row as Parameters<typeof mapAuctionEvent>[0]),
+    );
+    const current = currentLiveSale(events);
+    if (!current) {
+      return NextResponse.json({ lots: [], sale: null, source: "supabase" });
+    }
+    const [{ data }, { data: bidCounts }] = await Promise.all([
+      supabase.from("lots").select("*").in("status", ["live", "paused"]).eq("event_id", current.id),
       supabase.from("bids").select("lot_id"),
-      supabase.from("auction_events").select("*").order("starts_at", { ascending: true }),
     ]);
     const count = new Map<string, number>();
     for (const row of bidCounts ?? []) {
       const id = row.lot_id as string;
       count.set(id, (count.get(id) ?? 0) + 1);
     }
-    const events: AuctionEvent[] = (eventsRes.data ?? []).map((row) =>
-      mapAuctionEvent(row as Parameters<typeof mapAuctionEvent>[0]),
-    );
     const numbers = new Map(events.map((event) => [event.id, event.auctionNumber ?? null]));
     const mapped = ((data ?? []) as LotRow[]).map((row) => {
       const lot = mapLot(row);
