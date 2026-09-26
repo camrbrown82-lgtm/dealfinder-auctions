@@ -19,7 +19,7 @@ export function ImageUrlPaste({
           value={value}
           onChange={(event) => onChange(event.target.value)}
           rows={2}
-          className="mt-2 w-full border-4 border-black px-3 py-2 font-normal"
+          className="mt-2 w-full border-4 border-black bg-white px-3 py-2 font-normal"
           placeholder="https://example.com/item.jpg"
         />
       </label>

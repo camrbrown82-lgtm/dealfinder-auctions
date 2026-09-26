@@ -73,7 +73,7 @@ export function OwnerPicker({
             value={savedValue}
             onChange={(event) => onChange(event.target.value)}
             required
-            className="mt-2 w-full border-4 border-black px-3 py-2 font-normal"
+            className="mt-2 w-full border-4 border-black bg-white px-3 py-2 font-normal"
             placeholder="Shop or consignor name"
           />
         </label>

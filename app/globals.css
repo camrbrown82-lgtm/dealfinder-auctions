@@ -29,6 +29,24 @@ input,
 textarea,
 select {
   @apply border-4 border-brand-ink bg-white font-comic text-brand-ink shadow-comic-red-sm outline-none;
+  color-scheme: light;
+}
+
+input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="hidden"]):not([type="range"]):not([type="submit"]):not([type="button"]):not([type="image"]):not([type="color"]),
+textarea,
+select {
+  background-color: #ffffff !important;
+}
+
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus,
+textarea:-webkit-autofill,
+select:-webkit-autofill {
+  -webkit-text-fill-color: #000000;
+  caret-color: #000000;
+  box-shadow: 0 0 0 1000px #ffffff inset, 3px 3px 0 0 #ff0000;
+  transition: background-color 99999s ease-out 0s;
 }
 
 input[type="checkbox"],
@@ -61,6 +79,10 @@ input[type="radio"] {
 
   .comic-field {
     @apply border-4 border-brand-ink bg-white text-brand-ink shadow-comic-red-sm outline-none;
+  }
+
+  .comic-photo-stage {
+    @apply relative overflow-hidden border-4 border-black bg-white;
   }
 
   .comic-table-wrap {

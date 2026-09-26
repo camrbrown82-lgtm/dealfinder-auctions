@@ -88,8 +88,8 @@ export function PhotoDropzone({
           setDragging(false);
           merge(event.dataTransfer.files);
         }}
-        className={`border-4 border-dashed border-black bg-brand-cream p-6 text-center shadow-comic-red-sm ${
-          dragging ? "bg-white" : ""
+        className={`border-4 border-dashed border-black bg-white p-6 text-center shadow-comic-red-sm ${
+          dragging ? "ring-4 ring-brand-red" : ""
         }`}
       >
         <p className="font-display text-2xl">Drop photos here</p>

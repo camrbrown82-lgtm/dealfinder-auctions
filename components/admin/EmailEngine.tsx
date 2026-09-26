@@ -308,7 +308,7 @@ export function EmailEngine({ onNotice }: { onNotice: (message: string) => void 
             <input
               value={newName}
               onChange={(e) => setNewName(e.target.value)}
-              className="mt-1 w-full border-4 border-black px-3 py-2 font-normal"
+              className="mt-1 w-full border-4 border-black bg-white px-3 py-2 font-normal"
               placeholder="Lot preview blast"
             />
           </label>
@@ -317,7 +317,7 @@ export function EmailEngine({ onNotice }: { onNotice: (message: string) => void 
             <input
               value={newSubject}
               onChange={(e) => setNewSubject(e.target.value)}
-              className="mt-1 w-full border-4 border-black px-3 py-2 font-normal"
+              className="mt-1 w-full border-4 border-black bg-white px-3 py-2 font-normal"
               placeholder="This week at DealFinder"
             />
           </label>
@@ -372,7 +372,7 @@ export function EmailEngine({ onNotice }: { onNotice: (message: string) => void 
           <input
             value={to}
             onChange={(e) => setTo(e.target.value)}
-            className="mt-1 w-full border-4 border-black px-3 py-2 font-normal"
+            className="mt-1 w-full border-4 border-black bg-white px-3 py-2 font-normal"
             placeholder="bidder@example.com"
           />
         </label>
@@ -381,7 +381,7 @@ export function EmailEngine({ onNotice }: { onNotice: (message: string) => void 
           <input
             value={customerName}
             onChange={(e) => setCustomerName(e.target.value)}
-            className="mt-1 w-full border-4 border-black px-3 py-2 font-normal"
+            className="mt-1 w-full border-4 border-black bg-white px-3 py-2 font-normal"
           />
         </label>
         <label className="block font-comic font-bold">
@@ -389,7 +389,7 @@ export function EmailEngine({ onNotice }: { onNotice: (message: string) => void 
           <input
             value={itemTitle}
             onChange={(e) => setItemTitle(e.target.value)}
-            className="mt-1 w-full border-4 border-black px-3 py-2 font-normal"
+            className="mt-1 w-full border-4 border-black bg-white px-3 py-2 font-normal"
           />
         </label>
         <label className="block font-comic font-bold">
@@ -397,7 +397,7 @@ export function EmailEngine({ onNotice }: { onNotice: (message: string) => void 
           <input
             value={winningBid}
             onChange={(e) => setWinningBid(e.target.value)}
-            className="mt-1 w-full border-4 border-black px-3 py-2 font-normal"
+            className="mt-1 w-full border-4 border-black bg-white px-3 py-2 font-normal"
           />
         </label>
         <label className="block font-comic font-bold">
@@ -405,7 +405,7 @@ export function EmailEngine({ onNotice }: { onNotice: (message: string) => void 
           <input
             value={paymentLink}
             onChange={(e) => setPaymentLink(e.target.value)}
-            className="mt-1 w-full border-4 border-black px-3 py-2 font-normal"
+            className="mt-1 w-full border-4 border-black bg-white px-3 py-2 font-normal"
           />
         </label>
         <div className="flex flex-wrap gap-2 sm:col-span-2">

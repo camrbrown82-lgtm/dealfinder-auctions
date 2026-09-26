@@ -43,6 +43,7 @@ export default function ConsignorPage() {
   const [items, setItems] = useState<ConsignorItem[]>([]);
   const [compsNote, setCompsNote] = useState<string | null>(null);
   const [studioImageUrl, setStudioImageUrl] = useState<string | null>(null);
+  const [filePreview, setFilePreview] = useState<string | null>(null);
   const [aiRun, setAiRun] = useState<AiRun | null>(null);
   const [termsOpen, setTermsOpen] = useState(false);
   const [itemDetails, setItemDetails] = useState("");
@@ -95,6 +96,17 @@ export default function ConsignorPage() {
     setStudioImageUrl(null);
     setAiRun(null);
   }, [files, imageUrlText]);
+
+  useEffect(() => {
+    const file = files[0];
+    if (!file) {
+      setFilePreview(null);
+      return;
+    }
+    const url = URL.createObjectURL(file);
+    setFilePreview(url);
+    return () => URL.revokeObjectURL(url);
+  }, [files]);
 
   async function autoGenerate(fromFiles?: File[]) {
     setError(null);
@@ -250,19 +262,25 @@ export default function ConsignorPage() {
       <form onSubmit={onSubmit} className="grid gap-6 lg:grid-cols-2">
         <div className="comic-panel space-y-4 p-6">
           <ConsignorNameField value={consignorName} />
-          {studioImageUrl && (
-            <div className="relative min-h-[16rem] overflow-hidden border-4 border-black bg-black">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
+          <div className="comic-photo-stage min-h-[16rem]">
+            {studioImageUrl || resolvedImageUrls[0] || filePreview ? (
+              // eslint-disable-next-line @next/next/no-img-element
               <img
-                src={studioImageUrl}
+                src={studioImageUrl || resolvedImageUrls[0] || filePreview || ""}
                 alt="AI listing photo"
-                className="absolute inset-0 h-full w-full object-contain"
+                className="absolute inset-0 h-full w-full bg-white object-contain"
               />
-              <p className="absolute bottom-2 left-2 border-4 border-black bg-white px-2 py-1 font-comic text-xs">
-                AI listing photo
+            ) : (
+              <p className="flex h-full min-h-[16rem] items-center justify-center p-6 text-center font-display text-2xl">
+                Drop photos, then generate
               </p>
-            </div>
-          )}
+            )}
+            {(studioImageUrl || resolvedImageUrls[0] || filePreview) && (
+              <p className="absolute bottom-2 left-2 border-4 border-black bg-white px-2 py-1 font-comic text-xs">
+                {studioImageUrl ? "AI listing photo" : "Uploaded photo"}
+              </p>
+            )}
+          </div>
           <PhotoDropzone
             files={files}
             onChange={setFiles}
@@ -295,7 +313,7 @@ export default function ConsignorPage() {
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               required
-              className="mt-2 w-full border-4 border-black px-3 py-2 font-normal"
+              className="mt-2 w-full border-4 border-black bg-white px-3 py-2 font-normal"
             />
           </label>
           <label className="block font-comic font-bold">
@@ -305,7 +323,7 @@ export default function ConsignorPage() {
               onChange={(e) => setDescription(e.target.value)}
               required
               rows={5}
-              className="mt-2 w-full border-4 border-black px-3 py-2 font-normal"
+              className="mt-2 w-full border-4 border-black bg-white px-3 py-2 font-normal"
             />
           </label>
           <label className="block font-comic font-bold">
@@ -317,7 +335,7 @@ export default function ConsignorPage() {
               value={buyNowPrice}
               onChange={(e) => setBuyNowPrice(e.target.value)}
               required
-              className="mt-2 w-full border-4 border-black px-3 py-2 font-normal"
+              className="mt-2 w-full border-4 border-black bg-white px-3 py-2 font-normal"
             />
           </label>
           <label className="block font-comic font-bold">
@@ -327,7 +345,7 @@ export default function ConsignorPage() {
               min={0}
               value={marketValue}
               onChange={(e) => setMarketValue(e.target.value)}
-              className="mt-2 w-full border-4 border-black px-3 py-2 font-normal"
+              className="mt-2 w-full border-4 border-black bg-white px-3 py-2 font-normal"
             />
           </label>
           {compsNote && (

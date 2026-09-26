@@ -254,7 +254,7 @@ export function AdminDeskProvider({ children }: { children: ReactNode }) {
             name="df-admin-gate"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            className="mt-2 w-full border-4 border-black px-3 py-2"
+            className="mt-2 w-full border-4 border-black bg-white px-3 py-2"
             required
             autoFocus
             autoComplete="new-password"
