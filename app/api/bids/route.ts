@@ -2,11 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { getBidderSession, bidderUnauthorized } from "@/lib/bidderAuth";
 import { getDemoLot } from "@/lib/demoAuctionStore";
 import { getAdminDemo } from "@/lib/demoAdminStore";
-import {
-  placeAbsenteeMax,
-  placeLiveBid,
-  type AuctionClock,
-} from "@/lib/bidding";
+import { nextLiveAmount, placeAbsenteeMax, placeLiveBid, type AuctionClock } from "@/lib/bidding";
+import { structuredIncrement } from "@/lib/bidIncrements";
 import { getSupabaseAdmin, isSupabaseConfigured } from "@/lib/supabaseClient";
 import { isProfileComplete, type BidderProfile } from "@/lib/profileTypes";
 import { openUnsoldFloors, patchLotRow, weekFromNow } from "@/lib/openFloor";
@@ -293,7 +290,7 @@ async function persistDemo(
 
   const clock: AuctionClock = {
     currentBid: demo.currentBid,
-    minIncrement: demo.minIncrement,
+    minIncrement: structuredIncrement(demo.currentBid),
     endsAt: demo.endsAt,
     highBidder: demo.highBidder,
     absentees: demo.absentees,
@@ -306,10 +303,11 @@ async function persistDemo(
         : placeLiveBid(
             clock,
             bidder,
-            Number(body.amount ?? demo.currentBid + demo.minIncrement),
+            Number(body.amount ?? nextLiveAmount(demo.currentBid, undefined, demo.highBidder)),
           );
 
     demo.currentBid = result.state.currentBid;
+    demo.minIncrement = structuredIncrement(result.state.currentBid);
     demo.endsAt = result.state.endsAt;
     demo.highBidder = result.state.highBidder;
     demo.highBidderId = result.state.highBidder === bidder ? bidderId : null;
@@ -408,7 +406,7 @@ async function persistSupabase(
 
   const clock: AuctionClock = {
     currentBid: Number(lot.current_bid),
-    minIncrement: Number(lot.min_increment) || 5,
+    minIncrement: structuredIncrement(Number(lot.current_bid)),
     endsAt: String(lot.ends_at ?? opened.patch.ends_at),
     highBidder: (lot.high_bidder as string | null) ?? null,
     absentees: (absenteeRows ?? []).map((row) => ({
@@ -490,7 +488,7 @@ async function persistSupabase(
         : placeLiveBid(
             clock,
             bidder,
-            Number(body.amount ?? clock.currentBid + clock.minIncrement),
+            Number(body.amount ?? nextLiveAmount(clock.currentBid, undefined, clock.highBidder)),
           );
 
     if (body.mode === "absentee") {
@@ -506,6 +504,7 @@ async function persistSupabase(
 
     const persistError = await writeLot(supabase, resolvedId, {
       current_bid: result.state.currentBid,
+      min_increment: structuredIncrement(result.state.currentBid),
       high_bidder: result.state.highBidder,
       high_bidder_id: result.state.highBidder === bidder ? bidderId : null,
       status: "live",

@@ -1,3 +1,4 @@
+import { structuredIncrement } from "@/lib/bidIncrements";
 import { MOCK_LOTS } from "@/lib/utils";
 import type { AuctionLot } from "@/lib/utils";
 import type { AbsenteeMax } from "@/lib/bidding";
@@ -44,7 +45,7 @@ function put(target: Map<string, DemoLotState>, lot: AuctionLot) {
   const row: DemoLotState = {
     id: lot.id,
     currentBid: lot.currentBid,
-    minIncrement: lot.minIncrement,
+    minIncrement: structuredIncrement(lot.currentBid),
     endsAt: lot.endsAt,
     highBidder: lot.highBidder ?? null,
     highBidderId: lot.highBidderId ?? null,

@@ -1,4 +1,5 @@
 import { listingGradeFromSources } from "@/lib/listingGrade";
+import { structuredIncrement } from "@/lib/bidIncrements";
 import { asBuyNowStatus, asSaleChannel } from "@/lib/saleChannel";
 import { parseLotEndMs, uniqueImageUrls, type AuctionLot, type Consignment, type LotCategory, type LotStatus } from "@/lib/utils";
 
@@ -85,7 +86,7 @@ export function mapLot(row: LotRow): AuctionLot {
     image: images[0] || row.image_url,
     images,
     currentBid: Number(row.current_bid),
-    minIncrement: Number(row.min_increment),
+    minIncrement: structuredIncrement(Number(row.current_bid)),
     endsAt: isoEndsAt(row.ends_at),
     consignor: row.consignor_name,
     description: row.description,

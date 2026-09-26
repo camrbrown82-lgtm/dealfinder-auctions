@@ -1,3 +1,4 @@
+import { structuredIncrement } from "@/lib/bidIncrements";
 import type { ListingGrade } from "@/lib/listingGrade";
 import type { BuyNowStatus, SaleChannel } from "@/lib/saleChannel";
 
@@ -148,7 +149,7 @@ export const MOCK_LOTS: AuctionLot[] = [
       "https://images.unsplash.com/photo-1588499756884-d725add8dce4?auto=format&fit=crop&w=800&q=80",
     ],
     currentBid: 240,
-    minIncrement: 10,
+    minIncrement: 5,
     endsAt: new Date(Date.now() + 1000 * 60 * 42).toISOString(),
     consignor: "Vault Comics Co.",
     description: "Bright cover, crisp corners, bagged and boarded.",
@@ -171,7 +172,7 @@ export const MOCK_LOTS: AuctionLot[] = [
       "https://images.unsplash.com/photo-1596461404969-9ae70f2830c1?auto=format&fit=crop&w=800&q=80",
     ],
     currentBid: 85,
-    minIncrement: 5,
+    minIncrement: 2,
     endsAt: new Date(Date.now() + 1000 * 60 * 18).toISOString(),
     consignor: "Attic Finds",
     description: "Working key-wind mechanism. Box shows shelf wear.",
@@ -194,7 +195,7 @@ export const MOCK_LOTS: AuctionLot[] = [
       "https://images.unsplash.com/photo-1514525253161-7a46d19cd819?auto=format&fit=crop&w=800&q=80",
     ],
     currentBid: 120,
-    minIncrement: 10,
+    minIncrement: 5,
     endsAt: new Date(Date.now() + 1000 * 60 * 95).toISOString(),
     consignor: "Spin City",
     description: "Four-record stack. Surfaces look glossy under light.",
@@ -217,7 +218,7 @@ export const MOCK_LOTS: AuctionLot[] = [
       "https://images.unsplash.com/photo-1541961017774-22349e4a1262?auto=format&fit=crop&w=800&q=80",
     ],
     currentBid: 310,
-    minIncrement: 25,
+    minIncrement: 5,
     endsAt: new Date(Date.now() + 1000 * 60 * 210).toISOString(),
     consignor: "Poster Palace",
     description: "Gesso on board. Halftone dots still punchy.",
@@ -240,7 +241,7 @@ export const MOCK_LOTS: AuctionLot[] = [
       "https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&w=800&q=80",
     ],
     currentBid: 45,
-    minIncrement: 5,
+    minIncrement: 1,
     endsAt: new Date(Date.now() + 1000 * 60 * 8).toISOString(),
     consignor: "Curious Cabinets",
     description: "Unsorted lot. What you see is what you get.",
@@ -258,7 +259,7 @@ export const MOCK_LOTS: AuctionLot[] = [
     image:
       "https://images.unsplash.com/photo-1612036782180-6f0b6cd846fe?auto=format&fit=crop&w=800&q=80",
     currentBid: 175,
-    minIncrement: 10,
+    minIncrement: 5,
     endsAt: new Date(Date.now() - 1000 * 60 * 60).toISOString(),
     consignor: "Vault Comics Co.",
     description: "Hammered last week. Payout pending.",
@@ -315,9 +316,10 @@ export function formatCurrency(amount: number, currency = "CAD") {
   }).format(amount);
 }
 
-export function nextBidAmount(currentBid: number, minIncrement: number, highBidder?: string | null) {
-  if (!highBidder) return currentBid > 0 ? currentBid : minIncrement;
-  return currentBid + minIncrement;
+export function nextBidAmount(currentBid: number, minIncrement?: number, highBidder?: string | null) {
+  const step = structuredIncrement(currentBid);
+  if (!highBidder) return currentBid > 0 ? currentBid : minIncrement && minIncrement > 0 ? minIncrement : step;
+  return currentBid + step;
 }
 
 export function getLotById(id: string) {

@@ -103,7 +103,7 @@ export function seedDemoLots() {
       image:
         "https://images.unsplash.com/photo-1566576912321-d58ddd7a6088?auto=format&fit=crop&w=800&q=80",
       currentBid: 20,
-      minIncrement: 5,
+      minIncrement: 1,
       endsAt: new Date(Date.now() + 1000 * 60 * 60 * 12).toISOString(),
       consignor: "House stock",
       description: "Bulk seed — warehouse pull.",
@@ -118,7 +118,7 @@ export function seedDemoLots() {
       image:
         "https://images.unsplash.com/photo-1612036782180-6f0b6cd846fe?auto=format&fit=crop&w=800&q=80",
       currentBid: 35,
-      minIncrement: 5,
+      minIncrement: 1,
       endsAt: new Date(Date.now() + 1000 * 60 * 60 * 18).toISOString(),
       consignor: "House stock",
       description: "Bulk seed — ungraded mix.",
@@ -133,7 +133,7 @@ export function seedDemoLots() {
       image:
         "https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?auto=format&fit=crop&w=800&q=80",
       currentBid: 15,
-      minIncrement: 5,
+      minIncrement: 1,
       endsAt: new Date(Date.now() + 1000 * 60 * 60 * 8).toISOString(),
       consignor: "House stock",
       description: "Bulk seed — spinner rack.",

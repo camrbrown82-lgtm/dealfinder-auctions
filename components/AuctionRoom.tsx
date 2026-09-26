@@ -8,6 +8,7 @@ import { BidPaymentModal } from "@/components/BidPaymentModal";
 import { HelcimPayModal } from "@/components/HelcimPayModal";
 import { LotTimer } from "@/components/LotTimer";
 import { nextLiveAmount } from "@/lib/bidding";
+import { INCREMENT_TABLE_COPY, structuredIncrement } from "@/lib/bidIncrements";
 import { isProfileComplete } from "@/lib/profileTypes";
 import { fulfillmentInstructions } from "@/lib/payments";
 import type { FulfillmentChoice } from "@/lib/payments";
@@ -63,9 +64,10 @@ export function AuctionRoom({ lot }: { lot: AuctionLot }) {
   const placeBidRef = useRef<() => Promise<void>>(async () => undefined);
   const ensureBidRef = useRef<() => Promise<void>>(async () => undefined);
 
+  const increment = structuredIncrement(currentBid);
   const nextBid = useMemo(
-    () => nextLiveAmount(currentBid, lot.minIncrement, highBidder || highBidderId),
-    [currentBid, lot.minIncrement, highBidder, highBidderId],
+    () => nextLiveAmount(currentBid, increment, highBidder || highBidderId),
+    [currentBid, increment, highBidder, highBidderId],
   );
   const extras = extraLotImages(lot);
   const hasWinner = Boolean(highBidder || highBidderId);
@@ -574,8 +576,9 @@ export function AuctionRoom({ lot }: { lot: AuctionLot }) {
           <p className="font-comic text-sm">
             Next live paddle: <strong>{formatCurrency(nextBid)}</strong>
             {highBidder || highBidderId
-              ? ` (+${formatCurrency(lot.minIncrement)})`
+              ? ` (+${formatCurrency(increment)})`
               : " (starting price)"}
+            <span className="mt-1 block">Increments: {INCREMENT_TABLE_COPY}.</span>
           </p>
         ) : (
           <label className="block font-comic text-sm font-bold">
@@ -591,8 +594,8 @@ export function AuctionRoom({ lot }: { lot: AuctionLot }) {
               required={mode === "absentee"}
             />
             <span className="mt-1 block font-normal">
-              We auto-increment by {formatCurrency(lot.minIncrement)} against other paddles
-              up to this ceiling. Your max stays hidden.
+              We auto-increment against other paddles up to this ceiling ({INCREMENT_TABLE_COPY}).
+              Current step is {formatCurrency(increment)}. Your max stays hidden.
             </span>
           </label>
         )}

@@ -10,6 +10,7 @@ import {
   suggestAuctionNumber,
   sortLotsByNumber,
 } from "@/lib/catalogNumbers";
+import { structuredIncrement } from "@/lib/bidIncrements";
 import { getSupabaseAdmin, isSupabaseConfigured } from "@/lib/supabaseClient";
 import { mapConsignment, mapLot, type ConsignmentRow, type LotRow } from "@/lib/mappers";
 import { parseListingGrade, withListedGrade } from "@/lib/listingGrade";
@@ -799,7 +800,7 @@ export async function POST(request: NextRequest) {
           current_bid: saleChannel === "buy_now" ? buyNow || starting : starting,
           reserve_price: buyNow || null,
           buy_now_price: buyNow || null,
-          min_increment: 5,
+          min_increment: structuredIncrement(starting),
           ends_at: eventEnds,
           status,
           event_id: saleChannel === "buy_now" ? null : eventId,
@@ -852,7 +853,7 @@ export async function POST(request: NextRequest) {
       image,
       images,
       currentBid: saleChannel === "buy_now" ? buyNow || starting : starting,
-      minIncrement: 5,
+      minIncrement: structuredIncrement(saleChannel === "buy_now" ? buyNow || starting : starting),
       endsAt,
       consignor: body.consignorName?.trim() || "House stock",
       description,
@@ -995,7 +996,7 @@ export async function PATCH(request: NextRequest) {
           image,
           images,
           currentBid: item.startingBid ?? 0,
-          minIncrement: 5,
+          minIncrement: structuredIncrement(item.startingBid ?? 0),
           endsAt: event?.endsAt ?? new Date(Date.now() + 1000 * 60 * 60 * 24).toISOString(),
           consignor: item.consignor,
           description: item.description ?? "",
@@ -1172,7 +1173,7 @@ export async function PATCH(request: NextRequest) {
             current_bid: listBuyNow ? reserve || starting : starting,
             reserve_price: reserve || null,
             buy_now_price: reserve || null,
-            min_increment: 5,
+            min_increment: structuredIncrement(starting),
             ends_at: eventEnds,
             status: houseStatus,
             event_id: listBuyNow ? null : eventId,
