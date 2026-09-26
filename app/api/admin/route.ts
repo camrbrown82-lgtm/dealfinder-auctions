@@ -665,6 +665,93 @@ export async function POST(request: NextRequest) {
     });
   }
 
+  if (body.action === "moveLots") {
+    const ids = collectLotIds(body);
+    if (!ids.length) return NextResponse.json({ error: "Select at least one lot." }, { status: 400 });
+    const sale = await resolveSaleEvent(supabase, demo, body.eventId);
+    if (!sale) {
+      return NextResponse.json({ error: "Pick a target auction." }, { status: 400 });
+    }
+
+    const demoMatches = demo.inventory.filter(
+      (lot) => ids.includes(lot.id) || (lot.lotNumber != null && ids.includes(lot.lotNumber)),
+    );
+    for (const lot of demoMatches) {
+      applyEventToLot(lot, sale, true);
+      lot.highBidder = null;
+      lot.highBidderId = null;
+      lot.paidAt = null;
+      lot.helcimPurchaseTransactionId = null;
+      lot.fulfillment = "unset";
+      lot.currentBid = lot.startingBid ?? lot.currentBid;
+      lot.status = "live";
+      registerDemoLot(lot);
+    }
+
+    if (isSupabaseConfigured && supabase) {
+      const { data: rows } = await supabase.from("lots").select("*").in("id", ids);
+      let matched = (rows ?? []) as LotRow[];
+      if (matched.length < ids.length) {
+        const extra = await supabase.from("lots").select("*").in("lot_number", ids);
+        matched = ((extra.data ?? []) as LotRow[]).concat(matched);
+      }
+      const unique = new Map(matched.map((row) => [String(row.id), row]));
+      if (!unique.size) {
+        return NextResponse.json({ error: "No matching lots to move." }, { status: 404 });
+      }
+      const eventId = asEventUuid(sale.id) ?? sale.id;
+      const moved: Array<{ id: string; lotNumber: string | null }> = [];
+      const errors: string[] = [];
+      await unlinkLotBids(supabase, Array.from(unique.keys()));
+      for (const row of Array.from(unique.values())) {
+        const startBid = Number(row.starting_bid ?? row.current_bid ?? 0) || 0;
+        const patch: Record<string, unknown> = {
+          event_id: eventId,
+          status: "live",
+          ends_at: sale.endsAt,
+          high_bidder: null,
+          high_bidder_id: null,
+          paid_at: null,
+          current_bid: startBid,
+          fulfillment: "unset",
+        };
+        let patched = await patchLotRow(String(row.id), patch);
+        if (!patched.ok && /paid_at|fulfillment|helcim/i.test(patched.body)) {
+          delete patch.paid_at;
+          delete patch.fulfillment;
+          patched = await patchLotRow(String(row.id), patch);
+        }
+        if (!patched.ok) {
+          errors.push(patched.body || String(row.lot_number ?? row.id));
+          continue;
+        }
+        moved.push({ id: String(row.id), lotNumber: row.lot_number ?? null });
+      }
+      if (!moved.length) {
+        return NextResponse.json({ error: errors[0] || "Could not move those lots." }, { status: 400 });
+      }
+      return NextResponse.json({
+        ok: true,
+        eventId: sale.id,
+        auctionNumber: sale.auctionNumber,
+        moved: moved.length,
+        lots: moved,
+        errors,
+      });
+    }
+
+    if (!demoMatches.length) {
+      return NextResponse.json({ error: "No matching lots to move." }, { status: 404 });
+    }
+    return NextResponse.json({
+      ok: true,
+      eventId: sale.id,
+      auctionNumber: sale.auctionNumber,
+      moved: demoMatches.length,
+      lots: demoMatches.map((lot) => ({ id: lot.id, lotNumber: lot.lotNumber ?? null })),
+    });
+  }
+
   if (body.action === "createLot") {
     const title = body.title?.trim();
     if (!title) {

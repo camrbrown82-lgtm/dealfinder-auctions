@@ -1,6 +1,6 @@
-import { lotWasSold } from "@/lib/settlements";
+import { lotClockEnded, lotWasSold } from "@/lib/settlements";
 import type { AuctionEvent, AuctionLot } from "@/lib/utils";
-import { FIRST_WEEKLY_SALE, isWeeklySale } from "@/lib/weeklySales";
+import { FIRST_WEEKLY_SALE, isWeeklySale, nextWeeklySale } from "@/lib/weeklySales";
 
 export type SaleKind = "past" | "live" | "upcoming";
 
@@ -47,8 +47,31 @@ export function lotsForSale(lots: AuctionLot[], sale: SaleWindowItem | undefined
     if (lot.saleChannel === "buy_now") return false;
     if (lot.status === "removed" || lot.status === "draft" || lot.status === "ended") return false;
     if (lotWasSold(lot)) return false;
+    if (lotClockEnded(lot)) return false;
     if (lot.eventId === sale.event.id) return true;
-    if (isFirstWeek && !lot.eventId) return true;
+    if (isFirstWeek && !lot.eventId && sale.kind === "live") return true;
     return false;
+  });
+}
+
+/** The weekly sale whose clock is running right now, or null if none is live. */
+export function currentLiveSale(events: AuctionEvent[], now = Date.now()) {
+  const current = nextWeeklySale(events, now);
+  if (!current) return null;
+  if (new Date(current.startsAt).getTime() > now) return null;
+  return current;
+}
+
+/** Admin floor: only lots actually running on the current live auction. */
+export function lotsForLiveMonitor(lots: AuctionLot[], events: AuctionEvent[], now = Date.now()) {
+  const current = currentLiveSale(events, now);
+  if (!current) return [];
+  return lots.filter((lot) => {
+    if (lot.saleChannel === "buy_now") return false;
+    if (lot.status !== "live" && lot.status !== "paused") return false;
+    if (lot.eventId !== current.id) return false;
+    if (lotClockEnded(lot, now)) return false;
+    if (lotWasSold(lot)) return false;
+    return true;
   });
 }

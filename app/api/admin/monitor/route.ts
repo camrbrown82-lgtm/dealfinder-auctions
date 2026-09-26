@@ -1,69 +1,89 @@
 import { NextResponse } from "next/server";
 import { isAdminSession, unauthorized } from "@/lib/adminAuth";
 import { getAdminDemo, stampAuctionNumbers } from "@/lib/demoAdminStore";
-import { getDemoLot, listDemoLots } from "@/lib/demoAuctionStore";
-import { getSupabaseAdmin, isSupabaseConfigured } from "@/lib/supabaseClient";
+import { getDemoLot } from "@/lib/demoAuctionStore";
+import { settleEndedAuctions } from "@/lib/closeEndedLots";
+import { currentLiveSale, lotsForLiveMonitor } from "@/lib/liveSales";
+import { mapAuctionEvent } from "@/lib/mapAuctionEvent";
 import { mapLot, type LotRow } from "@/lib/mappers";
+import { getSupabaseAdmin, isSupabaseConfigured } from "@/lib/supabaseClient";
+import { ensureWeeklySales } from "@/lib/weeklySales";
 import type { MonitorLot } from "@/lib/adminTypes";
+import type { AuctionEvent, AuctionLot } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
+function salePayload(events: AuctionEvent[]) {
+  const sale = currentLiveSale(events);
+  if (!sale) return null;
+  return {
+    id: sale.id,
+    name: sale.name,
+    auctionNumber: sale.auctionNumber ?? null,
+    endsAt: sale.endsAt,
+  };
+}
+
+function toMonitorLot(lot: AuctionLot, bidCount: number, extra?: Partial<MonitorLot>): MonitorLot {
+  return {
+    id: lot.id,
+    title: lot.title,
+    lotNumber: lot.lotNumber,
+    auctionNumber: extra?.auctionNumber ?? lot.auctionNumber,
+    status: extra?.status ?? lot.status,
+    highBidder: extra?.highBidder ?? lot.highBidder ?? null,
+    currentBid: extra?.currentBid ?? lot.currentBid,
+    startingBid: lot.startingBid ?? lot.currentBid,
+    reservePrice: lot.buyNowPrice ?? lot.reservePrice ?? 0,
+    buyNowPrice: lot.buyNowPrice ?? lot.reservePrice ?? 0,
+    endsAt: extra?.endsAt ?? lot.endsAt,
+    bidCount,
+  };
+}
+
 export async function GET() {
   if (!isAdminSession()) return unauthorized();
+  await settleEndedAuctions().catch(() => undefined);
 
   const supabase = getSupabaseAdmin();
   if (isSupabaseConfigured && supabase) {
-    const { data } = await supabase.from("lots").select("*").in("status", ["live", "paused"]);
-    const { data: bidCounts } = await supabase.from("bids").select("lot_id");
+    await ensureWeeklySales(supabase).catch(() => undefined);
+    const [{ data }, { data: bidCounts }, eventsRes] = await Promise.all([
+      supabase.from("lots").select("*").in("status", ["live", "paused"]),
+      supabase.from("bids").select("lot_id"),
+      supabase.from("auction_events").select("*").order("starts_at", { ascending: true }),
+    ]);
     const count = new Map<string, number>();
     for (const row of bidCounts ?? []) {
       const id = row.lot_id as string;
       count.set(id, (count.get(id) ?? 0) + 1);
     }
-    const lots: MonitorLot[] = ((data ?? []) as LotRow[])
-      .map((row) => mapLot(row))
-      .filter((lot) => lot.saleChannel !== "buy_now")
-      .map((lot) => {
-      return {
-        id: lot.id,
-        title: lot.title,
-        lotNumber: lot.lotNumber,
-        auctionNumber: lot.auctionNumber,
-        status: lot.status,
-        highBidder: lot.highBidder ?? null,
-        currentBid: lot.currentBid,
-        startingBid: lot.startingBid ?? lot.currentBid,
-        reservePrice: lot.buyNowPrice ?? lot.reservePrice ?? 0,
-        buyNowPrice: lot.buyNowPrice ?? lot.reservePrice ?? 0,
-        endsAt: lot.endsAt,
-        bidCount: count.get(lot.id) ?? 0,
-      };
+    const events: AuctionEvent[] = (eventsRes.data ?? []).map((row) =>
+      mapAuctionEvent(row as Parameters<typeof mapAuctionEvent>[0]),
+    );
+    const numbers = new Map(events.map((event) => [event.id, event.auctionNumber ?? null]));
+    const mapped = ((data ?? []) as LotRow[]).map((row) => {
+      const lot = mapLot(row);
+      lot.auctionNumber = lot.eventId ? numbers.get(lot.eventId) ?? lot.auctionNumber : lot.auctionNumber;
+      return lot;
     });
-    return NextResponse.json({ lots, source: "supabase" });
+    const lots: MonitorLot[] = lotsForLiveMonitor(mapped, events).map((lot) =>
+      toMonitorLot(lot, count.get(lot.id) ?? 0),
+    );
+    return NextResponse.json({ lots, sale: salePayload(events), source: "supabase" });
   }
 
   const demo = getAdminDemo();
   stampAuctionNumbers(demo);
-  const clocks = listDemoLots();
-  const lots: MonitorLot[] = demo.inventory
-    .filter((lot) => lot.saleChannel !== "buy_now" && (lot.status === "live" || lot.status === "paused"))
-    .map((lot) => {
-      const clock = getDemoLot(lot.id);
-      return {
-        id: lot.id,
-        title: lot.title,
-        lotNumber: lot.lotNumber,
-        auctionNumber: lot.auctionNumber,
-        status: clock?.status ?? lot.status,
-        highBidder: clock?.highBidder ?? lot.highBidder ?? null,
-        currentBid: clock?.currentBid ?? lot.currentBid,
-        startingBid: lot.startingBid ?? lot.currentBid,
-        reservePrice: lot.buyNowPrice ?? lot.reservePrice ?? 0,
-        buyNowPrice: lot.buyNowPrice ?? lot.reservePrice ?? 0,
-        endsAt: clock?.endsAt ?? lot.endsAt,
-        bidCount: clock?.bids.length ?? 0,
-      };
+  const lots: MonitorLot[] = lotsForLiveMonitor(demo.inventory, demo.events).map((lot) => {
+    const clock = getDemoLot(lot.id);
+    return toMonitorLot(lot, clock?.bids.length ?? 0, {
+      status: clock?.status ?? lot.status,
+      highBidder: clock?.highBidder ?? lot.highBidder ?? null,
+      currentBid: clock?.currentBid ?? lot.currentBid,
+      endsAt: clock?.endsAt ?? lot.endsAt,
     });
+  });
 
-  return NextResponse.json({ lots, source: "demo", clockCount: clocks.length });
+  return NextResponse.json({ lots, sale: salePayload(demo.events), source: "demo" });
 }

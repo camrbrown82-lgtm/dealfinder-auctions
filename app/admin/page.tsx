@@ -10,7 +10,7 @@ export default function AdminHomePage() {
   return (
     <AdminShell
       title="Live Monitor"
-      subtitle="Active paddles, clocks, bid audits, and cash-on-pickup requests waiting on the desk."
+      subtitle="Only the current live weekly sale. Ended leftovers go back to Auction inventories."
     >
       <div className="space-y-8">
         <CashAuthDesk onNotice={setNotice} />

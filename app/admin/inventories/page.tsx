@@ -10,40 +10,19 @@ import { RelistLotsModal } from "@/components/admin/RelistLotsModal";
 import { DEFAULT_HOUSE_STARTING_BID } from "@/lib/houseDesk";
 import { listingGradeOf } from "@/lib/listingGrade";
 import { openAuctionEvents } from "@/lib/auctionCalendar";
-import { lotIsUnsoldOrNoBid, lotNeedsRelist } from "@/lib/settlements";
+import { lotIsUnsoldOrNoBid } from "@/lib/settlements";
 import type { AuctionLot } from "@/lib/utils";
 
 export default function AdminInventoriesPage() {
   const { data, setNotice, setError, mutate } = useAdminDesk();
   const [search, setSearch] = useState("");
-  const [filingLot, setFilingLot] = useState<AuctionLot | null>(null);
+  const [filingLots, setFilingLots] = useState<AuctionLot[]>([]);
   const [showArchived, setShowArchived] = useState(false);
   const [filter, setFilter] = useState<"all" | "unsold">("all");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [relistOpen, setRelistOpen] = useState(false);
   const [relistBusy, setRelistBusy] = useState(false);
   const [relistError, setRelistError] = useState<string | null>(null);
-
-  async function fileLotIntoSale(eventId: string) {
-    if (!filingLot) return;
-    const lot = filingLot;
-    const relist = lotNeedsRelist(lot) && Boolean(lot.eventId || lot.status === "ended");
-    const json = await mutate("/api/admin", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        entity: "lot",
-        id: lot.id,
-        eventId,
-        status: "live",
-        relist,
-        startingBid: lot.startingBid,
-      }),
-    });
-    if (!json) return;
-    setFilingLot(null);
-    setNotice(`Moved ${lot.title} into the selected auction.`);
-  }
 
   function toggleOne(id: string, checked: boolean) {
     setSelectedIds((current) => {
@@ -128,6 +107,51 @@ export default function AdminInventoriesPage() {
     (lot) => selectedIds.has(lot.id) && lot.saleChannel !== "buy_now" && lotIsUnsoldOrNoBid(lot),
   );
 
+  function lotsToMove(lot?: AuctionLot) {
+    if (lot && selectedUnsold.some((row) => row.id === lot.id) && selectedUnsold.length > 1) {
+      return selectedUnsold;
+    }
+    if (lot) return [lot];
+    return selectedUnsold;
+  }
+
+  function startMoveToSale(lot?: AuctionLot) {
+    const lots = lotsToMove(lot);
+    if (!lots.length) return;
+    setFilingLots(lots);
+  }
+
+  async function fileLotsIntoSale(eventId: string) {
+    const moving = filingLots;
+    if (!moving.length) return;
+    const json = await mutate("/api/admin", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        action: "moveLots",
+        eventId,
+        lotIds: moving.map((lot) => lot.id),
+      }),
+    });
+    if (!json) return;
+    const count = Number(json.moved ?? moving.length);
+    const failed = Array.isArray(json.errors) ? json.errors.length : 0;
+    setFilingLots([]);
+    setSelectedIds(new Set());
+    setNotice(
+      count === 1
+        ? `Moved ${moving[0]?.title ?? "the lot"} into the selected auction.`
+        : `Moved ${count} lots into the selected auction${failed ? ` (${failed} skipped)` : ""}.`,
+    );
+  }
+
+  const filingLabel =
+    filingLots.length === 1
+      ? [filingLots[0].lotNumber, filingLots[0].title].filter(Boolean).join(" · ")
+      : filingLots.length > 1
+        ? `${filingLots.length} selected lots`
+        : "this lot";
+
   return (
     <AdminShell
       title="Auction inventories"
@@ -200,6 +224,14 @@ export default function AdminInventoriesPage() {
           type="button"
           className="comic-btn"
           disabled={!selectedUnsold.length}
+          onClick={() => startMoveToSale()}
+        >
+          Move selected to sale ({selectedUnsold.length})
+        </button>
+        <button
+          type="button"
+          className="comic-btn"
+          disabled={!selectedUnsold.length}
           onClick={() => {
             setError(null);
             setRelistError(null);
@@ -224,7 +256,7 @@ export default function AdminInventoriesPage() {
         selectedIds={selectedIds}
         onToggle={toggleOne}
         onToggleGroup={toggleGroup}
-        onMoveToSale={setFilingLot}
+        onMoveToSale={startMoveToSale}
         onDeleteLot={(lot) => void deleteLots([lot.id])}
         onRemove={(lot) =>
           void mutate("/api/admin", {
@@ -239,13 +271,11 @@ export default function AdminInventoriesPage() {
         }
       />
       <AuctionCalendarModal
-        open={Boolean(filingLot)}
-        lotLabel={
-          filingLot ? [filingLot.lotNumber, filingLot.title].filter(Boolean).join(" · ") : "this lot"
-        }
+        open={filingLots.length > 0}
+        lotLabel={filingLabel}
         events={upcomingEvents}
-        onClose={() => setFilingLot(null)}
-        onSelect={(eventId) => void fileLotIntoSale(eventId)}
+        onClose={() => setFilingLots([])}
+        onSelect={(eventId) => void fileLotsIntoSale(eventId)}
       />
       <RelistLotsModal
         open={relistOpen}
