@@ -16,14 +16,13 @@ import { lotWasSold } from "@/lib/settlements";
 import { formatCurrency, isLotOpen, lotImages, type AuctionLot } from "@/lib/utils";
 import { defaultSaleId, lotsForSale, type SaleWindowItem } from "@/lib/liveSales";
 
-const VIEW_OPTIONS = [1, 4, 6, 9] as const;
+const VIEW_OPTIONS = [1, 2, 4] as const;
 type ViewCount = (typeof VIEW_OPTIONS)[number];
 const VIEW_STORAGE_KEY = "dealfinder-live-view";
 const GRID_CLASS: Record<ViewCount, string> = {
   1: "grid grid-cols-1 justify-items-center gap-4",
-  4: "grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4",
-  6: "grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6",
-  9: "grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-9",
+  2: "grid grid-cols-1 gap-4 sm:grid-cols-2",
+  4: "grid grid-cols-1 gap-4 sm:grid-cols-4",
 };
 
 type LotClock = {
@@ -34,11 +33,9 @@ type LotClock = {
 };
 
 function normalizeView(value: number): ViewCount {
-  if (value === 1 || value === 4 || value === 6 || value === 9) return value;
-  if (value <= 3) return 1;
-  if (value <= 5) return 4;
-  if (value <= 7) return 6;
-  return 9;
+  if (value === 1 || value === 2 || value === 4) return value;
+  if (value === 6 || value === 9) return 4;
+  return 4;
 }
 
 export function LiveGrid({
@@ -51,7 +48,7 @@ export function LiveGrid({
   const [floorLots, setFloorLots] = useState(lots);
   const [floorSales, setFloorSales] = useState(sales);
   const [query, setQuery] = useState("");
-  const [view, setView] = useState<ViewCount>(9);
+  const [view, setView] = useState<ViewCount>(4);
   const [saleId, setSaleId] = useState(() => defaultSaleId(sales) ?? "");
   const [clocks, setClocks] = useState<Record<string, LotClock> | null>(null);
   const [interest, setInterest] = useState<InterestProfile>({
@@ -227,7 +224,7 @@ export function LiveGrid({
               autoComplete="off"
             />
           </label>
-          <fieldset className="min-w-0 shrink-0">
+          <fieldset className="hidden min-w-0 shrink-0 sm:block">
             <legend className="font-display text-lg">Lots per row</legend>
             <div className="mt-1 flex flex-wrap gap-1" role="radiogroup" aria-label="Lots per row">
               {VIEW_OPTIONS.map((count) => {
@@ -253,7 +250,7 @@ export function LiveGrid({
           {selected?.kind === "past" ? " from this past sale" : ""}
           {selected?.kind === "upcoming" ? " you can bid on early" : ""}
           {query.trim() ? ` matching "${query.trim()}"` : ""}
-          <span className="lg:inline"> · {view} per row</span>
+          <span className="hidden sm:inline"> · {view} per row</span>
         </p>
       </div>
 
@@ -290,11 +287,11 @@ function LotCard({
   const open = isLotOpen(lot);
   const bidLabel = open ? "Bid now" : "View lot";
   const catalogLine = [lot.auctionNumber, lot.lotNumber].filter(Boolean).join(" · ");
-  const compact = view >= 6;
+  const compact = view === 4;
   const single = view === 1;
   const sizes = single
     ? "(max-width: 640px) 100vw, 24rem"
-    : `(max-width: 1023px) 100vw, ${Math.round(100 / view)}vw`;
+    : `(max-width: 639px) 100vw, ${Math.round(100 / view)}vw`;
 
   return (
     <article
