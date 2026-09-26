@@ -2,12 +2,14 @@
 
 import { LotImage } from "@/components/LotImage";
 import { sortLotsByNumber } from "@/lib/catalogNumbers";
+import { openAuctionEvents } from "@/lib/auctionCalendar";
 import { lotIsUnsoldOrNoBid, lotWasSold } from "@/lib/settlements";
 import { formatCurrency, type AuctionEvent, type AuctionLot } from "@/lib/utils";
 
 export function AuctionInventories({
   events,
   lots,
+  showArchived,
   selectedIds,
   onToggle,
   onToggleGroup,
@@ -17,6 +19,7 @@ export function AuctionInventories({
 }: {
   events: AuctionEvent[];
   lots: AuctionLot[];
+  showArchived?: boolean;
   selectedIds: Set<string>;
   onToggle: (id: string, checked: boolean) => void;
   onToggleGroup: (groupLots: AuctionLot[], checked: boolean) => void;
@@ -24,10 +27,10 @@ export function AuctionInventories({
   onRemove: (lot: AuctionLot) => void;
   onDeleteLot: (lot: AuctionLot) => void;
 }) {
-  const orderedEvents = [...events]
-    .filter((event) => !event.archivedAt)
-    .sort((a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime());
-  const openIds = new Set(orderedEvents.map((event) => event.id));
+  const filingEvents = showArchived
+    ? [...events].sort((a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime())
+    : openAuctionEvents(events);
+  const openIds = new Set(openAuctionEvents(events).map((event) => event.id));
   const unassigned = sortLotsByNumber(
     lots.filter((lot) => {
       if (lotWasSold(lot)) return false;
@@ -37,20 +40,19 @@ export function AuctionInventories({
 
   return (
     <div className="space-y-8">
-      {unassigned.length > 0 && (
-        <AuctionLotGroup
-          title="Unassigned warehouse"
-          subtitle="Approved or generated lots waiting for an upcoming auction."
-          lots={unassigned}
-          selectedIds={selectedIds}
-          onToggle={onToggle}
-          onToggleGroup={onToggleGroup}
-          onMoveToSale={onMoveToSale}
-          onRemove={onRemove}
-          onDeleteLot={onDeleteLot}
-        />
-      )}
-      {orderedEvents.map((event) => {
+      <AuctionLotGroup
+        title="Unassigned warehouse"
+        subtitle="New lots and unsold items from ended sales. Select them to relist into an upcoming auction."
+        lots={unassigned}
+        selectedIds={selectedIds}
+        onToggle={onToggle}
+        onToggleGroup={onToggleGroup}
+        onMoveToSale={onMoveToSale}
+        onRemove={onRemove}
+        onDeleteLot={onDeleteLot}
+        empty="No lots waiting. Ended unsold items and new warehouse stock show up here."
+      />
+      {filingEvents.map((event) => {
         const grouped = sortLotsByNumber(lots.filter((lot) => lot.eventId === event.id));
         return (
           <AuctionLotGroup
@@ -81,6 +83,7 @@ function AuctionLotGroup({
   onMoveToSale,
   onRemove,
   onDeleteLot,
+  empty = "No lots filed here yet.",
 }: {
   title: string;
   subtitle: string;
@@ -91,6 +94,7 @@ function AuctionLotGroup({
   onMoveToSale: (lot: AuctionLot) => void;
   onRemove: (lot: AuctionLot) => void;
   onDeleteLot: (lot: AuctionLot) => void;
+  empty?: string;
 }) {
   const allSelected = lots.length > 0 && lots.every((lot) => selectedIds.has(lot.id));
   return (
@@ -113,7 +117,7 @@ function AuctionLotGroup({
         ) : null}
       </div>
       {lots.length === 0 ? (
-        <p className="comic-panel-sm p-3 font-comic text-sm">No lots filed here yet.</p>
+        <p className="comic-panel-sm p-3 font-comic text-sm">{empty}</p>
       ) : (
         <div className="comic-table-wrap">
           <table className="w-full min-w-[720px] border-collapse font-comic text-sm">

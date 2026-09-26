@@ -5,6 +5,7 @@ import { useAdminDesk } from "@/components/admin/AdminDesk";
 import { AdminShell } from "@/components/admin/AdminShell";
 import { AuctionCalendarModal } from "@/components/admin/AuctionCalendar";
 import { ReviewQueue, type ReviewDraft } from "@/components/admin/ReviewQueue";
+import { openAuctionEvents } from "@/lib/auctionCalendar";
 import type { Consignment } from "@/lib/utils";
 
 export default function AdminConsignmentsPage() {
@@ -65,7 +66,7 @@ export default function AdminConsignmentsPage() {
     await approveItem(pending.item, pending.draft, eventId);
   }
 
-  const openEvents = data.events.filter((event) => !event.archivedAt);
+  const openEvents = openAuctionEvents(data.events);
 
   return (
     <AdminShell

@@ -5,7 +5,7 @@ import { isSupabaseConfigured } from "@/lib/supabaseClient";
 import { isAuctionEndDay } from "@/lib/auctionEndDay";
 import { runSundayPreauthSweep } from "@/lib/sundayPreauth";
 import { issueEndedAuctionInvoices } from "@/lib/auctionCloseInvoices";
-import { closeEndedSoldLots } from "@/lib/closeEndedLots";
+import { settleEndedAuctions } from "@/lib/closeEndedLots";
 
 export const dynamic = "force-dynamic";
 export const fetchCache = "force-no-store";
@@ -17,7 +17,7 @@ declare global {
 }
 
 export async function GET() {
-  void closeEndedSoldLots().catch(() => undefined);
+  void settleEndedAuctions().catch(() => undefined);
   if (isAuctionEndDay()) {
     const now = Date.now();
     if (!globalThis.__dealfinderSundaySweepAt || now - globalThis.__dealfinderSundaySweepAt > 10 * 60 * 1000) {

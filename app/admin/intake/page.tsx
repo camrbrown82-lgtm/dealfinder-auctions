@@ -7,6 +7,7 @@ import { AdminShell } from "@/components/admin/AdminShell";
 import { AuctionCalendarModal } from "@/components/admin/AuctionCalendar";
 import { HouseCatalogSettings } from "@/components/admin/HouseCatalogSettings";
 import { DEFAULT_HOUSE_STARTING_BID } from "@/lib/houseDesk";
+import { openAuctionEvents } from "@/lib/auctionCalendar";
 
 export default function AdminWarehouseIntakePage() {
   const { data, setNotice, load, mutate } = useAdminDesk();
@@ -29,7 +30,7 @@ export default function AdminWarehouseIntakePage() {
     setNotice(`Filed ${lot.title} into the selected auction.`);
   }
 
-  const openEvents = data.events.filter((event) => !event.archivedAt);
+  const openEvents = openAuctionEvents(data.events);
 
   return (
     <AdminShell

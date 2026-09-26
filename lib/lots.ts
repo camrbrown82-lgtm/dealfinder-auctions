@@ -7,6 +7,7 @@ import { getAdminDemo, stampAuctionNumbers } from "@/lib/demoAdminStore";
 import { isListedBuyNow } from "@/lib/saleChannel";
 import { MOCK_LOTS, getLotById, filterLots, lotImages, uniqueImageUrls, type AuctionEvent, type AuctionLot } from "@/lib/utils";
 import { ensureWeeklySales } from "@/lib/weeklySales";
+import { settleEndedAuctions } from "@/lib/closeEndedLots";
 
 function withGallery(lot: AuctionLot): AuctionLot {
   if (isSupabaseConfigured) return lot;
@@ -49,6 +50,9 @@ export async function fetchLiveCatalog(): Promise<{
 
   await ensureWeeklySales(supabase).catch((error) => {
     console.error("ensureWeeklySales", error instanceof Error ? error.message : error);
+  });
+  await settleEndedAuctions().catch((error) => {
+    console.error("settleEndedAuctions", error instanceof Error ? error.message : error);
   });
 
   const [{ data, error }, eventsRes] = await Promise.all([

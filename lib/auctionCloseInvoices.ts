@@ -1,4 +1,4 @@
-import { closeEndedSoldLots } from "@/lib/closeEndedLots";
+import { settleEndedAuctions } from "@/lib/closeEndedLots";
 import { mapLot, type LotRow } from "@/lib/mappers";
 import { sendWinInvoiceEmail } from "@/lib/notify";
 import { invoiceFees } from "@/lib/invoiceFees";
@@ -26,7 +26,7 @@ function addressOf(row: Record<string, unknown> | null) {
 }
 
 export async function issueEndedAuctionInvoices() {
-  await closeEndedSoldLots();
+  await settleEndedAuctions();
   const supabase = getSupabaseAdmin();
   if (!isSupabaseConfigured || !supabase) return { invoiced: 0, events: 0 };
   const now = new Date().toISOString();

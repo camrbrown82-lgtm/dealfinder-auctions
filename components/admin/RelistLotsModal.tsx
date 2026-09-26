@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { openAuctionEvents } from "@/lib/auctionCalendar";
 import type { AuctionEvent } from "@/lib/utils";
 
 export function RelistLotsModal({
@@ -22,7 +23,7 @@ export function RelistLotsModal({
   onClose: () => void;
   onConfirm: (eventId: string, lotStart: string) => void;
 }) {
-  const openEvents = events.filter((event) => !event.archivedAt);
+  const openEvents = openAuctionEvents(events);
   const [eventId, setEventId] = useState(openEvents[0]?.id ?? "");
   const [lotStart, setLotStart] = useState(defaultStart);
 

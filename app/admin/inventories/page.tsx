@@ -9,6 +9,7 @@ import { HouseCatalogSettings } from "@/components/admin/HouseCatalogSettings";
 import { RelistLotsModal } from "@/components/admin/RelistLotsModal";
 import { DEFAULT_HOUSE_STARTING_BID } from "@/lib/houseDesk";
 import { listingGradeOf } from "@/lib/listingGrade";
+import { openAuctionEvents } from "@/lib/auctionCalendar";
 import { lotIsUnsoldOrNoBid, lotNeedsRelist } from "@/lib/settlements";
 import type { AuctionLot } from "@/lib/utils";
 
@@ -116,7 +117,7 @@ export default function AdminInventoriesPage() {
     );
   }, [data, search, filter]);
 
-  const upcomingEvents = data.events.filter((event) => !event.archivedAt);
+  const upcomingEvents = openAuctionEvents(data.events);
   const visibleEvents = showArchived
     ? data.events
     : data.events.filter(
@@ -130,7 +131,7 @@ export default function AdminInventoriesPage() {
   return (
     <AdminShell
       title="Auction inventories"
-      subtitle="File lots into a weekly sale. Relist unsold lots into a new range. Create auctions and terms on Auction desk."
+      subtitle="File lots into a weekly sale. When a sale ends, unsold lots come back to the warehouse so you can relist them. Create auctions and terms on Auction desk."
     >
       <HouseCatalogSettings
         settings={
@@ -219,6 +220,7 @@ export default function AdminInventoriesPage() {
       <AuctionInventories
         events={visibleEvents}
         lots={filteredInventory}
+        showArchived={showArchived}
         selectedIds={selectedIds}
         onToggle={toggleOne}
         onToggleGroup={toggleGroup}

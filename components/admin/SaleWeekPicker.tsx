@@ -1,12 +1,13 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { FIRST_WEEKLY_SALE, WEEKLY_SALES } from "@/lib/weeklySales";
+import { FIRST_WEEKLY_SALE, WEEKLY_SALES, nextWeeklySale } from "@/lib/weeklySales";
+import { openAuctionEvents } from "@/lib/auctionCalendar";
 import type { AuctionEvent } from "@/lib/utils";
 
 function weekOptions(events: AuctionEvent[]) {
-  const open = events.filter((event) => !event.archivedAt);
-  return WEEKLY_SALES.map((plan) => {
+  const open = openAuctionEvents(events);
+  return WEEKLY_SALES.filter((plan) => new Date(plan.endsAt).getTime() > Date.now()).map((plan) => {
     const event =
       open.find((row) => row.auctionNumber === plan.auctionNumber) ??
       open.find((row) => row.name === plan.name) ??
@@ -40,23 +41,16 @@ export function SaleWeekPicker({
   onSelect: (eventId: string) => void;
 }) {
   const options = useMemo(() => weekOptions(events), [events]);
+  const current = nextWeeklySale(openAuctionEvents(events));
   const defaultId =
-    options.find((row) =>
-      events.some(
-        (event) =>
-          !event.archivedAt &&
-          event.id === row.id &&
-          (event.auctionNumber === FIRST_WEEKLY_SALE.auctionNumber ||
-            event.auctionNumber === FIRST_WEEKLY_SALE.legacyNumber),
-      ),
-    )?.id ?? options[0]?.id ?? "";
+    options.find((row) => row.id === current?.id)?.id ?? options[0]?.id ?? "";
   const [value, setValue] = useState(defaultId);
 
   useEffect(() => {
     if (open) setValue(defaultId);
   }, [open, defaultId]);
 
-  const eventIds = new Set(events.filter((event) => !event.archivedAt).map((event) => event.id));
+  const eventIds = new Set(openAuctionEvents(events).map((event) => event.id));
   const canFile = Boolean(value && eventIds.has(value));
 
   if (!open) return null;
@@ -73,7 +67,7 @@ export function SaleWeekPicker({
           Pick the sale week
         </h2>
         <p className="mt-1 font-comic text-sm">
-          File <strong>{lotLabel}</strong> into one of the next five weeks, starting Sep 20.
+          File <strong>{lotLabel}</strong> into an upcoming weekly sale. Ended weeks are not listed.
         </p>
         <label className="mt-4 block font-comic text-sm font-bold">
           Auction week

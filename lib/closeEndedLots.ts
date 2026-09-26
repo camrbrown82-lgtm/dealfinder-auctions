@@ -1,8 +1,9 @@
-import { getAdminDemo } from "@/lib/demoAdminStore";
+import { getAdminDemo, stampAuctionNumbers } from "@/lib/demoAdminStore";
 import { listDemoLots } from "@/lib/demoAuctionStore";
 import { getDemoUser, listDemoUsers } from "@/lib/demoUsers";
 import { mapLot, type LotRow } from "@/lib/mappers";
 import { recordSoldLotSettlement } from "@/lib/recordSale";
+import { lotWasSold } from "@/lib/settlements";
 import { getSupabaseAdmin, isSupabaseConfigured } from "@/lib/supabaseClient";
 import type { AuctionLot } from "@/lib/utils";
 
@@ -74,5 +75,80 @@ export async function closeEndedSoldLots() {
     closed += 1;
   }
   return { closed };
+}
+
+function saleIsClosed(event: { endsAt?: string | null; archivedAt?: string | null }, now: number) {
+  if (event.archivedAt) return true;
+  const ends = Date.parse(String(event.endsAt ?? ""));
+  return Number.isFinite(ends) && ends <= now;
+}
+
+/** Unsold lots on a closed sale go back to warehouse inventory so they can be relisted. */
+export async function returnUnsoldFromClosedSales() {
+  const now = Date.now();
+  let returned = 0;
+  const supabase = getSupabaseAdmin();
+  if (isSupabaseConfigured && supabase) {
+    const { data: events } = await supabase.from("auction_events").select("id, ends_at, archived_at");
+    const closedIds = (events ?? [])
+      .filter((event) =>
+        saleIsClosed(
+          { endsAt: String(event.ends_at ?? ""), archivedAt: event.archived_at ? String(event.archived_at) : null },
+          now,
+        ),
+      )
+      .map((event) => String(event.id));
+    if (!closedIds.length) return { returned };
+
+    const { data: lots } = await supabase
+      .from("lots")
+      .select("id, event_id, status, high_bidder, high_bidder_id, sale_channel")
+      .in("event_id", closedIds);
+
+    for (const row of lots ?? []) {
+      if (String(row.sale_channel ?? "") === "buy_now") continue;
+      const status = String(row.status ?? "");
+      if (status === "removed" || status === "draft") continue;
+      const sold = Boolean(row.high_bidder || row.high_bidder_id);
+      if (sold) {
+        if (status !== "ended") {
+          await supabase.from("lots").update({ status: "ended" }).eq("id", row.id);
+        }
+        continue;
+      }
+      await supabase.from("lots").update({ status: "ended", event_id: null }).eq("id", row.id);
+      returned += 1;
+    }
+    return { returned };
+  }
+
+  const demo = getAdminDemo();
+  const closedIds = new Set(
+    demo.events.filter((event) => saleIsClosed(event, now)).map((event) => event.id),
+  );
+  for (const lot of demo.inventory) {
+    if (lot.saleChannel === "buy_now") continue;
+    if (!lot.eventId || !closedIds.has(lot.eventId)) continue;
+    if (lot.status === "removed" || lot.status === "draft") continue;
+    if (lotWasSold(lot)) {
+      lot.status = "ended";
+      const clock = listDemoLots().find((row) => row.id === lot.id);
+      if (clock) clock.status = "ended";
+      continue;
+    }
+    lot.status = "ended";
+    lot.eventId = null;
+    const clock = listDemoLots().find((row) => row.id === lot.id);
+    if (clock) clock.status = "ended";
+    returned += 1;
+  }
+  stampAuctionNumbers(demo);
+  return { returned };
+}
+
+export async function settleEndedAuctions() {
+  const sold = await closeEndedSoldLots();
+  const unsold = await returnUnsoldFromClosedSales();
+  return { closed: sold.closed, returned: unsold.returned };
 }
 

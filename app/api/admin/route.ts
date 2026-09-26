@@ -22,7 +22,8 @@ import { uniqueImageUrls } from "@/lib/utils";
 import { startingBidFromBuyNow } from "@/lib/buyNow";
 import { patchLotRow } from "@/lib/openFloor";
 import { recordSoldLotSettlement } from "@/lib/recordSale";
-import { attachLotToSale, ensureWeeklySales, firstWeeklyEvent, isWeeklySale, nextWeeklySale } from "@/lib/weeklySales";
+import { attachLotToSale, ensureWeeklySales, nextWeeklySale } from "@/lib/weeklySales";
+import { settleEndedAuctions } from "@/lib/closeEndedLots";
 import { notifyConsignmentApproved } from "@/lib/notify";
 import {
   allocateLotNumber,
@@ -240,13 +241,13 @@ async function resolveSaleEvent(
       const match = events.find((row) => row.id === eventId || row.auctionNumber === eventId);
       if (match) return match;
     }
-    return firstWeeklyEvent(events.filter((row) => isWeeklySale(row))) ?? nextWeeklySale(events);
+    return nextWeeklySale(events);
   }
   if (eventId) {
     const match = demo.events.find((row) => row.id === eventId);
     if (match) return match;
   }
-  return firstWeeklyEvent(demo.events) ?? nextWeeklySale(demo.events);
+  return nextWeeklySale(demo.events);
 }
 
 export async function GET() {
@@ -254,14 +255,18 @@ export async function GET() {
 
   const supabase = getSupabaseAdmin();
   if (!isSupabaseConfigured || !supabase) {
+    await settleEndedAuctions().catch((error) => {
+      console.error("settleEndedAuctions", error instanceof Error ? error.message : error);
+    });
     return NextResponse.json(payloadFromDemo());
   }
 
-  if (isSupabaseConfigured && supabase) {
-    await ensureWeeklySales(supabase).catch((error) => {
-      console.error("ensureWeeklySales", error instanceof Error ? error.message : error);
-    });
-  }
+  await ensureWeeklySales(supabase).catch((error) => {
+    console.error("ensureWeeklySales", error instanceof Error ? error.message : error);
+  });
+  await settleEndedAuctions().catch((error) => {
+    console.error("settleEndedAuctions", error instanceof Error ? error.message : error);
+  });
 
   const [queueRes, lotsRes, eventsRes] = await Promise.all([
     supabase.from("consignments").select("*").order("created_at", { ascending: false }),

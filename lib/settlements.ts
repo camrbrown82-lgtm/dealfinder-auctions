@@ -44,20 +44,23 @@ export function lotWasSold(lot: AuctionLot) {
   return Boolean(lot.highBidderId || lot.highBidder) && (lot.status === "ended" || lot.status === "removed");
 }
 
-export function lotNeedsRelist(lot: AuctionLot) {
-  if (lot.status === "draft") return false;
-  if (lotWasSold(lot)) return false;
-  if (lot.status === "removed") return true;
-  if (!lot.eventId) return lot.status === "ended";
-  return lot.status === "ended";
+export function lotClockEnded(lot: Pick<AuctionLot, "endsAt">, now = Date.now()) {
+  const end = Date.parse(String(lot.endsAt ?? ""));
+  return Number.isFinite(end) && end <= now;
 }
 
-export function lotIsUnsoldOrNoBid(lot: AuctionLot) {
+export function lotNeedsRelist(lot: AuctionLot, now = Date.now()) {
   if (lot.status === "draft") return false;
   if (lotWasSold(lot)) return false;
-  if (lotNeedsRelist(lot)) return true;
-  const noBidder = !lot.highBidder && !lot.highBidderId;
-  return noBidder && (lot.status === "ended" || lot.status === "removed");
+  if (lot.status === "removed" || lot.status === "ended") return true;
+  if (!lot.eventId) return true;
+  return lotClockEnded(lot, now);
+}
+
+export function lotIsUnsoldOrNoBid(lot: AuctionLot, now = Date.now()) {
+  if (lot.status === "draft") return false;
+  if (lotWasSold(lot)) return false;
+  return lotNeedsRelist(lot, now);
 }
 
 function groupFulfillment(lots: AuctionLot[]): FulfillmentChoice {
