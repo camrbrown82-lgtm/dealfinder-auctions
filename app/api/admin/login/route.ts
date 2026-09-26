@@ -7,7 +7,9 @@ export const runtime = "nodejs";
 
 export async function GET() {
   if (!isAdminSession()) return unauthorized();
-  return NextResponse.json({ ok: true });
+  const response = NextResponse.json({ ok: true });
+  response.headers.set("Cache-Control", "no-store");
+  return response;
 }
 
 const cookieOptions = {
@@ -15,7 +17,6 @@ const cookieOptions = {
   sameSite: "lax" as const,
   secure: process.env.NODE_ENV === "production",
   path: "/",
-  maxAge: 60 * 60 * 12,
 };
 
 export async function POST(request: NextRequest) {
@@ -30,6 +31,7 @@ export async function POST(request: NextRequest) {
   }
 
   const response = NextResponse.json({ ok: true });
+  // Session cookie only — no maxAge, so the browser drops it when the window closes.
   response.cookies.set(ADMIN_COOKIE, adminSessionToken(), cookieOptions);
   return response;
 }

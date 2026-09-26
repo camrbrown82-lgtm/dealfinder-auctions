@@ -33,7 +33,7 @@ Copy `.env.example` to `.env.local` and fill the Helcim block. On Vercel, add th
 1. Fill `.env.local` from `.env.example` (`OPENAI_API_KEY`, Supabase, Helcim, optional `SUPABASE_SERVICE_ROLE_KEY` / Resend).
 2. In the Supabase SQL editor, run historical migrations as needed, then **run the Helcim SQL** in `supabase/sql-editor-helcim.sql` (Query 1, then Query 2, then Query 3).
 3. Enable Realtime for `lots`, `bids`, and `consignments` if the publication block was skipped.
-4. Set `ADMIN_PASSWORD` (demo default: `hammer`).
+4. Set `ADMIN_PASSWORD` (demo default: `hammer`). Opening `/admin` always asks for that password — the desk does not keep a saved login, and the form tells the browser not to remember it.
 5. `npm install` then `npm run dev` → http://localhost:43173
 
 Without Supabase keys the UI runs in demo mode (in-memory mock lots).
