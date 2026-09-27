@@ -20,14 +20,19 @@ export function AppHeader() {
       >
         <Logo />
       </Link>
-      <div className="relative h-24 w-full sm:h-44 md:h-52 lg:h-60">
-        <Link href="/" className="absolute inset-0 block" aria-label="DealFinder Auctions home">
+      <div className="flex items-center justify-center bg-black px-16 py-2 sm:px-56 sm:py-3">
+        <Link
+          href="/"
+          className="block w-full max-w-[14rem] sm:max-w-xs md:max-w-sm"
+          aria-label="DealFinder Auctions home"
+        >
           <Image
             src="/logo.webp"
             alt="DealFinder Auctions"
-            fill
-            className="object-fill"
-            sizes="100vw"
+            width={533}
+            height={373}
+            className="h-auto w-full"
+            sizes="(min-width: 768px) 24rem, 14rem"
             priority
           />
         </Link>
