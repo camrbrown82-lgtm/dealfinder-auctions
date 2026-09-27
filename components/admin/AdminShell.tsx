@@ -52,19 +52,31 @@ export function AdminShell({
   }
 
   return (
-    <div className="flex flex-row items-start gap-3 sm:gap-6">
-      <aside className="flex w-52 shrink-0 flex-col gap-4 print:hidden sm:w-64">
-        <div className="comic-panel p-3">
-          <p className="font-display text-2xl text-brand-red">Staff desk</p>
-          <p className="font-comic text-xs text-black/70">Source: {data.source}</p>
-        </div>
-        <AdminNav />
-        <div className="mt-auto comic-panel p-3">
-          <p className="font-comic text-xs font-bold uppercase tracking-wide">Signed in</p>
-          <p className="font-comic text-sm">Admin</p>
+    <div className="flex flex-col gap-4 md:flex-row md:items-start md:gap-6">
+      <aside className="w-full shrink-0 print:hidden md:w-64">
+        <details className="comic-panel p-3 md:hidden">
+          <summary className="cursor-pointer font-display text-2xl text-brand-red">Staff desk</summary>
+          <p className="mt-1 font-comic text-xs text-black/70">Source: {data.source}</p>
+          <div className="mt-3">
+            <AdminNav />
+          </div>
           <button type="button" className="comic-btn-invert mt-3 w-full" onClick={() => void logout()}>
             Log out
           </button>
+        </details>
+        <div className="hidden flex-col gap-4 md:flex">
+          <div className="comic-panel p-3">
+            <p className="font-display text-2xl text-brand-red">Staff desk</p>
+            <p className="font-comic text-xs text-black/70">Source: {data.source}</p>
+          </div>
+          <AdminNav />
+          <div className="comic-panel p-3">
+            <p className="font-comic text-xs font-bold uppercase tracking-wide">Signed in</p>
+            <p className="font-comic text-sm">Admin</p>
+            <button type="button" className="comic-btn-invert mt-3 w-full" onClick={() => void logout()}>
+              Log out
+            </button>
+          </div>
         </div>
       </aside>
       <div className="min-w-0 flex-1 space-y-6">

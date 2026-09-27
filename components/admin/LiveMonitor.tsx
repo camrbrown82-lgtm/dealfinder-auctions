@@ -113,7 +113,64 @@ export function LiveMonitor({
           This week&apos;s live auction only. Ended weeks and upcoming weeks stay off this desk.
         </p>
       </div>
-      <div className="comic-table-wrap">
+      <div className="space-y-3 md:hidden">
+        {lots.length === 0 ? (
+          <p className="comic-panel p-4 font-comic">No lots are live in this week&apos;s auction.</p>
+        ) : null}
+        {lots.map((lot) => {
+          const draft = drafts[lot.id] ?? { start: String(lot.startingBid) };
+          return (
+            <article key={lot.id} className="comic-panel space-y-3 p-3">
+              <div>
+                <p className="break-words font-display text-xl leading-none">{lot.title}</p>
+                <p className="mt-1 font-comic text-sm">
+                  {lot.auctionNumber} · {lot.lotNumber} · {(lot.status ?? "").toUpperCase()}
+                </p>
+              </div>
+              <dl className="grid grid-cols-2 gap-2 font-comic text-sm">
+                <div>
+                  <dt className="text-xs font-bold uppercase">High paddle</dt>
+                  <dd>{lot.highBidder || "—"}</dd>
+                </div>
+                <div>
+                  <dt className="text-xs font-bold uppercase">Current</dt>
+                  <dd className="font-bold">{formatCurrency(lot.currentBid)}</dd>
+                  <dd>{lot.bidCount} attempts</dd>
+                </div>
+                <div className="col-span-2">
+                  <dt className="text-xs font-bold uppercase">Clock</dt>
+                  <dd>
+                    <LotTimer endsAt={lot.endsAt} />
+                  </dd>
+                </div>
+              </dl>
+              <div className="flex flex-wrap items-end gap-2">
+                <label className="font-comic text-sm">
+                  Start
+                  <input
+                    type="number"
+                    value={draft.start}
+                    onChange={(e) =>
+                      setDrafts((current) => ({
+                        ...current,
+                        [lot.id]: { ...draft, start: e.target.value },
+                      }))
+                    }
+                    className="mt-1 w-28 border-4 border-black bg-white px-2 py-1"
+                  />
+                </label>
+                <button type="button" className="comic-btn-invert !text-sm" onClick={() => void savePricing(lot)}>
+                  Save
+                </button>
+              </div>
+              <button type="button" className="comic-btn w-full !text-sm" onClick={() => void openAudit(lot)}>
+                Bid History Audit
+              </button>
+            </article>
+          );
+        })}
+      </div>
+      <div className="comic-table-wrap hidden md:block">
         <table className="w-full min-w-[960px] border-collapse font-comic text-sm">
           <thead className="bg-[#FF0000] text-left text-white">
             <tr>

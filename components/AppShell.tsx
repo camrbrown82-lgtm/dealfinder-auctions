@@ -34,11 +34,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <AppHeader />
       </div>
       <main
-        className={`mx-auto w-full min-w-0 max-w-[90rem] flex-1 overflow-x-clip py-4 sm:py-8 ${
-          pathname === "/live"
-            ? "pl-3 pr-[5.25rem] sm:pl-4 sm:pr-[max(1rem,calc(11rem-(100vw-min(100vw,90rem))/2))]"
-            : "px-3 sm:px-4"
-        }`}
+        className="mx-auto w-full min-w-0 max-w-[90rem] flex-1 overflow-x-clip px-3 py-4 sm:px-4 sm:py-8"
       >
         {children}
       </main>

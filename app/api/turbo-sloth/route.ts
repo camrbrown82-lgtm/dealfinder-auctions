@@ -40,8 +40,8 @@ export async function POST(request: NextRequest) {
     },
     body: JSON.stringify({
       model: TURBO_SLOTH_MODEL,
-      temperature: 0.4,
-      max_tokens: 350,
+      temperature: 0.2,
+      max_tokens: 500,
       messages: [{ role: "system", content: turboSlothSystemPrompt() }, ...messages],
     }),
   });

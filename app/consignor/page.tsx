@@ -1,9 +1,10 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 import { ImageUrlPaste } from "@/components/ImageUrlPaste";
 import { PhotoDropzone } from "@/components/PhotoDropzone";
-import { moneySplit } from "@/lib/commission";
+import { agreementCommission } from "@/lib/commission";
+import { CONSIGNMENT_AGREEMENT_SECTIONS } from "@/lib/consignmentAgreement";
 import { ConsignmentTermsModal } from "@/components/ConsignmentTermsModal";
 import { AiFeedback } from "@/components/AiFeedback";
 import { ConsignorNameField } from "@/components/ConsignorNameField";
@@ -18,12 +19,10 @@ import { ListingGradeFields } from "@/components/ListingGradeFields";
 import { ListingGalleryThumbs, TurboSlothGenerateButton } from "@/components/TurboSlothGenerateButton";
 import type { SlothPhotoPhase } from "@/lib/turboSloth";
 import { type ListingGrade } from "@/lib/listingGrade";
-import {
-  DEFAULT_COMMISSION_RATE,
-  formatCurrency,
-  pipelineLabel,
-  type ConsignorItem,
-} from "@/lib/utils";
+import { formatCurrency, pipelineLabel, type ConsignorItem } from "@/lib/utils";
+
+const COMMISSION_TIERS =
+  CONSIGNMENT_AGREEMENT_SECTIONS.find((section) => section.heading.startsWith("3."))?.paragraphs ?? [];
 
 const LOCAL_KEY = "dealfinder-consignor-items";
 
@@ -37,7 +36,6 @@ export default function ConsignorPage() {
   const [description, setDescription] = useState("");
   const [buyNowPrice, setBuyNowPrice] = useState("");
   const [marketValue, setMarketValue] = useState("");
-  const [commissionPercent, setCommissionPercent] = useState("20");
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [photoPhase, setPhotoPhase] = useState<SlothPhotoPhase | null>(null);
@@ -54,17 +52,8 @@ export default function ConsignorPage() {
   const [listingGrade, setListingGrade] = useState<ListingGrade>("Used");
   const [requestBuyNow, setRequestBuyNow] = useState(false);
 
-  const commissionRate = Number(commissionPercent) / 100 || DEFAULT_COMMISSION_RATE;
   const buyNow = Number(buyNowPrice) || 0;
   const market = Number(marketValue) || 0;
-
-  const breakdown = useMemo(
-    () => ({
-      buyNow: moneySplit(buyNow, commissionRate),
-      market: moneySplit(market, commissionRate),
-    }),
-    [buyNow, market, commissionRate],
-  );
 
   async function loadItems() {
     const local = readLocal(consignorName || user?.fullName || "");
@@ -187,7 +176,6 @@ export default function ConsignorPage() {
           title,
           description,
           buyNowPrice: buyNow,
-          commissionRate,
           estimatedMarketValue: market,
           listingGrade,
           itemDetails,
@@ -351,19 +339,6 @@ export default function ConsignorPage() {
           {compsNote && (
             <p className="border-4 border-black bg-brand-cream p-3 font-comic text-sm">{compsNote}</p>
           )}
-          <label className="block font-comic font-bold">
-            House commission ({commissionPercent}%)
-            <input
-              type="range"
-              min={10}
-              max={30}
-              step={1}
-              value={commissionPercent}
-              onChange={(e) => setCommissionPercent(e.target.value)}
-              className="mt-2 w-full"
-            />
-          </label>
-
           <label className="flex items-start gap-2 font-comic text-sm font-bold">
             <input
               type="checkbox"
@@ -379,9 +354,14 @@ export default function ConsignorPage() {
             </span>
           </label>
           <div className="border-4 border-black bg-brand-cream p-3 font-comic text-sm">
-            <p className="font-display text-lg">Commission breakdown</p>
-            <Row label="At buy now" split={breakdown.buyNow} />
-            <Row label="At market value" split={breakdown.market} />
+            <p className="font-display text-lg">Commission</p>
+            <ul className="mt-1 list-disc space-y-1 pl-5">
+              {COMMISSION_TIERS.map((line) => (
+                <li key={line}>{line}</li>
+              ))}
+            </ul>
+            <SplitLine label="At buy now" amount={buyNow} />
+            <SplitLine label="At market value" amount={market} />
           </div>
 
           {aiRun && !generating ? (
@@ -502,18 +482,16 @@ function StatusTable({ items, empty }: { items: ConsignorItem[]; empty: string }
   );
 }
 
-function Row({
-  label,
-  split,
-}: {
-  label: string;
-  split: { house: number; consignor: number };
-}) {
+function SplitLine({ label, amount }: { label: string; amount: number }) {
+  if (!(amount > 0)) return null;
+  const split = agreementCommission(amount);
   return (
-    <p className="mt-1 flex justify-between gap-4">
+    <p className="mt-2 flex justify-between gap-4">
       <span>{label}</span>
       <span>
-        House {formatCurrency(split.house)} · You {formatCurrency(split.consignor)}
+        {split
+          ? `${split.label} · House ${formatCurrency(split.house)} · You ${formatCurrency(split.consignor)}`
+          : "That price is not named in the agreement."}
       </span>
     </p>
   );
