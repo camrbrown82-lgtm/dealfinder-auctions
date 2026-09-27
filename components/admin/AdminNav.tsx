@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useMemo, useState } from "react";
 
 type NavItem = { href: string; label: string };
 
@@ -40,60 +39,23 @@ function linkActive(pathname: string, href: string) {
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
-function groupOpen(pathname: string, group: NavGroup) {
-  return group.items.some((item) => linkActive(pathname, item.href));
+function navClass(active: boolean) {
+  return `border-4 border-black px-3 py-2 ${active ? "bg-brand-red text-white" : "bg-white"}`;
 }
 
 export function AdminNav() {
   const pathname = usePathname();
-  const initiallyOpen = useMemo(
-    () => Object.fromEntries(GROUPS.map((group) => [group.id, groupOpen(pathname, group)])),
-    [pathname],
-  );
-  const [open, setOpen] = useState<Record<string, boolean>>(initiallyOpen);
 
   return (
-    <nav className="space-y-2 font-comic text-sm">
-      <Link
-        href="/admin"
-        className={`block border-4 border-black px-3 py-2 ${
-          linkActive(pathname, "/admin") ? "bg-brand-red text-white" : "bg-white"
-        }`}
-      >
+    <nav className="flex min-w-0 flex-1 flex-wrap gap-2 font-comic text-sm">
+      <Link href="/admin" className={navClass(linkActive(pathname, "/admin"))}>
         Live Monitor
       </Link>
-      {GROUPS.map((group) => {
-        const expanded = open[group.id] ?? groupOpen(pathname, group);
-        return (
-          <div key={group.id} className="border-4 border-black bg-white">
-            <button
-              type="button"
-              className="flex w-full items-center justify-between px-3 py-2 text-left font-bold"
-              onClick={() => setOpen((current) => ({ ...current, [group.id]: !expanded }))}
-              aria-expanded={expanded}
-            >
-              <span>{group.label}</span>
-              <span aria-hidden>{expanded ? "−" : "+"}</span>
-            </button>
-            {expanded ? (
-              <ul className="border-t-4 border-black">
-                {group.items.map((item) => (
-                  <li key={item.href}>
-                    <Link
-                      href={item.href}
-                      className={`block px-3 py-2 ${
-                        linkActive(pathname, item.href) ? "bg-brand-red text-white" : "bg-[#FFF7D1]"
-                      }`}
-                    >
-                      {item.label}
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            ) : null}
-          </div>
-        );
-      })}
+      {GROUPS.flatMap((group) => group.items).map((item) => (
+        <Link key={item.href} href={item.href} className={navClass(linkActive(pathname, item.href))}>
+          {item.label}
+        </Link>
+      ))}
     </nav>
   );
 }
