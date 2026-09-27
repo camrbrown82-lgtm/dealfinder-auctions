@@ -37,6 +37,35 @@ export function currentLiveEvent(events: AuctionEvent[], now = Date.now()) {
   return events.find((event) => !event.archivedAt && saleKind(event, now) === "live") ?? null;
 }
 
+function edmontonDateKey(now = Date.now()) {
+  return new Date(now).toLocaleDateString("en-CA", { timeZone: "America/Edmonton" });
+}
+
+/** Hammer day encoded in AU-YYYY-MMDD, otherwise the sale end in Alberta. */
+function auctionHammerDate(event: Pick<AuctionEvent, "auctionNumber" | "endsAt">) {
+  const match = event.auctionNumber?.match(/(\d{4})-(\d{2})(\d{2})$/);
+  if (match) return `${match[1]}-${match[2]}-${match[3]}`;
+  const end = new Date(event.endsAt);
+  if (Number.isNaN(end.getTime())) return null;
+  return end.toLocaleDateString("en-CA", { timeZone: "America/Edmonton" });
+}
+
+/** Current week and later sales. Ended weeks stay off posting lists even if their clock was left open. */
+export function canPostIntoSale(event: AuctionEvent, now = Date.now()) {
+  if (event.archivedAt) return false;
+  const end = new Date(event.endsAt).getTime();
+  if (!Number.isFinite(end) || end <= now) return false;
+  const hammer = auctionHammerDate(event);
+  if (hammer && hammer < edmontonDateKey(now)) return false;
+  return saleKind(event, now) !== "past";
+}
+
+export function salesOpenForPosting(events: AuctionEvent[], now = Date.now()) {
+  return events
+    .filter((event) => canPostIntoSale(event, now))
+    .sort((a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime());
+}
+
 export function defaultSaleId(window: SaleWindowItem[]) {
   return (
     window.find((item) => item.kind === "live") ??

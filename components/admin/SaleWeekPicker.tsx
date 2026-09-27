@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { saleKind } from "@/lib/liveSales";
+import { saleKind, salesOpenForPosting } from "@/lib/liveSales";
 import type { AuctionEvent } from "@/lib/utils";
 
 function endsLabel(iso: string) {
@@ -15,13 +15,10 @@ function endsLabel(iso: string) {
 }
 
 function weekOptions(events: AuctionEvent[], now = Date.now()) {
-  return events
-    .filter((event) => !event.archivedAt && saleKind(event, now) !== "past")
-    .sort((a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime())
-    .map((event) => ({
-      id: event.id,
-      label: `${event.auctionNumber ? `${event.auctionNumber} · ` : ""}${event.name} · ends ${endsLabel(event.endsAt)}`,
-    }));
+  return salesOpenForPosting(events, now).map((event) => ({
+    id: event.id,
+    label: `${event.auctionNumber ? `${event.auctionNumber} · ` : ""}${event.name} · ends ${endsLabel(event.endsAt)}`,
+  }));
 }
 
 export function SaleWeekPicker({
@@ -65,7 +62,7 @@ export function SaleWeekPicker({
           Pick the sale week
         </h2>
         <p className="mt-1 font-comic text-sm">
-          File <strong>{lotLabel}</strong> into the current auction or an upcoming one. Ended sales are not listed.
+          File <strong>{lotLabel}</strong> into this week or a later auction. Ended sales are not listed.
         </p>
         <label className="mt-4 block font-comic text-sm font-bold">
           Auction week

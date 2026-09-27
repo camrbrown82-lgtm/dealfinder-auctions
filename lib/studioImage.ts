@@ -124,9 +124,10 @@ async function editFromReferences(apiKey: string, prompt: string, sourceUrls: st
   if (refs.length === 0) return { url: null, error: "Could not read warehouse photos for the studio shot." };
 
   const form = new FormData();
-  form.append("model", "gpt-image-1");
+  form.append("model", "gpt-image-1-mini");
   form.append("prompt", prompt);
   form.append("size", "1024x1024");
+  form.append("quality", "medium");
   for (const ref of refs) {
     form.append("image[]", ref.blob, ref.name);
   }
@@ -148,9 +149,10 @@ async function editFromReferences(apiKey: string, prompt: string, sourceUrls: st
   }
 
   const retry = new FormData();
-  retry.append("model", "gpt-image-1");
+  retry.append("model", "gpt-image-1-mini");
   retry.append("prompt", prompt);
   retry.append("size", "1024x1024");
+  retry.append("quality", "medium");
   retry.append("image", refs[0].blob, refs[0].name);
   const second = await fetch("https://api.openai.com/v1/images/edits", {
     method: "POST",

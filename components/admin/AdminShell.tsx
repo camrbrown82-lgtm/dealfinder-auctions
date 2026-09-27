@@ -52,8 +52,8 @@ export function AdminShell({
   }
 
   return (
-    <div className="flex flex-col gap-6 lg:flex-row">
-      <aside className="flex w-full shrink-0 flex-col gap-4 print:hidden lg:w-64">
+    <div className="flex flex-row items-start gap-3 sm:gap-6">
+      <aside className="flex w-52 shrink-0 flex-col gap-4 print:hidden sm:w-64">
         <div className="comic-panel p-3">
           <p className="font-display text-2xl text-brand-red">Staff desk</p>
           <p className="font-comic text-xs text-black/70">Source: {data.source}</p>
