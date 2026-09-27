@@ -193,6 +193,13 @@ export function LiveGrid({
               const active = item.event.id === selected?.event.id;
               const label =
                 item.kind === "past" ? "Previous" : item.kind === "live" ? "Live now" : "Upcoming";
+              const when = new Date(item.event.endsAt).toLocaleDateString("en-CA", {
+                weekday: "short",
+                month: "short",
+                day: "numeric",
+                year: "numeric",
+                timeZone: "America/Edmonton",
+              });
               return (
                 <button
                   key={item.event.id}
@@ -203,6 +210,9 @@ export function LiveGrid({
                   <span className="block leading-none">{label}</span>
                   <span className="mt-1 block font-comic text-xs font-bold normal-case tracking-normal">
                     {item.event.auctionNumber || item.event.name}
+                  </span>
+                  <span className="mt-1 block font-comic text-xs font-bold normal-case tracking-normal">
+                    {when}
                   </span>
                 </button>
               );

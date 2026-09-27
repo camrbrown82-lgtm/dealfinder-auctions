@@ -1,29 +1,27 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { FIRST_WEEKLY_SALE, WEEKLY_SALES } from "@/lib/weeklySales";
+import { saleKind } from "@/lib/liveSales";
 import type { AuctionEvent } from "@/lib/utils";
 
-function weekOptions(events: AuctionEvent[]) {
-  const open = events.filter((event) => !event.archivedAt);
-  return WEEKLY_SALES.map((plan) => {
-    const event =
-      open.find((row) => row.auctionNumber === plan.auctionNumber) ??
-      open.find((row) => row.name === plan.name) ??
-      (plan.auctionNumber === FIRST_WEEKLY_SALE.auctionNumber
-        ? open.find((row) => row.auctionNumber === FIRST_WEEKLY_SALE.legacyNumber)
-        : undefined);
-    return {
-      id: event?.id ?? plan.auctionNumber,
-      label: `${plan.name} · ends ${new Date(plan.endsAt).toLocaleString("en-CA", {
-        month: "short",
-        day: "numeric",
-        hour: "numeric",
-        minute: "2-digit",
-        timeZone: "America/Edmonton",
-      })}`,
-    };
+function endsLabel(iso: string) {
+  return new Date(iso).toLocaleString("en-CA", {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    timeZone: "America/Edmonton",
   });
+}
+
+function weekOptions(events: AuctionEvent[], now = Date.now()) {
+  return events
+    .filter((event) => !event.archivedAt && saleKind(event, now) !== "past")
+    .sort((a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime())
+    .map((event) => ({
+      id: event.id,
+      label: `${event.auctionNumber ? `${event.auctionNumber} · ` : ""}${event.name} · ends ${endsLabel(event.endsAt)}`,
+    }));
 }
 
 export function SaleWeekPicker({
@@ -41,15 +39,9 @@ export function SaleWeekPicker({
 }) {
   const options = useMemo(() => weekOptions(events), [events]);
   const defaultId =
-    options.find((row) =>
-      events.some(
-        (event) =>
-          !event.archivedAt &&
-          event.id === row.id &&
-          (event.auctionNumber === FIRST_WEEKLY_SALE.auctionNumber ||
-            event.auctionNumber === FIRST_WEEKLY_SALE.legacyNumber),
-      ),
-    )?.id ?? options[0]?.id ?? "";
+    options.find((row) => events.some((event) => event.id === row.id && saleKind(event) === "live"))?.id ??
+    options[0]?.id ??
+    "";
   const [value, setValue] = useState(defaultId);
 
   useEffect(() => {
@@ -73,7 +65,7 @@ export function SaleWeekPicker({
           Pick the sale week
         </h2>
         <p className="mt-1 font-comic text-sm">
-          File <strong>{lotLabel}</strong> into one of the next five weeks, starting Sep 20.
+          File <strong>{lotLabel}</strong> into the current auction or an upcoming one. Ended sales are not listed.
         </p>
         <label className="mt-4 block font-comic text-sm font-bold">
           Auction week
@@ -82,6 +74,7 @@ export function SaleWeekPicker({
             onChange={(e) => setValue(e.target.value)}
             className="mt-1 w-full border-4 border-black bg-white px-3 py-2 font-normal"
           >
+            {options.length === 0 ? <option value="">No current or upcoming auctions</option> : null}
             {options.map((row) => (
               <option key={row.id} value={row.id}>
                 {row.label}
