@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { fetchAppRules, formatAppRules } from "@/lib/appRules";
 import { TURBO_SLOTH_MODEL, turboSlothSystemPrompt } from "@/lib/turboSloth";
 
 export const runtime = "nodejs";
@@ -31,6 +32,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Ask Turbo Sloth something first." }, { status: 400 });
   }
 
+  const officialRules = formatAppRules(await fetchAppRules());
   const response = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
     signal: AbortSignal.timeout(25000),
@@ -42,7 +44,7 @@ export async function POST(request: NextRequest) {
       model: TURBO_SLOTH_MODEL,
       temperature: 0.2,
       max_tokens: 500,
-      messages: [{ role: "system", content: turboSlothSystemPrompt() }, ...messages],
+      messages: [{ role: "system", content: turboSlothSystemPrompt(officialRules) }, ...messages],
     }),
   });
   const json = (await response.json()) as {
