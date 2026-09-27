@@ -47,6 +47,8 @@ export type AuctionLot = {
   saleSource?: "bid" | "buy_now" | null;
   saleChannel?: SaleChannel;
   buyNowStatus?: BuyNowStatus | null;
+  /** False when the lot's sale is a past or upcoming week. */
+  biddingOpen?: boolean;
 };
 
 export type AuctionEvent = {
@@ -314,9 +316,19 @@ export function formatCurrency(amount: number, currency = "CAD") {
   }).format(amount);
 }
 
-export function nextBidAmount(currentBid: number, minIncrement: number, highBidder?: string | null) {
-  if (!highBidder) return currentBid > 0 ? currentBid : minIncrement;
-  return currentBid + minIncrement;
+/** $1 through $50, $2 from $51 to $99, $5 from $100 up. */
+export function bidIncrementFor(amount: number) {
+  const price = Number(amount);
+  const listed = Number.isFinite(price) ? price : 0;
+  if (listed >= 100) return 5;
+  if (listed >= 51) return 2;
+  return 1;
+}
+
+export function nextBidAmount(currentBid: number, _minIncrement: number, highBidder?: string | null) {
+  const step = bidIncrementFor(currentBid > 0 ? currentBid : 0);
+  if (!highBidder) return currentBid > 0 ? currentBid : step;
+  return currentBid + step;
 }
 
 export function getLotById(id: string) {
@@ -391,8 +403,10 @@ export function formatCountdown(endsAt: string, now = Date.now()) {
   return `${pad(hours)}h ${pad(minutes)}m ${pad(seconds)}s`;
 }
 
-export function isLotOpen(lot: Pick<AuctionLot, "endsAt" | "status">) {
-  if (lot.status === "removed" || lot.status === "ended") return false;
+export function isLotOpen(lot: Pick<AuctionLot, "endsAt" | "status">, now = Date.now()) {
+  if (lot.status === "removed" || lot.status === "ended" || lot.status === "draft") return false;
+  const end = parseLotEndMs(lot.endsAt, now);
+  if (Number.isFinite(end) && end <= now) return false;
   return true;
 }
 

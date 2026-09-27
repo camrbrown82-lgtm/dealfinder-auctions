@@ -1,5 +1,5 @@
 import { lotWasSold } from "@/lib/settlements";
-import type { AuctionEvent, AuctionLot } from "@/lib/utils";
+import { isLotOpen, type AuctionEvent, type AuctionLot } from "@/lib/utils";
 import { FIRST_WEEKLY_SALE, isWeeklySale } from "@/lib/weeklySales";
 
 export type SaleKind = "past" | "live" | "upcoming";
@@ -17,16 +17,24 @@ export function saleKind(event: AuctionEvent, now = Date.now()): SaleKind {
   return "live";
 }
 
-/** Current sale plus up to two previous and two upcoming. */
+/** Current week, plus up to two past weeks and any later weeks. Past and upcoming are view only. */
 export function pickSaleWindow(events: AuctionEvent[], now = Date.now()): SaleWindowItem[] {
   const weekly = events.filter((event) => !event.archivedAt && isWeeklySale(event));
   const sorted = (weekly.length ? weekly : events.filter((event) => !event.archivedAt)).sort(
     (a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime(),
   );
-  return sorted.map((event) => ({
+  const tagged = sorted.map((event) => ({
     event,
     kind: saleKind(event, now),
   }));
+  const past = tagged.filter((item) => item.kind === "past").slice(-2);
+  const live = tagged.filter((item) => item.kind === "live");
+  const upcoming = tagged.filter((item) => item.kind === "upcoming");
+  return [...past, ...live, ...upcoming];
+}
+
+export function currentLiveEvent(events: AuctionEvent[], now = Date.now()) {
+  return events.find((event) => !event.archivedAt && saleKind(event, now) === "live") ?? null;
 }
 
 export function defaultSaleId(window: SaleWindowItem[]) {
@@ -45,10 +53,12 @@ export function lotsForSale(lots: AuctionLot[], sale: SaleWindowItem | undefined
     sale.event.name === FIRST_WEEKLY_SALE.name;
   return lots.filter((lot) => {
     if (lot.saleChannel === "buy_now") return false;
-    if (lot.status === "removed" || lot.status === "draft" || lot.status === "ended") return false;
-    if (lotWasSold(lot)) return false;
-    if (lot.eventId === sale.event.id) return true;
-    if (isFirstWeek && !lot.eventId) return true;
-    return false;
+    if (lot.status === "removed" || lot.status === "draft") return false;
+    const onThisSale = lot.eventId === sale.event.id || (isFirstWeek && !lot.eventId && sale.kind === "live");
+    if (!onThisSale) return false;
+    if (sale.kind === "past") return true;
+    if (lot.status === "ended" || lotWasSold(lot)) return false;
+    if (sale.kind === "upcoming") return true;
+    return isLotOpen(lot);
   });
 }

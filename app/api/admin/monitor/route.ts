@@ -2,8 +2,11 @@ import { NextResponse } from "next/server";
 import { isAdminSession, unauthorized } from "@/lib/adminAuth";
 import { getAdminDemo, stampAuctionNumbers } from "@/lib/demoAdminStore";
 import { getDemoLot, listDemoLots } from "@/lib/demoAuctionStore";
+import { currentLiveEvent } from "@/lib/liveSales";
+import { mapAuctionEvent } from "@/lib/mapAuctionEvent";
 import { getSupabaseAdmin, isSupabaseConfigured } from "@/lib/supabaseClient";
 import { mapLot, type LotRow } from "@/lib/mappers";
+import { isLotOpen } from "@/lib/utils";
 import type { MonitorLot } from "@/lib/adminTypes";
 
 export const dynamic = "force-dynamic";
@@ -13,6 +16,11 @@ export async function GET() {
 
   const supabase = getSupabaseAdmin();
   if (isSupabaseConfigured && supabase) {
+    const { data: eventRows } = await supabase.from("auction_events").select("*");
+    const events = (eventRows ?? []).map((row) =>
+      mapAuctionEvent(row as Parameters<typeof mapAuctionEvent>[0]),
+    );
+    const current = currentLiveEvent(events);
     const { data } = await supabase.from("lots").select("*").in("status", ["live", "paused"]);
     const { data: bidCounts } = await supabase.from("bids").select("lot_id");
     const count = new Map<string, number>();
@@ -22,7 +30,13 @@ export async function GET() {
     }
     const lots: MonitorLot[] = ((data ?? []) as LotRow[])
       .map((row) => mapLot(row))
-      .filter((lot) => lot.saleChannel !== "buy_now")
+      .filter(
+        (lot) =>
+          lot.saleChannel !== "buy_now" &&
+          Boolean(current) &&
+          lot.eventId === current?.id &&
+          isLotOpen(lot),
+      )
       .map((lot) => {
       return {
         id: lot.id,
@@ -45,8 +59,16 @@ export async function GET() {
   const demo = getAdminDemo();
   stampAuctionNumbers(demo);
   const clocks = listDemoLots();
+  const current = currentLiveEvent(demo.events);
   const lots: MonitorLot[] = demo.inventory
-    .filter((lot) => lot.saleChannel !== "buy_now" && (lot.status === "live" || lot.status === "paused"))
+    .filter(
+      (lot) =>
+        lot.saleChannel !== "buy_now" &&
+        (lot.status === "live" || lot.status === "paused") &&
+        Boolean(current) &&
+        lot.eventId === current?.id &&
+        isLotOpen(lot),
+    )
     .map((lot) => {
       const clock = getDemoLot(lot.id);
       return {

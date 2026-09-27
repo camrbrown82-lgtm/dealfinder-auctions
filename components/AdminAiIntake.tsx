@@ -197,13 +197,13 @@ export function AdminAiIntake({
       <form onSubmit={onSubmit} className="grid gap-6 lg:grid-cols-2">
         <div className="comic-panel space-y-4 p-5">
           {workspace && (
-            <div className="relative min-h-[22rem] overflow-hidden border-4 border-black bg-[#FFF7D1]">
+            <div className="relative min-h-[22rem] overflow-hidden border-4 border-black bg-white">
               {workingImage ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img
                   src={workingImage}
                   alt="Listing photo"
-                  className="absolute inset-0 h-full w-full object-contain bg-black"
+                  className="absolute inset-0 h-full w-full object-contain bg-white"
                 />
               ) : (
                 <p className="flex h-full min-h-[22rem] items-center justify-center p-6 text-center font-display text-2xl">
@@ -271,7 +271,7 @@ export function AdminAiIntake({
                 value={lotNumber}
                 onChange={(e) => setLotNumber(e.target.value)}
                 required
-                className="mt-2 w-full border-4 border-black px-3 py-2 font-normal"
+                className="mt-2 w-full border-4 border-black bg-white px-3 py-2 font-normal"
               />
             </label>
           </div>
@@ -287,7 +287,7 @@ export function AdminAiIntake({
                   setStartingBid(e.target.value);
                 }}
                 required
-                className="mt-2 w-full border-4 border-black px-3 py-2 font-normal"
+                className="mt-2 w-full border-4 border-black bg-white px-3 py-2 font-normal"
               />
             </label>
             <label className="block font-comic font-bold">
@@ -299,7 +299,7 @@ export function AdminAiIntake({
                 value={reservePrice}
                 onChange={(e) => setReservePrice(e.target.value)}
                 required
-                className="mt-2 w-full border-4 border-black px-3 py-2 font-normal"
+                className="mt-2 w-full border-4 border-black bg-white px-3 py-2 font-normal"
               />
             </label>
           </div>

@@ -110,7 +110,7 @@ export function LiveMonitor({
         <p className="font-display text-sm tracking-[0.25em] text-brand-red">LIVE AUCTION MONITOR</p>
         <h2 className="font-display text-2xl text-brand-red sm:text-4xl">Floor feed · {source}</h2>
         <p className="font-comic text-sm">
-          Realtime on lots + bids when Supabase is connected; otherwise this page polls every 4s.
+          This week&apos;s live auction only. Ended weeks and upcoming weeks stay off this desk.
         </p>
       </div>
       <div className="comic-table-wrap">
@@ -126,6 +126,13 @@ export function LiveMonitor({
             </tr>
           </thead>
           <tbody>
+            {lots.length === 0 ? (
+              <tr className="bg-[#FFF7D1]">
+                <td className="p-4 font-comic" colSpan={6}>
+                  No lots are live in this week&apos;s auction.
+                </td>
+              </tr>
+            ) : null}
             {lots.map((lot) => {
               const draft = drafts[lot.id] ?? {
                 start: String(lot.startingBid),

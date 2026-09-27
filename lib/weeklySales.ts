@@ -164,24 +164,24 @@ export async function ensureWeeklySales(supabase: SupabaseClient | null) {
     events = await listEvents(supabase);
     const weeklyOpen = events.filter((event) => isWeeklySale(event) && !event.archivedAt);
     const keep = new Set(weeklyOpen.map((event) => event.id));
-    const floor = firstWeeklyEvent(weeklyOpen);
     const staleIds = events.filter((event) => !keep.has(event.id)).map((event) => event.id);
+    const now = Date.now();
+    const current =
+      weeklyOpen.find((event) => {
+        const start = new Date(event.startsAt).getTime();
+        const end = new Date(event.endsAt).getTime();
+        return start <= now && end > now;
+      }) ?? nextWeeklySale(weeklyOpen);
 
-    if (floor) {
+    if (current) {
       const { data: lots } = await supabase
         .from("lots")
-        .select("id, event_id, status, high_bidder, high_bidder_id");
-      const laterNumbers = new Set(WEEKLY_SALES.slice(1).map((sale) => sale.auctionNumber));
-      const laterWeeks = new Set(
-        weeklyOpen
-          .filter((event) => event.auctionNumber && laterNumbers.has(event.auctionNumber))
-          .map((event) => event.id),
-      );
+        .select("id, event_id, status, high_bidder, high_bidder_id, sale_channel");
       for (const row of lots ?? []) {
-        if (row.status === "removed" || isSold(row)) continue;
-        const eventId = (row.event_id as string | null) ?? null;
-        if (eventId && laterWeeks.has(eventId)) continue;
-        await placeLotOnSale(String(row.id), floor);
+        if (row.status === "removed" || row.status === "ended" || isSold(row)) continue;
+        if (row.sale_channel === "buy_now") continue;
+        if (row.event_id) continue;
+        await placeLotOnSale(String(row.id), current);
       }
     }
 

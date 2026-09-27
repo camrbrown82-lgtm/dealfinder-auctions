@@ -1,4 +1,4 @@
-import { parseLotEndMs } from "@/lib/utils";
+import { bidIncrementFor, nextBidAmount, parseLotEndMs } from "@/lib/utils";
 
 export const ANTI_SNIPE_WINDOW_MS = 2 * 60 * 1000;
 export const ANTI_SNIPE_EXTEND_MS = 2 * 60 * 1000;
@@ -25,12 +25,11 @@ export type AuctionClock = {
 };
 
 export function openingAsk(currentBid: number, minIncrement: number) {
-  return currentBid > 0 ? currentBid : minIncrement;
+  return nextBidAmount(currentBid, minIncrement);
 }
 
 export function nextLiveAmount(currentBid: number, minIncrement: number, highBidder?: string | null) {
-  if (!highBidder) return openingAsk(currentBid, minIncrement);
-  return currentBid + minIncrement;
+  return nextBidAmount(currentBid, minIncrement, highBidder);
 }
 
 export function extendIfSniping(endsAt: string, now = Date.now()) {
@@ -50,9 +49,14 @@ function upsertAbsentee(list: AbsenteeMax[], bidder: string, max: number) {
   return next;
 }
 
+function stepFor(state: AuctionClock) {
+  return bidIncrementFor(state.currentBid > 0 ? state.currentBid : 0);
+}
+
 function bestChallenger(state: AuctionClock) {
+  const step = stepFor(state);
   const floor = state.highBidder
-    ? state.currentBid + state.minIncrement
+    ? state.currentBid + step
     : openingAsk(state.currentBid, state.minIncrement);
   const challengers = state.absentees
     .filter((row) => row.bidder !== state.highBidder && row.max >= floor)
@@ -67,7 +71,7 @@ function runProxy(state: AuctionClock, events: BidEvent[]) {
     const challenger = bestChallenger(state);
     if (!challenger) break;
     const amount = state.highBidder
-      ? state.currentBid + state.minIncrement
+      ? state.currentBid + stepFor(state)
       : openingAsk(state.currentBid, state.minIncrement);
     if (amount > challenger.max) break;
     state.currentBid = amount;
@@ -107,7 +111,7 @@ export function placeAbsenteeMax(
 ) {
   const minimum = nextLiveAmount(state.currentBid, state.minIncrement, state.highBidder);
   if (maxAmount < minimum) {
-    throw new Error(`Absentee max must be at least ${minimum}`);
+    throw new Error(`Max bid must be at least ${minimum}`);
   }
 
   state.absentees = upsertAbsentee(state.absentees, bidder, maxAmount);

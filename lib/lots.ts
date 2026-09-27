@@ -5,7 +5,9 @@ import { mapLot, type LotRow } from "@/lib/mappers";
 import { getDemoLot } from "@/lib/demoAuctionStore";
 import { getAdminDemo, stampAuctionNumbers } from "@/lib/demoAdminStore";
 import { isListedBuyNow } from "@/lib/saleChannel";
-import { MOCK_LOTS, getLotById, filterLots, lotImages, uniqueImageUrls, type AuctionEvent, type AuctionLot } from "@/lib/utils";
+import { MOCK_LOTS, getLotById, filterLots, isLotOpen, lotImages, uniqueImageUrls, type AuctionEvent, type AuctionLot } from "@/lib/utils";
+import { closeEndedSoldLots } from "@/lib/closeEndedLots";
+import { saleKind } from "@/lib/liveSales";
 import { ensureWeeklySales } from "@/lib/weeklySales";
 
 function withGallery(lot: AuctionLot): AuctionLot {
@@ -47,6 +49,9 @@ export async function fetchLiveCatalog(): Promise<{
     return { lots: [], events: [] };
   }
 
+  await closeEndedSoldLots().catch((error) => {
+    console.error("closeEndedSoldLots", error instanceof Error ? error.message : error);
+  });
   await ensureWeeklySales(supabase).catch((error) => {
     console.error("ensureWeeklySales", error instanceof Error ? error.message : error);
   });
@@ -62,10 +67,14 @@ export async function fetchLiveCatalog(): Promise<{
   }
 
   const rows = Array.isArray(data) ? (data as LotRow[]) : [];
-  const floor = await openRows(rows);
-
   const events = (eventsRes.data ?? []).map((row) =>
     mapAuctionEvent(row as Parameters<typeof mapAuctionEvent>[0]),
+  );
+  const liveIds = new Set(
+    events.filter((event) => !event.archivedAt && saleKind(event) === "live").map((event) => event.id),
+  );
+  const floor = await openRows(
+    rows.filter((row) => liveIds.has(String(row.event_id ?? ""))),
   );
   const numbers = new Map(events.map((event) => [event.id, event.auctionNumber ?? null]));
   const lots = rows
@@ -74,13 +83,12 @@ export async function fetchLiveCatalog(): Promise<{
       lot.auctionNumber = row.event_id ? numbers.get(row.event_id) ?? null : lot.auctionNumber;
       return lot;
     })
-    .filter(
-      (lot) =>
-        lot.saleChannel !== "buy_now" &&
-        lot.status !== "removed" &&
-        lot.status !== "draft" &&
-        lot.status !== "ended",
-    );
+    .filter((lot) => lot.saleChannel !== "buy_now" && lot.status !== "removed" && lot.status !== "draft")
+    .map((lot) => {
+      const event = events.find((row) => row.id === lot.eventId);
+      const weekLive = event ? saleKind(event) === "live" : false;
+      return { ...lot, biddingOpen: weekLive && isLotOpen(lot) };
+    });
 
   return { lots, events, floor };
 }
@@ -154,10 +162,19 @@ export async function fetchLot(id: string): Promise<AuctionLot | undefined> {
         if (lot.eventId) {
           const { data: event } = await supabase
             .from("auction_events")
-            .select("auction_number")
+            .select("auction_number, starts_at, ends_at")
             .eq("id", lot.eventId)
             .maybeSingle();
           lot.auctionNumber = event?.auction_number ?? lot.auctionNumber;
+          if (event?.starts_at && event?.ends_at) {
+            const weekLive = saleKind({
+              id: lot.eventId,
+              name: "",
+              startsAt: String(event.starts_at),
+              endsAt: String(event.ends_at),
+            }) === "live";
+            lot.biddingOpen = weekLive && isLotOpen(lot);
+          }
         }
       }
     }

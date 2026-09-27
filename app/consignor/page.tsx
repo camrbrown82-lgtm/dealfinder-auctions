@@ -247,11 +247,11 @@ export default function ConsignorPage() {
         </p>
       </div>
 
-      <form onSubmit={onSubmit} className="grid gap-6 lg:grid-cols-2">
-        <div className="comic-panel space-y-4 p-6">
+      <form onSubmit={onSubmit} className="grid items-stretch gap-6 lg:grid-cols-2">
+        <div className="comic-panel flex flex-col gap-4 p-6">
           <ConsignorNameField value={consignorName} />
           {studioImageUrl && (
-            <div className="relative min-h-[16rem] overflow-hidden border-4 border-black bg-black">
+            <div className="relative min-h-[16rem] overflow-hidden border-4 border-black bg-white">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={studioImageUrl}
@@ -280,7 +280,7 @@ export default function ConsignorPage() {
           />
           <button
             type="button"
-            className="comic-btn w-full"
+            className="comic-btn mt-auto w-full"
             onClick={() => void autoGenerate()}
             disabled={generating}
           >
@@ -288,14 +288,14 @@ export default function ConsignorPage() {
           </button>
         </div>
 
-        <div className="comic-panel space-y-4 p-6">
+        <div className="comic-panel flex flex-col gap-4 p-6">
           <label className="block font-comic font-bold">
             Title
             <input
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               required
-              className="mt-2 w-full border-4 border-black px-3 py-2 font-normal"
+              className="mt-2 w-full border-4 border-black bg-white px-3 py-2 font-normal"
             />
           </label>
           <label className="block font-comic font-bold">
@@ -305,7 +305,7 @@ export default function ConsignorPage() {
               onChange={(e) => setDescription(e.target.value)}
               required
               rows={5}
-              className="mt-2 w-full border-4 border-black px-3 py-2 font-normal"
+              className="mt-2 w-full border-4 border-black bg-white px-3 py-2 font-normal"
             />
           </label>
           <label className="block font-comic font-bold">
@@ -317,7 +317,7 @@ export default function ConsignorPage() {
               value={buyNowPrice}
               onChange={(e) => setBuyNowPrice(e.target.value)}
               required
-              className="mt-2 w-full border-4 border-black px-3 py-2 font-normal"
+              className="mt-2 w-full border-4 border-black bg-white px-3 py-2 font-normal"
             />
           </label>
           <label className="block font-comic font-bold">
@@ -327,7 +327,7 @@ export default function ConsignorPage() {
               min={0}
               value={marketValue}
               onChange={(e) => setMarketValue(e.target.value)}
-              className="mt-2 w-full border-4 border-black px-3 py-2 font-normal"
+              className="mt-2 w-full border-4 border-black bg-white px-3 py-2 font-normal"
             />
           </label>
           {compsNote && (
@@ -373,7 +373,7 @@ export default function ConsignorPage() {
             />
           ) : null}
 
-          <button type="submit" className="comic-btn w-full" disabled={submitting}>
+          <button type="submit" className="comic-btn mt-auto w-full" disabled={submitting}>
             {submitting ? "Submitting…" : "Submit for approval"}
           </button>
         </div>

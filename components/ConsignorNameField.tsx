@@ -13,7 +13,7 @@ export function ConsignorNameField({
         readOnly
         required
         autoComplete="name"
-        className="mt-2 w-full border-4 border-black bg-brand-cream px-3 py-2 font-normal"
+        className="mt-2 w-full border-4 border-black bg-white px-3 py-2 font-normal"
       />
       <span className="mt-1 block text-sm font-normal">
         This is the name on your DealFinder account. Other consignors are not shown.

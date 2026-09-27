@@ -52,12 +52,18 @@ export function lotNeedsRelist(lot: AuctionLot) {
   return lot.status === "ended";
 }
 
+function clockHasEnded(lot: AuctionLot) {
+  const end = Date.parse(lot.endsAt);
+  return Number.isFinite(end) && end <= Date.now();
+}
+
 export function lotIsUnsoldOrNoBid(lot: AuctionLot) {
   if (lot.status === "draft") return false;
   if (lotWasSold(lot)) return false;
   if (lotNeedsRelist(lot)) return true;
   const noBidder = !lot.highBidder && !lot.highBidderId;
-  return noBidder && (lot.status === "ended" || lot.status === "removed");
+  if (!noBidder) return false;
+  return lot.status === "ended" || lot.status === "removed" || clockHasEnded(lot);
 }
 
 function groupFulfillment(lots: AuctionLot[]): FulfillmentChoice {

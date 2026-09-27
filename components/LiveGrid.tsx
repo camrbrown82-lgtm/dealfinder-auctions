@@ -16,14 +16,13 @@ import { lotWasSold } from "@/lib/settlements";
 import { formatCurrency, isLotOpen, lotImages, type AuctionLot } from "@/lib/utils";
 import { defaultSaleId, lotsForSale, type SaleWindowItem } from "@/lib/liveSales";
 
-const VIEW_OPTIONS = [1, 4, 6, 9] as const;
+const VIEW_OPTIONS = [1, 2, 4] as const;
 type ViewCount = (typeof VIEW_OPTIONS)[number];
 const VIEW_STORAGE_KEY = "dealfinder-live-view";
 const GRID_CLASS: Record<ViewCount, string> = {
   1: "grid grid-cols-1 justify-items-center gap-4",
-  4: "grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4",
-  6: "grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6",
-  9: "grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-9",
+  2: "grid grid-cols-1 gap-4 lg:grid-cols-2",
+  4: "grid grid-cols-1 gap-4 lg:grid-cols-4",
 };
 
 type LotClock = {
@@ -34,11 +33,9 @@ type LotClock = {
 };
 
 function normalizeView(value: number): ViewCount {
-  if (value === 1 || value === 4 || value === 6 || value === 9) return value;
-  if (value <= 3) return 1;
-  if (value <= 5) return 4;
-  if (value <= 7) return 6;
-  return 9;
+  if (value === 1) return 1;
+  if (value === 2 || value === 3) return 2;
+  return 4;
 }
 
 export function LiveGrid({
@@ -51,7 +48,7 @@ export function LiveGrid({
   const [floorLots, setFloorLots] = useState(lots);
   const [floorSales, setFloorSales] = useState(sales);
   const [query, setQuery] = useState("");
-  const [view, setView] = useState<ViewCount>(9);
+  const [view, setView] = useState<ViewCount>(4);
   const [saleId, setSaleId] = useState(() => defaultSaleId(sales) ?? "");
   const [clocks, setClocks] = useState<Record<string, LotClock> | null>(null);
   const [interest, setInterest] = useState<InterestProfile>({
@@ -188,8 +185,8 @@ export function LiveGrid({
         <div className="comic-panel p-4">
           <p className="font-display text-lg">Auctions</p>
           <p className="font-comic text-sm">
-            Live now through <strong>Sep 20</strong>. Later weeks are Sep 27, Oct 4, Oct 11, and Oct
-            18.
+            Only this week&apos;s auction is live. Up to two earlier weeks and later weeks are view
+            only.
           </p>
           <div className="mt-3 flex flex-wrap gap-2">
             {floorSales.map((item) => {
@@ -227,7 +224,7 @@ export function LiveGrid({
               autoComplete="off"
             />
           </label>
-          <fieldset className="min-w-0 shrink-0">
+          <fieldset className="hidden min-w-0 shrink-0 lg:block">
             <legend className="font-display text-lg">Lots per row</legend>
             <div className="mt-1 flex flex-wrap gap-1" role="radiogroup" aria-label="Lots per row">
               {VIEW_OPTIONS.map((count) => {
@@ -251,9 +248,9 @@ export function LiveGrid({
         <p className="mt-3 font-comic text-sm font-bold">
           {visible.length} {visible.length === 1 ? "lot" : "lots"}
           {selected?.kind === "past" ? " from this past sale" : ""}
-          {selected?.kind === "upcoming" ? " you can bid on early" : ""}
+          {selected?.kind === "upcoming" ? " coming up — view only" : ""}
           {query.trim() ? ` matching "${query.trim()}"` : ""}
-          <span className="lg:inline"> · {view} per row</span>
+          <span className="hidden lg:inline"> · {view} per row</span>
         </p>
       </div>
 
@@ -287,7 +284,7 @@ function LotCard({
   view: ViewCount;
 }) {
   const href = `/auctions/${lot.id}`;
-  const open = isLotOpen(lot);
+  const open = isLotOpen(lot) && lot.biddingOpen !== false;
   const bidLabel = open ? "Bid now" : "View lot";
   const catalogLine = [lot.auctionNumber, lot.lotNumber].filter(Boolean).join(" · ");
   const compact = view >= 6;

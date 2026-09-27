@@ -8,6 +8,7 @@ import { BidPaymentModal } from "@/components/BidPaymentModal";
 import { HelcimPayModal } from "@/components/HelcimPayModal";
 import { LotTimer } from "@/components/LotTimer";
 import { nextLiveAmount } from "@/lib/bidding";
+import { bidIncrementFor, isLotOpen } from "@/lib/utils";
 import { isProfileComplete } from "@/lib/profileTypes";
 import { fulfillmentInstructions } from "@/lib/payments";
 import type { FulfillmentChoice } from "@/lib/payments";
@@ -63,14 +64,19 @@ export function AuctionRoom({ lot }: { lot: AuctionLot }) {
   const placeBidRef = useRef<() => Promise<void>>(async () => undefined);
   const ensureBidRef = useRef<() => Promise<void>>(async () => undefined);
 
+  const bidStep = bidIncrementFor(currentBid > 0 ? currentBid : 0);
   const nextBid = useMemo(
-    () => nextLiveAmount(currentBid, lot.minIncrement, highBidder || highBidderId),
-    [currentBid, lot.minIncrement, highBidder, highBidderId],
+    () => nextLiveAmount(currentBid, bidStep, highBidder || highBidderId),
+    [currentBid, bidStep, highBidder, highBidderId],
   );
   const extras = extraLotImages(lot);
   const hasWinner = Boolean(highBidder || highBidderId);
   const soldClosed = status === "ended" && hasWinner;
-  const open = status !== "removed" && !soldClosed;
+  const open =
+    status !== "removed" &&
+    !soldClosed &&
+    lot.biddingOpen !== false &&
+    isLotOpen({ endsAt, status });
   openRef.current = open;
   const youWon =
     soldClosed &&
@@ -520,6 +526,17 @@ export function AuctionRoom({ lot }: { lot: AuctionLot }) {
               Back to live lots
             </Link>
           </div>
+        ) : !open && !soldClosed ? (
+          <div className="comic-panel space-y-3 p-5">
+            <p className="font-display text-sm tracking-[0.25em] text-brand-red">VIEW ONLY</p>
+            <p className="font-comic text-sm">
+              Bidding is open only during the current week&apos;s auction. This lot can be looked at,
+              not bid on, until it is in that live sale.
+            </p>
+            <Link href="/live" className="comic-btn inline-block">
+              Back to live lots
+            </Link>
+          </div>
         ) : soldClosed ? (
           <div className="comic-panel space-y-3 p-5">
             <p className="font-display text-sm tracking-[0.25em] text-brand-red">SOLD</p>
@@ -549,7 +566,7 @@ export function AuctionRoom({ lot }: { lot: AuctionLot }) {
             className={mode === "absentee" ? "comic-btn !text-base" : "comic-btn-invert !text-base"}
             onClick={() => setMode("absentee")}
           >
-            Absentee max
+            Max Bid
           </button>
         </div>
 
@@ -563,7 +580,7 @@ export function AuctionRoom({ lot }: { lot: AuctionLot }) {
           ) : (
             <>
               Watch the room free. <strong>Place Bid</strong> or{" "}
-              <strong>Set Absentee Bid</strong> opens the paddle gate — log in first, then agree to
+              <strong>Set Max Bid</strong> opens the paddle gate — log in first, then agree to
               this auction&apos;s terms, then a $50 Helcim hold or cash-on-pickup approval, before
               the bid is submitted.
             </>
@@ -574,12 +591,12 @@ export function AuctionRoom({ lot }: { lot: AuctionLot }) {
           <p className="font-comic text-sm">
             Next live paddle: <strong>{formatCurrency(nextBid)}</strong>
             {highBidder || highBidderId
-              ? ` (+${formatCurrency(lot.minIncrement)})`
+              ? ` (+${formatCurrency(bidStep)})`
               : " (starting price)"}
           </p>
         ) : (
           <label className="block font-comic text-sm font-bold">
-            Maximum absentee bid ($)
+            Max Bid ($)
             <input
               type="number"
               min={nextBid}
@@ -591,7 +608,7 @@ export function AuctionRoom({ lot }: { lot: AuctionLot }) {
               required={mode === "absentee"}
             />
             <span className="mt-1 block font-normal">
-              We auto-increment by {formatCurrency(lot.minIncrement)} against other paddles
+              We auto-increment by {formatCurrency(bidStep)} against other paddles
               up to this ceiling. Your max stays hidden.
             </span>
           </label>
@@ -604,7 +621,7 @@ export function AuctionRoom({ lot }: { lot: AuctionLot }) {
               ? `Place Bid ${formatCurrency(nextBid)}`
               : mode === "live"
                 ? `Place Bid ${formatCurrency(nextBid)}`
-                : "Set Absentee Bid"}
+                : "Set Max Bid"}
         </button>
         {!isSupabaseConfigured && (
           <p className="font-comic text-xs">
@@ -660,7 +677,7 @@ export function AuctionRoom({ lot }: { lot: AuctionLot }) {
             {feed.map((row, index) => (
               <li key={`${row.bidder}-${row.amount}-${index}`}>
                 <strong>{formatCurrency(row.amount)}</strong> · {row.bidder} ·{" "}
-                {row.kind === "absentee" ? "absentee auto" : "live"}
+                {row.kind === "absentee" ? "max bid" : "live"}
               </li>
             ))}
           </ul>

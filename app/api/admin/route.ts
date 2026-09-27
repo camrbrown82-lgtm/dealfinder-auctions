@@ -22,6 +22,7 @@ import { uniqueImageUrls } from "@/lib/utils";
 import { startingBidFromBuyNow } from "@/lib/buyNow";
 import { patchLotRow } from "@/lib/openFloor";
 import { recordSoldLotSettlement } from "@/lib/recordSale";
+import { closeEndedSoldLots } from "@/lib/closeEndedLots";
 import { attachLotToSale, ensureWeeklySales, firstWeeklyEvent, isWeeklySale, nextWeeklySale } from "@/lib/weeklySales";
 import { notifyConsignmentApproved } from "@/lib/notify";
 import {
@@ -258,6 +259,9 @@ export async function GET() {
   }
 
   if (isSupabaseConfigured && supabase) {
+    await closeEndedSoldLots().catch((error) => {
+      console.error("closeEndedSoldLots", error instanceof Error ? error.message : error);
+    });
     await ensureWeeklySales(supabase).catch((error) => {
       console.error("ensureWeeklySales", error instanceof Error ? error.message : error);
     });

@@ -127,21 +127,20 @@ export function AdminDeskProvider({ children }: { children: ReactNode }) {
   }
 
   useEffect(() => {
+    let cancelled = false;
     void (async () => {
       try {
-        const ok = await sessionOk();
-        if (ok) {
-          flagOn();
-          setAuthed(true);
-          await load();
-          return;
-        }
-        await dropSession();
+        await fetch("/api/admin/login", { ...fetchOpts, method: "DELETE" });
       } catch {
-        setAuthed(false);
-        setError("Could not reach the admin lock. Try again.");
+        /* still show the lock */
       }
+      if (cancelled) return;
+      setPassword("");
+      await dropSession();
     })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   async function login(event: FormEvent) {
@@ -226,19 +225,47 @@ export function AdminDeskProvider({ children }: { children: ReactNode }) {
     return (
       <form
         onSubmit={login}
-        className="mx-auto w-full max-w-md space-y-4 comic-panel p-4 sm:p-6"
+        autoComplete="off"
+        autoCapitalize="off"
+        autoCorrect="off"
+        spellCheck={false}
+        data-lpignore="true"
+        data-1p-ignore="true"
+        data-bwignore="true"
+        data-form-type="other"
+        className="relative mx-auto w-full max-w-md space-y-4 comic-panel p-4 sm:p-6"
       >
           <h1 className="font-display text-3xl text-brand-red sm:text-4xl">Admin lock</h1>
-        <p className="font-comic text-sm">Staff only. Use the admin password from Vercel / .env.local.</p>
+        <p className="font-comic text-sm">
+          Staff only. Type the admin password each time you open this desk. It is not saved in the browser.
+        </p>
+        <input
+          type="text"
+          name="df-admin-user"
+          autoComplete="off"
+          tabIndex={-1}
+          aria-hidden="true"
+          className="pointer-events-none absolute h-0 w-0 opacity-0"
+          readOnly
+        />
         <label className="block font-comic font-bold">
           Password
           <input
             type="password"
+            name="df-admin-gate"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            className="mt-2 w-full border-4 border-black px-3 py-2"
+            className="mt-2 w-full border-4 border-black bg-white px-3 py-2"
             required
-            autoComplete="current-password"
+            autoFocus
+            autoComplete="new-password"
+            autoCorrect="off"
+            autoCapitalize="off"
+            spellCheck={false}
+            data-lpignore="true"
+            data-1p-ignore="true"
+            data-bwignore="true"
+            data-form-type="other"
           />
         </label>
         <button type="submit" className="comic-btn w-full" disabled={signingIn}>
@@ -250,6 +277,6 @@ export function AdminDeskProvider({ children }: { children: ReactNode }) {
   }
 
   return (
-    <p className="font-display text-2xl">{error ?? "Loading house…"}</p>
+    <p className="font-display text-2xl">{error ?? "Opening lock…"}</p>
   );
 }
