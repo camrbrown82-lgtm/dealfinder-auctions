@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { persistPublicImageUrls } from "@/lib/consignmentStorage";
+import { processListingPhotos } from "@/lib/processListingPhotos";
 import { generateStudioListingImage } from "@/lib/studioImage";
 import { getSupabaseAdmin, isSupabaseConfigured } from "@/lib/supabaseClient";
 
@@ -71,8 +72,20 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Warehouse photos are required for the listing shot." }, { status: 400 });
   }
 
+  let heroUrl = imageUrls[0];
+  let heroIndex = 0;
   try {
-    const result = await generateStudioListingImage(apiKey, imageUrls, {
+    const plan = await processListingPhotos(apiKey, imageUrls);
+    if (plan.heroUrl) {
+      heroUrl = plan.heroUrl;
+      heroIndex = plan.heroIndex;
+    }
+  } catch {
+    heroUrl = imageUrls[0];
+  }
+
+  try {
+    const result = await generateStudioListingImage(apiKey, [heroUrl], {
       title: body.title?.trim() || "Auction lot",
       objectType: body.objectType?.trim() || "",
       materials: Array.isArray(body.materials) ? body.materials.map(String) : [],
@@ -96,6 +109,8 @@ export async function POST(request: NextRequest) {
     }
     return NextResponse.json({
       studio_image_url: studioImageUrl,
+      hero_index: heroIndex,
+      gallery_count: imageUrls.length,
       ai: result.id ? { ids: [result.id], features: ["studio"] } : { ids: [], features: ["studio"] },
     });
   } catch (err) {

@@ -117,7 +117,7 @@ function dataUrlFromResponse(json: Record<string, unknown>): string | null {
 
 async function editFromReferences(apiKey: string, prompt: string, sourceUrls: string[]) {
   const refs: Array<{ blob: Blob; name: string }> = [];
-  for (const url of sourceUrls.slice(0, 4)) {
+  for (const url of sourceUrls.slice(0, 1)) {
     const loaded = await loadImageBlob(url);
     if (loaded) refs.push(loaded);
   }
