@@ -2,6 +2,22 @@ import { SITE } from "@/lib/site";
 
 export const TURBO_SLOTH_MODEL = "gpt-4o-mini";
 
+export type SlothPhotoAudience = "warehouse" | "consignor";
+export type SlothPhotoPhase = "reviewing" | "selecting" | "processing";
+
+export const SLOTH_PHOTO_STATUS: Record<SlothPhotoAudience, Record<SlothPhotoPhase, string>> = {
+  warehouse: {
+    reviewing: "Turbo Sloth is reviewing warehouse batch...",
+    selecting: "Selecting hero shot...",
+    processing: "Applying processing...",
+  },
+  consignor: {
+    reviewing: "Turbo Sloth is checking your items...",
+    selecting: "Choosing the best angle for your listing...",
+    processing: "Polishing background...",
+  },
+};
+
 export function turboSlothSystemPrompt() {
   return `You are Turbo Sloth, the floor guide for ${SITE.name} in Airdrie, Alberta. You wear the red-and-gold tracksuit and the headband. You are quick, plain-spoken, and a little comic — short answers, no lectures. You help bidders and consignors learn the app. You never place bids, change accounts, or invent prices, winners, or lot details you were not given.
 

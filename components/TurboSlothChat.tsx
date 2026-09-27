@@ -6,7 +6,7 @@ import { FormEvent, useEffect, useRef, useState } from "react";
 type Turn = { role: "user" | "assistant"; content: string };
 
 const OPENER =
-  "Hey, I'm Turbo Sloth. Ask me how bidding, Max Bid, Buy Now, or consigning works. I won't place a bid for you.";
+  "Hey, I'm Turbo Sloth. Though I can't bid for you, I can answer any questions you have about bids, max bids, consignments, or any other inquiries in your bidding journey.";
 
 export function TurboSlothChat() {
   const [open, setOpen] = useState(false);
@@ -58,7 +58,7 @@ export function TurboSlothChat() {
   }
 
   return (
-    <div className="pointer-events-none fixed bottom-4 right-4 z-40 print:hidden">
+    <div className="pointer-events-none fixed bottom-4 right-[max(0.75rem,calc((100vw-90rem)/2+0.75rem))] z-40 flex flex-col items-end print:hidden sm:right-[max(1rem,calc((100vw-90rem)/2+1rem))]">
       {open ? (
         <section
           className="pointer-events-auto mb-3 flex h-[min(70vh,28rem)] w-[min(calc(100vw-2rem),22rem)] flex-col overflow-hidden border-4 border-black bg-[#FFF7D1] shadow-comic"
@@ -141,19 +141,21 @@ export function TurboSlothChat() {
       ) : null}
       <button
         type="button"
-        className="pointer-events-auto ml-auto flex border-4 border-black bg-brand-red p-1 text-white shadow-comic"
-        aria-label={open ? "Hide Turbo Sloth" : "Ask Turbo Sloth"}
+        className="pointer-events-auto flex w-40 flex-col items-stretch border-4 border-black bg-brand-red p-1 text-white shadow-comic sm:w-52"
+        aria-label={open ? "Hide Turbo Sloth" : "Chat with me"}
         aria-expanded={open}
         onClick={() => setOpen((current) => !current)}
       >
         <Image
           src="/turbo-sloth.jpg"
           alt=""
-          width={240}
-          height={320}
-          className="h-16 w-12 border-2 border-black bg-brand-red object-contain"
+          width={416}
+          height={560}
+          className="h-auto w-full border-2 border-black bg-brand-red object-contain"
         />
-        <span className="sr-only">{open ? "Hide Turbo Sloth" : "Ask Turbo Sloth"}</span>
+        <span className="px-1 py-1.5 text-center font-display text-2xl leading-none sm:text-3xl">
+          {open ? "Hide" : "Chat with me"}
+        </span>
       </button>
     </div>
   );
