@@ -1,7 +1,8 @@
 "use client";
 
 import Image from "next/image";
-import { FormEvent, useEffect, useRef, useState } from "react";
+import { usePathname } from "next/navigation";
+import { FormEvent, useEffect, useState, useRef } from "react";
 
 type Turn = { role: "user" | "assistant"; content: string };
 
@@ -9,6 +10,8 @@ const OPENER =
   "Hey, I'm Turbo Sloth. Though I can't bid for you, I can answer any questions you have about bids, max bids, consignments, or any other inquiries in your bidding journey.";
 
 export function TurboSlothChat() {
+  const pathname = usePathname();
+  const [frame, setFrame] = useState({ top: 16, maxHeight: 320 });
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState(false);
@@ -16,6 +19,41 @@ export function TurboSlothChat() {
   const [messages, setMessages] = useState<Turn[]>([{ role: "assistant", content: OPENER }]);
   const scroller = useRef<HTMLDivElement>(null);
   const field = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    let frameId = 0;
+    function place() {
+      const compact = window.innerWidth < 640;
+      const natural = compact ? 112 : 340;
+      const minHeight = compact ? 88 : 150;
+      const gap = 8;
+      const footer = document.querySelector("footer");
+      const auctions = document.getElementById("live-auctions");
+      const footerTop = footer ? footer.getBoundingClientRect().top : window.innerHeight;
+      let top = auctions ? auctions.getBoundingClientRect().top : 12;
+      if (top < 12) top = 12;
+      let maxHeight = footerTop - top - gap;
+      if (maxHeight < minHeight) {
+        top = Math.max(12, footerTop - minHeight - gap);
+        maxHeight = footerTop - top - gap;
+      }
+      maxHeight = Math.min(natural, Math.max(72, maxHeight));
+      const next = { top: Math.round(top), maxHeight: Math.round(maxHeight) };
+      setFrame((current) => (current.top === next.top && current.maxHeight === next.maxHeight ? current : next));
+    }
+    function onMove() {
+      cancelAnimationFrame(frameId);
+      frameId = requestAnimationFrame(place);
+    }
+    place();
+    window.addEventListener("scroll", onMove, { passive: true });
+    window.addEventListener("resize", onMove);
+    return () => {
+      cancelAnimationFrame(frameId);
+      window.removeEventListener("scroll", onMove);
+      window.removeEventListener("resize", onMove);
+    };
+  }, [pathname]);
 
   useEffect(() => {
     if (!open) return;
@@ -57,11 +95,15 @@ export function TurboSlothChat() {
     }
   }
 
+  const imageMax = Math.max(48, frame.maxHeight - 36);
   return (
-    <div className="pointer-events-none fixed bottom-4 right-[max(0.75rem,calc((100vw-90rem)/2+0.75rem))] z-40 flex flex-col items-end print:hidden sm:right-[max(1rem,calc((100vw-90rem)/2+1rem))]">
+    <div
+      className="pointer-events-none fixed right-1 z-40 w-[4.25rem] print:hidden sm:right-2 sm:w-40"
+      style={{ top: frame.top }}
+    >
       {open ? (
         <section
-          className="pointer-events-auto mb-3 flex h-[min(70vh,28rem)] w-[min(calc(100vw-2rem),22rem)] flex-col overflow-hidden border-4 border-black bg-[#FFF7D1] shadow-comic"
+          className="pointer-events-auto absolute right-full top-0 z-40 mr-2 flex h-[min(70vh,28rem)] w-[min(calc(100vw-6rem),22rem)] flex-col overflow-hidden border-4 border-black bg-[#FFF7D1] shadow-comic"
           role="dialog"
           aria-label="Turbo Sloth chat"
         >
@@ -141,7 +183,7 @@ export function TurboSlothChat() {
       ) : null}
       <button
         type="button"
-        className="pointer-events-auto flex w-40 flex-col items-stretch border-4 border-black bg-brand-red p-1 text-white shadow-comic sm:w-52"
+        className="pointer-events-auto flex w-full flex-col items-stretch border-4 border-black bg-brand-red p-1 text-white shadow-comic"
         aria-label={open ? "Hide Turbo Sloth" : "Chat with me"}
         aria-expanded={open}
         onClick={() => setOpen((current) => !current)}
@@ -149,12 +191,18 @@ export function TurboSlothChat() {
         <Image
           src="/turbo-sloth.jpg"
           alt=""
-          width={416}
-          height={560}
-          className="h-auto w-full border-2 border-black bg-brand-red object-contain"
+          width={320}
+          height={420}
+          style={{ maxHeight: imageMax }}
+          className="h-auto w-full border-2 border-black bg-brand-red object-contain object-top"
         />
-        <span className="px-1 py-1.5 text-center font-display text-2xl leading-none sm:text-3xl">
-          {open ? "Hide" : "Chat with me"}
+        <span className="px-0.5 py-1 text-center font-display text-sm leading-none sm:px-1 sm:py-1.5 sm:text-2xl">
+          {open ? "Hide" : (
+            <>
+              <span className="sm:hidden">Chat</span>
+              <span className="hidden sm:inline">Chat with me</span>
+            </>
+          )}
         </span>
       </button>
     </div>

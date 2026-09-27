@@ -182,7 +182,7 @@ export function LiveGrid({
   return (
     <div className="min-w-0 max-w-full space-y-4 overflow-x-clip">
       {floorSales.length > 0 && (
-        <div className="comic-panel p-4">
+        <div id="live-auctions" className="comic-panel p-4">
           <p className="font-display text-lg">Auctions</p>
           <p className="font-comic text-sm">
             Only this week&apos;s auction is live. Up to two earlier weeks and later weeks are view
