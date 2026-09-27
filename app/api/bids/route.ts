@@ -207,9 +207,6 @@ async function persistDemo(
   const catalogEvent = catalog?.eventId
     ? getAdminDemo().events.find((row) => row.id === catalog.eventId)
     : null;
-  if (catalogEvent && new Date(catalogEvent.startsAt).getTime() > Date.now()) {
-    return NextResponse.json({ error: "This auction has not started." }, { status: 400 });
-  }
   if (catalogEvent && new Date(catalogEvent.endsAt).getTime() <= Date.now()) {
     return NextResponse.json({ error: "This auction has ended. Lots are view only until they are relisted." }, { status: 400 });
   }
@@ -386,9 +383,6 @@ async function persistSupabase(
         { error: "This auction has ended. Lots are view only until they are relisted." },
         { status: 400 },
       );
-    }
-    if (event?.starts_at && new Date(String(event.starts_at)).getTime() > now) {
-      return NextResponse.json({ error: "This auction has not started." }, { status: 400 });
     }
   } else if (lot.ends_at && new Date(String(lot.ends_at)).getTime() <= Date.now()) {
     return NextResponse.json(

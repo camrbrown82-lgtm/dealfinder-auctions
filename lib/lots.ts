@@ -86,8 +86,8 @@ export async function fetchLiveCatalog(): Promise<{
     .filter((lot) => lot.saleChannel !== "buy_now" && lot.status !== "removed" && lot.status !== "draft")
     .map((lot) => {
       const event = events.find((row) => row.id === lot.eventId);
-      const weekLive = event ? saleKind(event) === "live" : false;
-      return { ...lot, biddingOpen: weekLive && isLotOpen(lot) };
+      const acceptsBids = event ? !event.archivedAt && saleKind(event) !== "past" : false;
+      return { ...lot, biddingOpen: acceptsBids && isLotOpen(lot) };
     });
 
   return { lots, events, floor };
@@ -167,13 +167,13 @@ export async function fetchLot(id: string): Promise<AuctionLot | undefined> {
             .maybeSingle();
           lot.auctionNumber = event?.auction_number ?? lot.auctionNumber;
           if (event?.starts_at && event?.ends_at) {
-            const weekLive = saleKind({
+            const acceptsBids = saleKind({
               id: lot.eventId,
               name: "",
               startsAt: String(event.starts_at),
               endsAt: String(event.ends_at),
-            }) === "live";
-            lot.biddingOpen = weekLive && isLotOpen(lot);
+            }) !== "past";
+            lot.biddingOpen = acceptsBids && isLotOpen(lot);
           }
         }
       }

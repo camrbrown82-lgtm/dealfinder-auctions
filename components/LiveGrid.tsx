@@ -185,8 +185,7 @@ export function LiveGrid({
         <div id="live-auctions" className="comic-panel p-4">
           <p className="font-display text-lg">Auctions</p>
           <p className="font-comic text-sm">
-            Only this week&apos;s auction is live. Up to two earlier weeks and later weeks are view
-            only.
+            This week and later weeks accept bids. Earlier weeks are view only.
           </p>
           <div className="mt-3 flex flex-wrap gap-2">
             {floorSales.map((item) => {
@@ -258,7 +257,7 @@ export function LiveGrid({
         <p className="mt-3 font-comic text-sm font-bold">
           {visible.length} {visible.length === 1 ? "lot" : "lots"}
           {selected?.kind === "past" ? " from this past sale" : ""}
-          {selected?.kind === "upcoming" ? " coming up — view only" : ""}
+          {selected?.kind === "upcoming" ? " coming up" : ""}
           {query.trim() ? ` matching "${query.trim()}"` : ""}
           <span className="hidden lg:inline"> · {view} per row</span>
         </p>

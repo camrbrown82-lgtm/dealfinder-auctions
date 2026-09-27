@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { isAdminSession, unauthorized } from "@/lib/adminAuth";
 import { getAdminDemo, stampAuctionNumbers } from "@/lib/demoAdminStore";
 import { getDemoLot, listDemoLots } from "@/lib/demoAuctionStore";
-import { currentLiveEvent } from "@/lib/liveSales";
+import { saleKind } from "@/lib/liveSales";
 import { mapAuctionEvent } from "@/lib/mapAuctionEvent";
 import { getSupabaseAdmin, isSupabaseConfigured } from "@/lib/supabaseClient";
 import { mapLot, type LotRow } from "@/lib/mappers";
@@ -10,6 +10,52 @@ import { isLotOpen } from "@/lib/utils";
 import type { MonitorLot } from "@/lib/adminTypes";
 
 export const dynamic = "force-dynamic";
+
+function monitorRows(
+  lots: ReturnType<typeof mapLot>[],
+  events: ReturnType<typeof mapAuctionEvent>[],
+  bidCount: (lotId: string) => number,
+): MonitorLot[] {
+  const byId = new Map(events.map((event) => [event.id, event]));
+  return lots
+    .filter((lot) => lot.saleChannel !== "buy_now")
+    .map((lot) => {
+      const event = lot.eventId ? byId.get(lot.eventId) : undefined;
+      const kind = event && !event.archivedAt ? saleKind(event) : null;
+      return {
+        lot,
+        kind,
+        bids: bidCount(lot.id),
+        auctionNumber: event?.auctionNumber ?? lot.auctionNumber ?? null,
+      };
+    })
+    .filter((row) => {
+      if (!isLotOpen(row.lot)) return false;
+      if (row.kind === "live") return true;
+      return row.kind === "upcoming" && row.bids > 0;
+    })
+    .sort((a, b) => {
+      const phase = a.kind === "upcoming" ? 1 : 0;
+      const other = b.kind === "upcoming" ? 1 : 0;
+      if (phase !== other) return phase - other;
+      return new Date(a.lot.endsAt).getTime() - new Date(b.lot.endsAt).getTime();
+    })
+    .map((row) => ({
+      id: row.lot.id,
+      title: row.lot.title,
+      lotNumber: row.lot.lotNumber,
+      auctionNumber: row.auctionNumber,
+      status: row.lot.status,
+      highBidder: row.lot.highBidder ?? null,
+      currentBid: row.lot.currentBid,
+      startingBid: row.lot.startingBid ?? row.lot.currentBid,
+      reservePrice: row.lot.buyNowPrice ?? row.lot.reservePrice ?? 0,
+      buyNowPrice: row.lot.buyNowPrice ?? row.lot.reservePrice ?? 0,
+      endsAt: row.lot.endsAt,
+      bidCount: row.bids,
+      salePhase: row.kind === "upcoming" ? "upcoming" : "live",
+    }));
+}
 
 export async function GET() {
   if (!isAdminSession()) return unauthorized();
@@ -20,72 +66,43 @@ export async function GET() {
     const events = (eventRows ?? []).map((row) =>
       mapAuctionEvent(row as Parameters<typeof mapAuctionEvent>[0]),
     );
-    const current = currentLiveEvent(events);
     const { data } = await supabase.from("lots").select("*").in("status", ["live", "paused"]);
-    const { data: bidCounts } = await supabase.from("bids").select("lot_id");
+    const [{ data: bidCounts }, { data: absenteeCounts }] = await Promise.all([
+      supabase.from("bids").select("lot_id"),
+      supabase.from("absentee_bids").select("lot_id"),
+    ]);
     const count = new Map<string, number>();
-    for (const row of bidCounts ?? []) {
+    for (const row of [...(bidCounts ?? []), ...(absenteeCounts ?? [])]) {
       const id = row.lot_id as string;
       count.set(id, (count.get(id) ?? 0) + 1);
     }
-    const lots: MonitorLot[] = ((data ?? []) as LotRow[])
-      .map((row) => mapLot(row))
-      .filter(
-        (lot) =>
-          lot.saleChannel !== "buy_now" &&
-          Boolean(current) &&
-          lot.eventId === current?.id &&
-          isLotOpen(lot),
-      )
-      .map((lot) => {
-      return {
-        id: lot.id,
-        title: lot.title,
-        lotNumber: lot.lotNumber,
-        auctionNumber: lot.auctionNumber,
-        status: lot.status,
-        highBidder: lot.highBidder ?? null,
-        currentBid: lot.currentBid,
-        startingBid: lot.startingBid ?? lot.currentBid,
-        reservePrice: lot.buyNowPrice ?? lot.reservePrice ?? 0,
-        buyNowPrice: lot.buyNowPrice ?? lot.reservePrice ?? 0,
-        endsAt: lot.endsAt,
-        bidCount: count.get(lot.id) ?? 0,
-      };
-    });
+    const lots = monitorRows(
+      ((data ?? []) as LotRow[]).map((row) => mapLot(row)),
+      events,
+      (lotId) => count.get(lotId) ?? 0,
+    );
     return NextResponse.json({ lots, source: "supabase" });
   }
 
   const demo = getAdminDemo();
   stampAuctionNumbers(demo);
   const clocks = listDemoLots();
-  const current = currentLiveEvent(demo.events);
-  const lots: MonitorLot[] = demo.inventory
-    .filter(
-      (lot) =>
-        lot.saleChannel !== "buy_now" &&
-        (lot.status === "live" || lot.status === "paused") &&
-        Boolean(current) &&
-        lot.eventId === current?.id &&
-        isLotOpen(lot),
-    )
-    .map((lot) => {
-      const clock = getDemoLot(lot.id);
-      return {
-        id: lot.id,
-        title: lot.title,
-        lotNumber: lot.lotNumber,
-        auctionNumber: lot.auctionNumber,
-        status: clock?.status ?? lot.status,
-        highBidder: clock?.highBidder ?? lot.highBidder ?? null,
-        currentBid: clock?.currentBid ?? lot.currentBid,
-        startingBid: lot.startingBid ?? lot.currentBid,
-        reservePrice: lot.buyNowPrice ?? lot.reservePrice ?? 0,
-        buyNowPrice: lot.buyNowPrice ?? lot.reservePrice ?? 0,
-        endsAt: clock?.endsAt ?? lot.endsAt,
-        bidCount: clock?.bids.length ?? 0,
-      };
-    });
+  const lots = monitorRows(
+    demo.inventory
+      .filter((lot) => lot.status === "live" || lot.status === "paused")
+      .map((lot) => {
+        const clock = getDemoLot(lot.id);
+        return {
+          ...lot,
+          status: clock?.status ?? lot.status,
+          highBidder: clock?.highBidder ?? lot.highBidder ?? null,
+          currentBid: clock?.currentBid ?? lot.currentBid,
+          endsAt: clock?.endsAt ?? lot.endsAt,
+        };
+      }),
+    demo.events,
+    (lotId) => getDemoLot(lotId)?.bids.length ?? 0,
+  );
 
   return NextResponse.json({ lots, source: "demo", clockCount: clocks.length });
 }

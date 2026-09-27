@@ -17,7 +17,7 @@ export function saleKind(event: AuctionEvent, now = Date.now()): SaleKind {
   return "live";
 }
 
-/** Current week, plus up to two past weeks and any later weeks. Past and upcoming are view only. */
+/** Current week, plus up to two past weeks and any later weeks. Past weeks are view only. Upcoming weeks accept bids. */
 export function pickSaleWindow(events: AuctionEvent[], now = Date.now()): SaleWindowItem[] {
   const weekly = events.filter((event) => !event.archivedAt && isWeeklySale(event));
   const sorted = (weekly.length ? weekly : events.filter((event) => !event.archivedAt)).sort(

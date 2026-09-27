@@ -47,7 +47,7 @@ export type AuctionLot = {
   saleSource?: "bid" | "buy_now" | null;
   saleChannel?: SaleChannel;
   buyNowStatus?: BuyNowStatus | null;
-  /** False when the lot's sale is a past or upcoming week. */
+  /** False when the lot's sale has already ended. */
   biddingOpen?: boolean;
 };
 

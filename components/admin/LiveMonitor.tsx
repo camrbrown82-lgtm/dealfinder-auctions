@@ -110,7 +110,7 @@ export function LiveMonitor({
         <p className="font-display text-sm tracking-[0.25em] text-brand-red">LIVE AUCTION MONITOR</p>
         <h2 className="font-display text-2xl text-brand-red sm:text-4xl">Floor feed · {source}</h2>
         <p className="font-comic text-sm">
-          This week&apos;s live auction only. Ended weeks and upcoming weeks stay off this desk.
+          This week&apos;s live lots, then upcoming lots that already have a bid. Ended weeks stay off this desk.
         </p>
       </div>
       <div className="space-y-3 md:hidden">
@@ -125,6 +125,7 @@ export function LiveMonitor({
                 <p className="break-words font-display text-xl leading-none">{lot.title}</p>
                 <p className="mt-1 font-comic text-sm">
                   {lot.auctionNumber} · {lot.lotNumber} · {(lot.status ?? "").toUpperCase()}
+                  {lot.salePhase === "upcoming" ? " · UPCOMING" : ""}
                 </p>
               </div>
               <dl className="grid grid-cols-2 gap-2 font-comic text-sm">
@@ -200,6 +201,7 @@ export function LiveMonitor({
                     <p className="font-display text-lg">{lot.title}</p>
                     <p>
                       {lot.auctionNumber} · {lot.lotNumber} · {(lot.status ?? "").toUpperCase()}
+                      {lot.salePhase === "upcoming" ? " · UPCOMING" : ""}
                     </p>
                   </td>
                   <td className="border-b-2 border-black p-3">{lot.highBidder || "—"}</td>
