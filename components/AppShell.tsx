@@ -3,13 +3,29 @@
 import { usePathname } from "next/navigation";
 import { AppHeader } from "@/components/AppHeader";
 import { SiteFooter } from "@/components/SiteFooter";
+import { TurboSlothChat } from "@/components/TurboSlothChat";
+
+function showTurboSloth(pathname: string) {
+  return (
+    pathname === "/" ||
+    pathname === "/live" ||
+    pathname.startsWith("/consignor") ||
+    pathname.startsWith("/auctions/")
+  );
+}
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const landing = pathname === "/";
+  const sloth = showTurboSloth(pathname) ? <TurboSlothChat /> : null;
 
   if (landing) {
-    return <>{children}</>;
+    return (
+      <>
+        {children}
+        {sloth}
+      </>
+    );
   }
 
   return (
@@ -23,6 +39,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <div className="print:hidden">
         <SiteFooter />
       </div>
+      {sloth}
     </>
   );
 }

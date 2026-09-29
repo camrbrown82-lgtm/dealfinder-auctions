@@ -13,8 +13,8 @@ export default function LandingPage() {
       >
         <Logo />
       </Link>
+      <div id="turbo-sloth-header" className="absolute right-3 top-4 z-20 md:hidden" />
       <section className="relative flex min-h-[calc(100vh-12rem)] flex-1 flex-col items-center justify-center overflow-hidden px-4 py-12 text-center">
-        <div className="halftone-bar absolute inset-x-0 top-0 h-3" />
         <div
           className="pointer-events-none absolute inset-0 opacity-30"
           style={{

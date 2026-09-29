@@ -104,14 +104,6 @@ input[type="radio"] {
   .comic-btn-invert {
     @apply inline-flex items-center justify-center border-4 border-brand-ink bg-brand-cream px-3 py-1.5 text-center font-display text-base tracking-wide text-brand-ink shadow-comic-red-sm transition hover:-translate-y-0.5 hover:shadow-comic-red disabled:cursor-not-allowed disabled:opacity-60 sm:px-5 sm:py-2 sm:text-xl;
   }
-
-  .halftone-bar {
-    background-image: repeating-linear-gradient(
-      90deg,
-      #ff0000 0 12px,
-      #fff7d1 12px 24px
-    );
-  }
 }
 
 @media print {
