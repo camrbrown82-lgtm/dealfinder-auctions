@@ -38,7 +38,7 @@ export function AppHeader() {
           />
         </Link>
       </div>
-      <nav className="flex max-w-full flex-wrap items-center justify-center gap-x-4 gap-y-1 border-t-4 border-brand-ink px-3 py-2 md:absolute md:right-6 md:top-4 md:z-10 md:max-w-[min(100%,28rem)] md:justify-end md:border-t-0 md:bg-transparent md:p-0">
+      <nav className="flex max-w-full flex-wrap items-center justify-center gap-x-4 gap-y-1 border-t-4 border-brand-ink px-3 py-2 md:absolute md:right-6 md:top-4 md:z-40 md:max-w-[min(100%,28rem)] md:justify-end md:border-t-0 md:bg-transparent md:p-0">
         <Link href="/live" className={navClass}>
           Live
         </Link>
