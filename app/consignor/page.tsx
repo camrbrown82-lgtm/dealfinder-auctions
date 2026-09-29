@@ -1,9 +1,10 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 import { ImageUrlPaste } from "@/components/ImageUrlPaste";
 import { PhotoDropzone } from "@/components/PhotoDropzone";
 import { houseCommissionPercent } from "@/lib/commission";
+import { CONSIGNMENT_AGREEMENT_SECTIONS } from "@/lib/consignmentAgreement";
 import { ConsignmentTermsModal } from "@/components/ConsignmentTermsModal";
 import { AiFeedback } from "@/components/AiFeedback";
 import { ConsignorNameField } from "@/components/ConsignorNameField";
@@ -16,7 +17,13 @@ import { requestStudioImage } from "@/lib/studioClient";
 import { mergeAiRuns, type AiRun } from "@/lib/aiRuns";
 import { ItemDetailsField, ListingConditionField } from "@/components/ListingGradeFields";
 import { type ListingGrade } from "@/lib/listingGrade";
-import { formatCurrency, pipelineLabel, type ConsignorItem } from "@/lib/utils";
+import type { SlothPhotoPhase } from "@/lib/turboSloth";
+import {
+  DEFAULT_COMMISSION_RATE,
+  formatCurrency,
+  pipelineLabel,
+  type ConsignorItem,
+} from "@/lib/utils";
 
 const COMMISSION_TIERS =
   CONSIGNMENT_AGREEMENT_SECTIONS.find((section) => section.heading.startsWith("3."))?.paragraphs ?? [];
@@ -413,11 +420,15 @@ export default function ConsignorPage() {
             <p className="border-4 border-black bg-brand-cream p-3 font-comic text-sm">{compsNote}</p>
           )}
           <div className="border-4 border-black bg-brand-cream p-3 font-comic text-sm">
-            <p className="font-display text-lg">House commission ({housePercent}%)</p>
-            <p>
-              The agreed house rate is in the consignor agreement you accept on submit — typically{" "}
-              {housePercent}% of the hammer. You cannot pick a custom percent here. Final commission
-              is based on the sale price.
+            <p className="font-display text-lg">House commission</p>
+            <ul className="mt-2 list-disc space-y-1 pl-5">
+              {COMMISSION_TIERS.map((line) => (
+                <li key={line}>{line}</li>
+              ))}
+            </ul>
+            <p className="mt-2">
+              Typical hammer share is {housePercent}%. Final commission follows the agreement you
+              accept on submit. You cannot pick a custom percent here.
             </p>
           </div>
 

@@ -195,7 +195,7 @@ async function persistDemo(
   if (demo.status === "removed") {
     return NextResponse.json({ error: "This lot was removed from the sale." }, { status: 400 });
   }
-  if (demo.status === "ended" || demo.status === "removed") {
+  if (demo.status === "ended") {
     return NextResponse.json({ error: "This lot is closed. Relist it from auction inventory to sell it again." }, { status: 400 });
   }
   if (new Date(demo.endsAt).getTime() <= Date.now()) {
@@ -363,7 +363,7 @@ async function persistSupabase(
   if (lot.status === "removed") {
     return NextResponse.json({ error: "This lot was removed from the sale." }, { status: 400 });
   }
-  if (lot.status === "ended" || lot.status === "removed") {
+  if (lot.status === "ended") {
     return NextResponse.json(
       { error: "This lot is closed. Relist it from auction inventory to sell it again." },
       { status: 400 },
@@ -399,7 +399,7 @@ async function persistSupabase(
   const clock: AuctionClock = {
     currentBid: Number(lot.current_bid),
     minIncrement: structuredIncrement(Number(lot.current_bid)),
-    endsAt: String(lot.ends_at ?? opened.patch.ends_at),
+    endsAt: String(lot.ends_at ?? ""),
     highBidder: (lot.high_bidder as string | null) ?? null,
     absentees: (absenteeRows ?? []).map((row) => ({
       bidder: row.bidder_name,
