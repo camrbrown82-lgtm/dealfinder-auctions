@@ -58,10 +58,6 @@ function upsertAbsentee(list: AbsenteeMax[], bidder: string, max: number) {
   return next;
 }
 
-function stepFor(state: AuctionClock) {
-  return bidIncrementFor(state.currentBid > 0 ? state.currentBid : 0);
-}
-
 function bestChallenger(state: AuctionClock) {
   const floor = nextAsk(state);
   const challengers = state.absentees

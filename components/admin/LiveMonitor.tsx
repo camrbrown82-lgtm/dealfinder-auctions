@@ -7,20 +7,12 @@ import { getSupabaseClient, isSupabaseConfigured } from "@/lib/supabaseClient";
 import { formatCurrency } from "@/lib/utils";
 import type { AdminBid, MonitorLot } from "@/lib/adminTypes";
 
-type MonitorSale = {
-  id: string;
-  name: string;
-  auctionNumber: string | null;
-  endsAt: string;
-};
-
 export function LiveMonitor({
   onNotice,
 }: {
   onNotice: (message: string) => void;
 }) {
   const [lots, setLots] = useState<MonitorLot[]>([]);
-  const [sale, setSale] = useState<MonitorSale | null>(null);
   const [source, setSource] = useState("demo");
   const [auditLot, setAuditLot] = useState<MonitorLot | null>(null);
   const [bids, setBids] = useState<AdminBid[]>([]);
@@ -32,7 +24,6 @@ export function LiveMonitor({
     const json = await response.json();
     if (!response.ok) return;
     setLots(json.lots ?? []);
-    setSale(json.sale ?? null);
     setSource(json.source ?? "demo");
     const next: typeof drafts = {};
     for (const lot of json.lots as MonitorLot[]) {
@@ -113,106 +104,154 @@ export function LiveMonitor({
     await load();
   }
 
-  const floorLots = lots.filter((lot) => {
-    if (!sale) return false;
-    if (lot.eventId && lot.eventId !== sale.id) return false;
-    if (sale.auctionNumber && lot.auctionNumber && lot.auctionNumber !== sale.auctionNumber) return false;
-    if (Date.parse(String(lot.endsAt ?? "")) <= Date.now()) return false;
-    return true;
-  });
-
   return (
     <section className="space-y-4">
       <div className="comic-panel p-4">
         <p className="font-display text-sm tracking-[0.25em] text-brand-red">LIVE AUCTION MONITOR</p>
         <h2 className="font-display text-2xl text-brand-red sm:text-4xl">Floor feed · {source}</h2>
         <p className="font-comic text-sm">
-          {sale
-            ? `Showing ${sale.auctionNumber ? `${sale.auctionNumber} · ` : ""}${sale.name} only. Ended leftovers stay in Auction inventories until you move them onto this sale.`
-            : "No weekly sale is live right now. Past and upcoming auctions stay out of Live Monitor."}
+          This week&apos;s live lots, then upcoming lots that already have a bid. Ended weeks stay off this desk.
         </p>
       </div>
-      {floorLots.length === 0 ? (
-        <p className="comic-panel-sm p-4 font-comic text-sm">
-          {sale
-            ? "No lots are running on the current live auction."
-            : "Nothing to monitor until a weekly sale goes live."}
-        </p>
-      ) : (
-        <div className="comic-table-wrap">
-          <table className="w-full min-w-[960px] border-collapse font-comic text-sm">
-            <thead className="bg-[#FF0000] text-left text-white">
-              <tr>
-                <th className="border-b-4 border-black p-3">Lot</th>
-                <th className="border-b-4 border-black p-3">High paddle</th>
-                <th className="border-b-4 border-black p-3">Max / current</th>
-                <th className="border-b-4 border-black p-3">Clock</th>
-                <th className="border-b-4 border-black p-3">Modify start</th>
-                <th className="border-b-4 border-black p-3">Audit</th>
+      <div className="space-y-3 md:hidden">
+        {lots.length === 0 ? (
+          <p className="comic-panel p-4 font-comic">No lots are live in this week&apos;s auction.</p>
+        ) : null}
+        {lots.map((lot) => {
+          const draft = drafts[lot.id] ?? { start: String(lot.startingBid) };
+          return (
+            <article key={lot.id} className="comic-panel space-y-3 p-3">
+              <div>
+                <p className="break-words font-display text-xl leading-none">{lot.title}</p>
+                <p className="mt-1 font-comic text-sm">
+                  {lot.auctionNumber} · {lot.lotNumber} · {(lot.status ?? "").toUpperCase()}
+                  {lot.salePhase === "upcoming" ? " · UPCOMING" : ""}
+                </p>
+              </div>
+              <dl className="grid grid-cols-2 gap-2 font-comic text-sm">
+                <div>
+                  <dt className="text-xs font-bold uppercase">High paddle</dt>
+                  <dd>{lot.highBidder || "—"}</dd>
+                </div>
+                <div>
+                  <dt className="text-xs font-bold uppercase">Current</dt>
+                  <dd className="font-bold">{formatCurrency(lot.currentBid)}</dd>
+                  <dd>{lot.bidCount} attempts</dd>
+                </div>
+                <div className="col-span-2">
+                  <dt className="text-xs font-bold uppercase">Clock</dt>
+                  <dd>
+                    <LotTimer endsAt={lot.endsAt} />
+                  </dd>
+                </div>
+              </dl>
+              <div className="flex flex-wrap items-end gap-2">
+                <label className="font-comic text-sm">
+                  Start
+                  <input
+                    type="number"
+                    value={draft.start}
+                    onChange={(e) =>
+                      setDrafts((current) => ({
+                        ...current,
+                        [lot.id]: { ...draft, start: e.target.value },
+                      }))
+                    }
+                    className="mt-1 w-28 border-4 border-black bg-white px-2 py-1"
+                  />
+                </label>
+                <button type="button" className="comic-btn-invert !text-sm" onClick={() => void savePricing(lot)}>
+                  Save
+                </button>
+              </div>
+              <button type="button" className="comic-btn w-full !text-sm" onClick={() => void openAudit(lot)}>
+                Bid History Audit
+              </button>
+            </article>
+          );
+        })}
+      </div>
+      <div className="comic-table-wrap hidden md:block">
+        <table className="w-full min-w-[960px] border-collapse font-comic text-sm">
+          <thead className="bg-[#FF0000] text-left text-white">
+            <tr>
+              <th className="border-b-4 border-black p-3">Lot</th>
+              <th className="border-b-4 border-black p-3">High paddle</th>
+              <th className="border-b-4 border-black p-3">Max / current</th>
+              <th className="border-b-4 border-black p-3">Clock</th>
+              <th className="border-b-4 border-black p-3">Modify start</th>
+              <th className="border-b-4 border-black p-3">Audit</th>
+            </tr>
+          </thead>
+          <tbody>
+            {lots.length === 0 ? (
+              <tr className="bg-[#FFF7D1]">
+                <td className="p-4 font-comic" colSpan={6}>
+                  No lots are live in this week&apos;s auction.
+                </td>
               </tr>
-            </thead>
-            <tbody>
-              {floorLots.map((lot) => {
-                const draft = drafts[lot.id] ?? {
-                  start: String(lot.startingBid),
-                };
-                return (
-                  <tr key={lot.id} className="bg-[#FFF7D1]">
-                    <td className="border-b-2 border-black p-3">
-                      <p className="font-display text-lg">{lot.title}</p>
-                      <p>
-                        {lot.auctionNumber} · {lot.lotNumber} · {(lot.status ?? "").toUpperCase()}
-                      </p>
-                    </td>
-                    <td className="border-b-2 border-black p-3">{lot.highBidder || "—"}</td>
-                    <td className="border-b-2 border-black p-3 font-bold">
-                      {formatCurrency(lot.currentBid)}
-                      <span className="block font-normal">{lot.bidCount} attempts</span>
-                    </td>
-                    <td className="border-b-2 border-black p-3">
-                      <LotTimer endsAt={lot.endsAt} />
-                    </td>
-                    <td className="border-b-2 border-black p-3">
-                      <div className="flex flex-wrap items-end gap-2">
-                        <label>
-                          Start
-                          <input
-                            type="number"
-                            value={draft.start}
-                            onChange={(e) =>
-                              setDrafts((current) => ({
-                                ...current,
-                                [lot.id]: { ...draft, start: e.target.value },
-                              }))
-                            }
-                            className="mt-1 w-24 border-4 border-black bg-white px-2 py-1"
-                          />
-                        </label>
-                        <button
-                          type="button"
-                          className="comic-btn-invert !text-sm"
-                          onClick={() => void savePricing(lot)}
-                        >
-                          Save
-                        </button>
-                      </div>
-                    </td>
-                    <td className="border-b-2 border-black p-3">
+            ) : null}
+            {lots.map((lot) => {
+              const draft = drafts[lot.id] ?? {
+                start: String(lot.startingBid),
+              };
+              return (
+                <tr key={lot.id} className="bg-[#FFF7D1]">
+                  <td className="border-b-2 border-black p-3">
+                    <p className="font-display text-lg">{lot.title}</p>
+                    <p>
+                      {lot.auctionNumber} · {lot.lotNumber} · {(lot.status ?? "").toUpperCase()}
+                      {lot.salePhase === "upcoming" ? " · UPCOMING" : ""}
+                    </p>
+                  </td>
+                  <td className="border-b-2 border-black p-3">{lot.highBidder || "—"}</td>
+                  <td className="border-b-2 border-black p-3 font-bold">
+                    {formatCurrency(lot.currentBid)}
+                    <span className="block font-normal">{lot.bidCount} attempts</span>
+                  </td>
+                  <td className="border-b-2 border-black p-3">
+                    <LotTimer endsAt={lot.endsAt} />
+                  </td>
+                  <td className="border-b-2 border-black p-3">
+                    <div className="flex flex-wrap items-end gap-2">
+                      <label>
+                        Start
+                        <input
+                          type="number"
+                          value={draft.start}
+                          onChange={(e) =>
+                            setDrafts((current) => ({
+                              ...current,
+                              [lot.id]: { ...draft, start: e.target.value },
+                            }))
+                          }
+                          className="mt-1 w-24 border-4 border-black bg-white px-2 py-1"
+                        />
+                      </label>
                       <button
                         type="button"
-                        className="comic-btn !text-sm"
-                        onClick={() => void openAudit(lot)}
+                        className="comic-btn-invert !text-sm"
+                        onClick={() => void savePricing(lot)}
                       >
-                        Bid History Audit
+                        Save
                       </button>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      )}
+                    </div>
+                  </td>
+                  <td className="border-b-2 border-black p-3">
+                    <button
+                      type="button"
+                      className="comic-btn !text-sm"
+                      onClick={() => void openAudit(lot)}
+                    >
+                      Bid History Audit
+                    </button>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
       {auditLot && (
         <BidAuditModal
           title={auditLot.title}

@@ -23,8 +23,9 @@ import { uniqueImageUrls } from "@/lib/utils";
 import { startingBidFromBuyNow } from "@/lib/buyNow";
 import { patchLotRow } from "@/lib/openFloor";
 import { recordSoldLotSettlement } from "@/lib/recordSale";
-import { attachLotToSale, ensureWeeklySales, nextWeeklySale } from "@/lib/weeklySales";
+import { attachLotToSale, ensureWeeklySales } from "@/lib/weeklySales";
 import { settleEndedAuctions } from "@/lib/closeEndedLots";
+import { canPostIntoSale, salesOpenForPosting } from "@/lib/liveSales";
 import { notifyConsignmentApproved } from "@/lib/notify";
 import {
   allocateLotNumber,
@@ -248,14 +249,14 @@ async function resolveSaleEvent(
       if (!match || !canPostIntoSale(match)) return null;
       return match;
     }
-    return nextWeeklySale(events);
+    return pickOpenSale(events);
   }
   if (eventId) {
     const match = demo.events.find((row) => row.id === eventId);
     if (!match || !canPostIntoSale(match)) return null;
     return match;
   }
-  return nextWeeklySale(demo.events);
+  return pickOpenSale(demo.events);
 }
 
 export async function GET() {

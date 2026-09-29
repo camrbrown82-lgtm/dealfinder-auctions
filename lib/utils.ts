@@ -318,6 +318,11 @@ export function formatCurrency(amount: number, currency = "CAD") {
   }).format(amount);
 }
 
+/** $1 through $50, $2 from $51 to $99, $5 from $100 up. */
+export function bidIncrementFor(amount: number) {
+  return structuredIncrement(amount);
+}
+
 export function nextBidAmount(currentBid: number, minIncrement?: number, highBidder?: string | null) {
   const step = structuredIncrement(currentBid);
   if (!highBidder) return currentBid > 0 ? currentBid : minIncrement && minIncrement > 0 ? minIncrement : step;

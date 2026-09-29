@@ -1,29 +1,16 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { FIRST_WEEKLY_SALE, WEEKLY_SALES, nextWeeklySale } from "@/lib/weeklySales";
-import { openAuctionEvents } from "@/lib/auctionCalendar";
+import { saleKind, salesOpenForPosting } from "@/lib/liveSales";
 import type { AuctionEvent } from "@/lib/utils";
 
-function weekOptions(events: AuctionEvent[]) {
-  const open = openAuctionEvents(events);
-  return WEEKLY_SALES.filter((plan) => new Date(plan.endsAt).getTime() > Date.now()).map((plan) => {
-    const event =
-      open.find((row) => row.auctionNumber === plan.auctionNumber) ??
-      open.find((row) => row.name === plan.name) ??
-      (plan.auctionNumber === FIRST_WEEKLY_SALE.auctionNumber
-        ? open.find((row) => row.auctionNumber === FIRST_WEEKLY_SALE.legacyNumber)
-        : undefined);
-    return {
-      id: event?.id ?? plan.auctionNumber,
-      label: `${plan.name} · ends ${new Date(plan.endsAt).toLocaleString("en-CA", {
-        month: "short",
-        day: "numeric",
-        hour: "numeric",
-        minute: "2-digit",
-        timeZone: "America/Edmonton",
-      })}`,
-    };
+function endsLabel(iso: string) {
+  return new Date(iso).toLocaleString("en-CA", {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    timeZone: "America/Edmonton",
   });
 }
 
@@ -48,16 +35,17 @@ export function SaleWeekPicker({
   onSelect: (eventId: string) => void;
 }) {
   const options = useMemo(() => weekOptions(events), [events]);
-  const current = nextWeeklySale(openAuctionEvents(events));
   const defaultId =
-    options.find((row) => row.id === current?.id)?.id ?? options[0]?.id ?? "";
+    options.find((row) => events.some((event) => event.id === row.id && saleKind(event) === "live"))?.id ??
+    options[0]?.id ??
+    "";
   const [value, setValue] = useState(defaultId);
 
   useEffect(() => {
     if (open) setValue(defaultId);
   }, [open, defaultId]);
 
-  const eventIds = new Set(openAuctionEvents(events).map((event) => event.id));
+  const eventIds = new Set(events.filter((event) => !event.archivedAt).map((event) => event.id));
   const canFile = Boolean(value && eventIds.has(value));
 
   if (!open) return null;
@@ -74,7 +62,7 @@ export function SaleWeekPicker({
           Pick the sale week
         </h2>
         <p className="mt-1 font-comic text-sm">
-          File <strong>{lotLabel}</strong> into an upcoming weekly sale. Ended weeks are not listed.
+          File <strong>{lotLabel}</strong> into this week or a later auction. Ended sales are not listed.
         </p>
         <label className="mt-4 block font-comic text-sm font-bold">
           Auction week

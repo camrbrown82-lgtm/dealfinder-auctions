@@ -196,6 +196,13 @@ export function LiveGrid({
               const active = item.event.id === selected?.event.id;
               const label =
                 item.kind === "past" ? "Viewing" : item.kind === "live" ? "Live now" : "Upcoming";
+              const when = new Date(item.event.endsAt).toLocaleDateString("en-CA", {
+                weekday: "short",
+                month: "short",
+                day: "numeric",
+                year: "numeric",
+                timeZone: "America/Edmonton",
+              });
               return (
                 <button
                   key={item.event.id}

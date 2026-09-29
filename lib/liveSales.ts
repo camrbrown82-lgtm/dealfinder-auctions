@@ -1,5 +1,5 @@
 import { lotClockEnded, lotWasSold } from "@/lib/settlements";
-import type { AuctionEvent, AuctionLot } from "@/lib/utils";
+import { isLotOpen, type AuctionEvent, type AuctionLot } from "@/lib/utils";
 import { FIRST_WEEKLY_SALE, isWeeklySale } from "@/lib/weeklySales";
 
 export type SaleKind = "past" | "live" | "upcoming";
@@ -27,7 +27,7 @@ function openWeeklyEvents(events: AuctionEvent[]) {
 
 /**
  * Public floor window: current in-progress weekly sale, at most two previous hammers
- * for viewing, and later weekly sales as upcoming (never live).
+ * for viewing, and later weekly sales as upcoming.
  */
 export function pickSaleWindow(events: AuctionEvent[], now = Date.now()): SaleWindowItem[] {
   const classified = openWeeklyEvents(events).map((event) => ({
@@ -41,11 +41,44 @@ export function pickSaleWindow(events: AuctionEvent[], now = Date.now()): SaleWi
   return [...past, ...live, ...upcoming];
 }
 
+export function currentLiveEvent(events: AuctionEvent[], now = Date.now()) {
+  return events.find((event) => !event.archivedAt && saleKind(event, now) === "live") ?? null;
+}
+
+function edmontonDateKey(now = Date.now()) {
+  return new Date(now).toLocaleDateString("en-CA", { timeZone: "America/Edmonton" });
+}
+
+/** Hammer day encoded in AU-YYYY-MMDD, otherwise the sale end in Alberta. */
+function auctionHammerDate(event: Pick<AuctionEvent, "auctionNumber" | "endsAt">) {
+  const match = event.auctionNumber?.match(/(\d{4})-(\d{2})(\d{2})$/);
+  if (match) return `${match[1]}-${match[2]}-${match[3]}`;
+  const end = new Date(event.endsAt);
+  if (Number.isNaN(end.getTime())) return null;
+  return end.toLocaleDateString("en-CA", { timeZone: "America/Edmonton" });
+}
+
+/** Current week and later sales. Ended weeks stay off posting lists even if their clock was left open. */
+export function canPostIntoSale(event: AuctionEvent, now = Date.now()) {
+  if (event.archivedAt) return false;
+  const end = new Date(event.endsAt).getTime();
+  if (!Number.isFinite(end) || end <= now) return false;
+  const hammer = auctionHammerDate(event);
+  if (hammer && hammer < edmontonDateKey(now)) return false;
+  return saleKind(event, now) !== "past";
+}
+
+export function salesOpenForPosting(events: AuctionEvent[], now = Date.now()) {
+  return events
+    .filter((event) => canPostIntoSale(event, now))
+    .sort((a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime());
+}
+
 export function defaultSaleId(window: SaleWindowItem[]) {
-  const pastNewestFirst = [...window].filter((item) => item.kind === "past").reverse();
   return (
     window.find((item) => item.kind === "live") ??
-    pastNewestFirst[0] ??
+    window.find((item) => item.kind === "upcoming") ??
+    [...window].filter((item) => item.kind === "past").reverse()[0] ??
     window[0]
   )?.event.id;
 }
@@ -58,12 +91,13 @@ export function lotsForSale(lots: AuctionLot[], sale: SaleWindowItem | undefined
     sale.event.name === FIRST_WEEKLY_SALE.name;
   return lots.filter((lot) => {
     if (lot.saleChannel === "buy_now") return false;
-    if (lot.status === "removed" || lot.status === "draft" || lot.status === "ended") return false;
-    if (lotWasSold(lot)) return false;
-    if (lotClockEnded(lot)) return false;
-    if (lot.eventId === sale.event.id) return true;
-    if (isFirstWeek && !lot.eventId && sale.kind === "live") return true;
-    return false;
+    if (lot.status === "removed" || lot.status === "draft") return false;
+    const onThisSale = lot.eventId === sale.event.id || (isFirstWeek && !lot.eventId && sale.kind === "live");
+    if (!onThisSale) return false;
+    if (sale.kind === "past") return true;
+    if (lot.status === "ended" || lotWasSold(lot)) return false;
+    if (sale.kind === "upcoming") return true;
+    return isLotOpen(lot) && !lotClockEnded(lot);
   });
 }
 
@@ -71,18 +105,4 @@ export function lotsForSale(lots: AuctionLot[], sale: SaleWindowItem | undefined
 export function currentLiveSale(events: AuctionEvent[], now = Date.now()) {
   const live = openWeeklyEvents(events).filter((event) => saleKind(event, now) === "live");
   return live.at(-1) ?? null;
-}
-
-/** Admin floor: only lots actually running on the current live auction. */
-export function lotsForLiveMonitor(lots: AuctionLot[], events: AuctionEvent[], now = Date.now()) {
-  const current = currentLiveSale(events, now);
-  if (!current) return [];
-  return lots.filter((lot) => {
-    if (lot.saleChannel === "buy_now") return false;
-    if (lot.status !== "live" && lot.status !== "paused") return false;
-    if (lot.eventId !== current.id) return false;
-    if (lotClockEnded(lot, now)) return false;
-    if (lotWasSold(lot)) return false;
-    return true;
-  });
 }

@@ -1,6 +1,6 @@
 import { structuredIncrement } from "@/lib/bidIncrements";
 import { MOCK_LOTS } from "@/lib/utils";
-import type { AuctionLot } from "@/lib/utils";
+import type { AuctionLot, LotStatus } from "@/lib/utils";
 import type { AbsenteeMax } from "@/lib/bidding";
 import type { AdminBid } from "@/lib/adminTypes";
 import { randomUUID } from "crypto";
@@ -12,7 +12,7 @@ export type DemoLotState = {
   endsAt: string;
   highBidder: string | null;
   highBidderId: string | null;
-  status: string;
+  status: LotStatus;
   fulfillment?: "unset" | "ship" | "pickup";
   shippingCost?: number;
   paidAt?: string | null;

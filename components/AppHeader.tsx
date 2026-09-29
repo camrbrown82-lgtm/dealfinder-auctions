@@ -21,8 +21,12 @@ export function AppHeader() {
         <Logo />
       </Link>
       <div id="turbo-sloth-header" className="absolute right-2 top-2 z-30 sm:hidden" />
-      <div className="relative h-24 w-full sm:h-44 md:h-52 lg:h-60">
-        <Link href="/" className="absolute inset-0 block" aria-label="DealFinder Auctions home">
+      <div className="flex items-center justify-center bg-black px-16 py-2 sm:px-56 sm:py-3">
+        <Link
+          href="/"
+          className="block w-full max-w-[14rem] sm:max-w-xs md:max-w-sm"
+          aria-label="DealFinder Auctions home"
+        >
           <Image
             src="/logo.webp"
             alt="DealFinder Auctions"
@@ -34,7 +38,7 @@ export function AppHeader() {
           />
         </Link>
       </div>
-      <nav className="flex max-w-full flex-wrap items-center justify-center gap-x-4 gap-y-1 border-t-4 border-brand-ink px-3 py-2 sm:absolute sm:right-6 sm:top-4 sm:z-40 sm:max-w-[min(100%,28rem)] sm:justify-end sm:border-t-0 sm:bg-transparent sm:p-0">
+      <nav className="flex max-w-full flex-wrap items-center justify-center gap-x-4 gap-y-1 border-t-4 border-brand-ink px-3 py-2 md:absolute md:right-6 md:top-4 md:z-10 md:max-w-[min(100%,28rem)] md:justify-end md:border-t-0 md:bg-transparent md:p-0">
         <Link href="/live" className={navClass}>
           Live
         </Link>

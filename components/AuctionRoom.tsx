@@ -20,6 +20,7 @@ import { auctionTermsPack, type AuctionTermsPack } from "@/lib/auctionTerms";
 import {
   extraLotImages,
   formatCurrency,
+  isLotOpen,
   parseLotEndMs,
   type AuctionLot,
 } from "@/lib/utils";
