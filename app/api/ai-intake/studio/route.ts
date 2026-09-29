@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { persistPublicImageUrls } from "@/lib/consignmentStorage";
+import { processListingPhotos } from "@/lib/processListingPhotos";
 import { generateStudioListingImage } from "@/lib/studioImage";
 import { getSupabaseAdmin, isSupabaseConfigured } from "@/lib/supabaseClient";
 
@@ -71,37 +72,68 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Warehouse photos are required for the listing shot." }, { status: 400 });
   }
 
-  try {
-    const result = await generateStudioListingImage(apiKey, imageUrls, {
-      title: body.title?.trim() || "Auction lot",
-      objectType: body.objectType?.trim() || "",
-      materials: Array.isArray(body.materials) ? body.materials.map(String) : [],
-      condition: body.condition?.trim() || "",
-      itemDetails: body.itemDetails?.trim() || "",
-      listingGrade: body.listingGrade?.trim() || "",
-      displaySetting: body.displaySetting?.trim() || "",
-      photoBrief: body.photoBrief?.trim() || "",
-    });
-    if (!result.url) {
-      return NextResponse.json(
-        { error: result.error || "Could not create a listing photo.", studio_image_url: null },
-        { status: 502 },
-      );
-    }
-    let studioImageUrl = result.url;
-    const supabase = getSupabaseAdmin();
-    if (isSupabaseConfigured && supabase) {
-      const saved = await persistPublicImageUrls(supabase, [studioImageUrl]);
-      if (saved[0]) studioImageUrl = saved[0];
-    }
-    return NextResponse.json({
-      studio_image_url: studioImageUrl,
-      ai: result.id ? { ids: [result.id], features: ["studio"] } : { ids: [], features: ["studio"] },
-    });
-  } catch (err) {
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : "Listing photo failed.", studio_image_url: null },
-      { status: 502 },
-    );
-  }
+  const encoder = new TextEncoder();
+  const stream = new ReadableStream({
+    async start(controller) {
+      const send = (event: Record<string, unknown>) => {
+        controller.enqueue(encoder.encode(`${JSON.stringify(event)}\n`));
+      };
+      try {
+        send({ phase: "selecting" });
+        let heroUrl = imageUrls[0];
+        let heroIndex = 0;
+        try {
+          const plan = await processListingPhotos(apiKey, imageUrls.slice(0, 4));
+          if (plan.heroUrl) {
+            heroUrl = plan.heroUrl;
+            heroIndex = plan.heroIndex;
+          }
+        } catch {
+          heroUrl = imageUrls[0];
+        }
+
+        send({ phase: "processing" });
+        const result = await generateStudioListingImage(apiKey, [heroUrl], {
+          title: body.title?.trim() || "Auction lot",
+          objectType: body.objectType?.trim() || "",
+          materials: Array.isArray(body.materials) ? body.materials.map(String) : [],
+          condition: body.condition?.trim() || "",
+          itemDetails: body.itemDetails?.trim() || "",
+          listingGrade: body.listingGrade?.trim() || "",
+          displaySetting: body.displaySetting?.trim() || "",
+          photoBrief: body.photoBrief?.trim() || "",
+        });
+        if (!result.url) {
+          throw new Error(result.error || "Could not create a listing photo.");
+        }
+        let studioImageUrl = result.url;
+        const supabase = getSupabaseAdmin();
+        if (isSupabaseConfigured && supabase) {
+          const saved = await persistPublicImageUrls(supabase, [studioImageUrl]);
+          if (saved[0]) studioImageUrl = saved[0];
+        }
+        send({
+          phase: "done",
+          studio_image_url: studioImageUrl,
+          hero_index: heroIndex,
+          gallery_count: Math.max(0, imageUrls.slice(0, 4).length - 1),
+          ai: result.id ? { ids: [result.id], features: ["studio"] } : { ids: [], features: ["studio"] },
+        });
+      } catch (err) {
+        send({
+          phase: "error",
+          error: err instanceof Error ? err.message : "Listing photo failed.",
+        });
+      } finally {
+        controller.close();
+      }
+    },
+  });
+
+  return new Response(stream, {
+    headers: {
+      "Content-Type": "application/x-ndjson; charset=utf-8",
+      "Cache-Control": "no-cache, no-transform",
+    },
+  });
 }

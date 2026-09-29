@@ -16,12 +16,10 @@ import { requestStudioImage } from "@/lib/studioClient";
 import { mergeAiRuns, type AiRun } from "@/lib/aiRuns";
 import { ItemDetailsField, ListingConditionField } from "@/components/ListingGradeFields";
 import { type ListingGrade } from "@/lib/listingGrade";
-import {
-  DEFAULT_COMMISSION_RATE,
-  formatCurrency,
-  pipelineLabel,
-  type ConsignorItem,
-} from "@/lib/utils";
+import { formatCurrency, pipelineLabel, type ConsignorItem } from "@/lib/utils";
+
+const COMMISSION_TIERS =
+  CONSIGNMENT_AGREEMENT_SECTIONS.find((section) => section.heading.startsWith("3."))?.paragraphs ?? [];
 
 const LOCAL_KEY = "dealfinder-consignor-items";
 const BATCH_KEY = "dealfinder-consignment-batch";
@@ -39,7 +37,10 @@ export default function ConsignorPage() {
   const [marketValue, setMarketValue] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const [generating, setGenerating] = useState(false);
+  const [photoPhase, setPhotoPhase] = useState<SlothPhotoPhase | null>(null);
+  const [heroIndex, setHeroIndex] = useState(0);
+  const generating = photoPhase !== null;
+  const generateLock = useRef(false);
   const [submitting, setSubmitting] = useState(false);
   const [items, setItems] = useState<ConsignorItem[]>([]);
   const [compsNote, setCompsNote] = useState<string | null>(null);
@@ -99,6 +100,7 @@ export default function ConsignorPage() {
   useEffect(() => {
     setResolvedImageUrls([]);
     setStudioImageUrl(null);
+    setHeroIndex(0);
     setAiRun(null);
   }, [files, imageUrlText]);
 
@@ -114,6 +116,7 @@ export default function ConsignorPage() {
   }, [files]);
 
   async function autoGenerate(fromFiles?: File[]) {
+    if (generateLock.current) return;
     setError(null);
     setNotice(null);
     const photos = fromFiles ?? files;
@@ -122,7 +125,10 @@ export default function ConsignorPage() {
       return;
     }
 
-    setGenerating(true);
+    generateLock.current = true;
+    setStudioImageUrl(null);
+    setHeroIndex(0);
+    setPhotoPhase("reviewing");
     try {
       const catalog = await requestCatalog(photos, imageUrlText, {
         itemDetails,
@@ -136,32 +142,39 @@ export default function ConsignorPage() {
       }
       setCompsNote(catalog.comps_note ? String(catalog.comps_note) : null);
       let run = catalog.ai ?? null;
-      setNotice("Catalog ready. Creating the AI listing photo…");
       try {
-        const studio = await requestStudioImage({
-          imageUrls: catalog.imageUrls,
-          files: photos,
-          title: String(catalog.title ?? ""),
-          objectType: String(catalog.object_type ?? ""),
-          materials: Array.isArray(catalog.materials) ? catalog.materials.map(String) : [],
-          condition: String(catalog.condition ?? ""),
-          itemDetails,
-          listingGrade,
-          displaySetting: String(catalog.display_setting ?? ""),
-          photoBrief: String(catalog.photo_brief ?? ""),
-        });
+        const studio = await requestStudioImage(
+          {
+            imageUrls: catalog.imageUrls,
+            files: photos,
+            title: String(catalog.title ?? ""),
+            objectType: String(catalog.object_type ?? ""),
+            materials: Array.isArray(catalog.materials) ? catalog.materials.map(String) : [],
+            condition: String(catalog.condition ?? ""),
+            itemDetails,
+            listingGrade,
+            displaySetting: String(catalog.display_setting ?? ""),
+            photoBrief: String(catalog.photo_brief ?? ""),
+          },
+          setPhotoPhase,
+        );
+        setHeroIndex(studio.heroIndex);
         setStudioImageUrl(studio.url);
         run = mergeAiRuns(run, studio.ai);
         setNotice("Listing photo ready. Review, then submit.");
       } catch (studioErr) {
         setStudioImageUrl(null);
+        setHeroIndex(0);
+        setNotice(null);
         setError(studioErr instanceof Error ? studioErr.message : "Listing photo failed.");
       }
       setAiRun(run);
     } catch (err) {
+      setNotice(null);
       setError(err instanceof Error ? err.message : "AI intake failed");
     } finally {
-      setGenerating(false);
+      generateLock.current = false;
+      setPhotoPhase(null);
     }
   }
 
@@ -238,6 +251,8 @@ export default function ConsignorPage() {
       setImageUrlText("");
       setCompsNote(null);
       setStudioImageUrl(null);
+      setHeroIndex(0);
+      setPhotoPhase(null);
       setAiRun(null);
       setItemDetails("");
       setListingGrade("Used");

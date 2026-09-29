@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import OpenAI from "openai";
-import { priceFromMarketComps } from "@/lib/marketComps";
+import { beginCompLookup, priceFromMarketComps } from "@/lib/marketComps";
 import { identifyLotProduct } from "@/lib/identifyProduct";
 import { catalogTitle, resolveModel } from "@/lib/lotIdentity";
 import { readItemLabels } from "@/lib/readItemLabels";
@@ -172,6 +172,10 @@ export async function POST(request: NextRequest) {
     ? `Label OCR (copy these into visible_text; use model_lines as the model if present):\n${labelDump.join("\n")}`
     : "No separate OCR pass text. Read stickers and rear labels in the photos yourself.";
 
+  const compsLookup = beginCompLookup(
+    (labelDump.join(" ") || itemDetails || "collectible").slice(0, 140),
+  );
+
   let completion;
   try {
     completion = await openai.chat.completions.create({
@@ -291,15 +295,19 @@ export async function POST(request: NextRequest) {
     openaiIds: [] as string[],
   };
   try {
-    pricing = await priceFromMarketComps(apiKey, {
-      title,
-      maker,
-      model,
-      objectType,
-      visibleText,
-      condition: [listingGrade, itemDetails, String(parsed.condition ?? "").trim()].filter(Boolean).join(". "),
-      uncertainties: asStringList(parsed.uncertainties),
-    });
+    pricing = await priceFromMarketComps(
+      apiKey,
+      {
+        title,
+        maker,
+        model,
+        objectType,
+        visibleText,
+        condition: [listingGrade, itemDetails, String(parsed.condition ?? "").trim()].filter(Boolean).join(". "),
+        uncertainties: asStringList(parsed.uncertainties),
+      },
+      compsLookup,
+    );
   } catch {
     /* keep conservative empty pricing */
   }

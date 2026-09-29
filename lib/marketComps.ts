@@ -18,15 +18,10 @@ type CatalogFacts = {
   uncertainties: string[];
 };
 
-const COMP_DOMAINS = [
-  "ebay.com",
-  "liveauctioneers.com",
-  "invaluable.com",
-  "etsy.com",
-  "reverb.com",
-  "chairish.com",
-  "1stdibs.com",
-];
+export type CompLookup = {
+  snippet: string;
+  prices: number[];
+};
 
 function asInt(value: unknown, fallback = 0) {
   const n = Number(value);
@@ -92,10 +87,10 @@ function stripHtml(html: string) {
     .slice(0, 6000);
 }
 
-async function ebayRss(query: string) {
+async function ebayRss(query: string): Promise<CompLookup> {
   const url = `https://www.ebay.com/sch/i.html?_nkw=${encodeURIComponent(query)}&_rss=1&LH_BIN=1`;
   const xml = await fetchText(url);
-  if (!xml) return { snippet: "", prices: [] as number[] };
+  if (!xml) return { snippet: "", prices: [] };
   const itemRe = /<item>([\s\S]*?)<\/item>/gi;
   const items: string[] = [];
   let itemMatch: RegExpExecArray | null;
@@ -113,103 +108,10 @@ async function ebayRss(query: string) {
   return { snippet, prices: extractUsd(snippet) };
 }
 
-async function duckDuckGo(query: string) {
-  const html = await fetchText("https://html.duckduckgo.com/html/", {
-    method: "POST",
-    headers: { "content-type": "application/x-www-form-urlencoded" },
-    body: `q=${encodeURIComponent(query)}`,
-  });
-  if (!html) return { snippet: "", prices: [] as number[] };
-  const snippet = `Search (${query}):\n${stripHtml(html)}`.slice(0, 3500);
-  return { snippet, prices: extractUsd(snippet) };
-}
-
-async function openaiWebComps(apiKey: string, facts: CatalogFacts, query: string) {
-  const prompt = `Find recent comparable prices for this auction lot from public listings.
-Prefer SOLD or completed prices over asking prices.
-Search eBay, LiveAuctioneers, Invaluable, Etsy, Reverb, Chairish, and similar public marketplaces.
-Do not use a rare/branded variant unless that exact model string is in the visible markings.
-If model is unknown, price the maker + object type only — not a guessed SKU.
-
-Lot title: ${facts.title}
-Maker: ${facts.maker || "unknown"}
-Model (confirmed only): ${facts.model || "not printed / do not guess"}
-Object: ${facts.objectType}
-Visible markings: ${facts.visibleText.join("; ") || "none"}
-Condition: ${facts.condition || "unknown"}
-Unconfirmed: ${facts.uncertainties.join("; ") || "none"}
-Search query: ${query}
-
-Return JSON only:
-{
-  "sources": [{"site": string, "listing": string, "price_usd": number, "sold_or_asking": "sold"|"asking", "url": string}],
-  "estimated_market_value": integer,
-  "suggested_reserve": integer,
-  "suggested_starting_bid": integer,
-  "notes": string
-}
-Rules: estimated_market_value is a conservative typical retail/auction hammer for THIS visible object. suggested_reserve is 70-85% of that. suggested_starting_bid is 40-60%. If comps are thin or identity is unclear, go low. Ignore shipping, lot-of-many, and obvious mismatches.`;
-
-  const body = {
-    model: "gpt-4o",
-    store: true,
-    metadata: { feature: "comps", product: "dealfinder-auctions" },
-    tools: [
-      {
-        type: "web_search",
-        filters: { allowed_domains: COMP_DOMAINS },
-      },
-    ],
-    tool_choice: { type: "web_search" },
-    temperature: 0,
-    text: { format: { type: "json_object" } },
-    input: prompt,
-  };
-
-  const response = await fetch("https://api.openai.com/v1/responses", {
-    method: "POST",
-    signal: AbortSignal.timeout(25000),
-    headers: {
-      authorization: `Bearer ${apiKey}`,
-      "content-type": "application/json",
-    },
-    body: JSON.stringify(body),
-  });
-  const json = (await response.json()) as Record<string, unknown>;
-  if (!response.ok) {
-    const retry = await fetch("https://api.openai.com/v1/responses", {
-      method: "POST",
-      signal: AbortSignal.timeout(25000),
-      headers: {
-        authorization: `Bearer ${apiKey}`,
-        "content-type": "application/json",
-      },
-    body: JSON.stringify({
-    model: "gpt-4o",
-    store: true,
-    metadata: { feature: "comps", product: "dealfinder-auctions" },
-    tools: [{ type: "web_search" }],
-        input: prompt,
-      }),
-    });
-    const retryJson = (await retry.json()) as Record<string, unknown>;
-    if (!retry.ok) return { text: "", prices: [] as number[], id: "" };
-    return parseOpenAiResponse(retryJson);
-  }
-  return parseOpenAiResponse(json);
-}
-
-function parseOpenAiResponse(data: Record<string, unknown>) {
-  const chunks: string[] = [];
-  if (typeof data.output_text === "string") chunks.push(data.output_text);
-  for (const item of (data.output as Array<Record<string, unknown>> | undefined) ?? []) {
-    for (const content of (item.content as Array<Record<string, unknown>> | undefined) ?? []) {
-      if (typeof content.text === "string") chunks.push(content.text);
-    }
-  }
-  const text = chunks.join("\n");
-  const id = typeof data.id === "string" ? data.id : "";
-  return { text, prices: extractUsd(text), id };
+/** One public listing fetch. Start this while the catalog text is still being written. */
+export function beginCompLookup(query: string): Promise<CompLookup> {
+  const q = query.trim().slice(0, 140) || "collectible";
+  return ebayRss(q).catch(() => ({ snippet: "", prices: [] }));
 }
 
 function parsePricingJson(raw: string): Partial<MarketPricing> & { notes?: string } {
@@ -242,17 +144,15 @@ async function priceFromSnippets(
       "content-type": "application/json",
     },
     body: JSON.stringify({
-      model: "gpt-4o",
-      store: true,
-      metadata: { feature: "comps", product: "dealfinder-auctions" },
+      model: "gpt-4o-mini",
       temperature: 0,
       response_format: { type: "json_object" },
-      max_tokens: 600,
+      max_tokens: 280,
       messages: [
         {
           role: "system",
           content:
-            "You set conservative auction estimates from comparable listings. Prefer sold prices. Ignore mismatches, lots-of-many, and shipping. Return JSON only.",
+            "You set conservative auction estimates from one batch of comparable listings. Prefer sold prices. Ignore mismatches, lots-of-many, and shipping. Return JSON only.",
         },
         {
           role: "user",
@@ -266,7 +166,7 @@ Unconfirmed: ${facts.uncertainties.join("; ") || "none"}
 Scraped USD amounts found: ${scrapedPrices.slice(0, 20).join(", ") || "none"}
 
 Public listing snippets:
-${snippets.slice(0, 8000)}
+${snippets.slice(0, 3500)}
 
 Return JSON:
 {
@@ -325,40 +225,19 @@ function finalize(
 export async function priceFromMarketComps(
   apiKey: string,
   facts: CatalogFacts,
+  started?: Promise<CompLookup>,
 ): Promise<MarketPricing> {
   const locked: CatalogFacts = {
     ...facts,
     visibleText: identityMarkings(facts.visibleText),
   };
-  const query = searchQuery(locked) || locked.objectType || "collectible";
-  const [rss, ddgEbay, ddgAuction, web] = await Promise.allSettled([
-    ebayRss(query),
-    duckDuckGo(`${query} sold ebay`),
-    duckDuckGo(`${query} sold site:liveauctioneers.com OR site:invaluable.com`),
-    openaiWebComps(apiKey, locked, query),
-  ]);
-
-  const snippets: string[] = [];
-  const prices: number[] = [];
-
-  for (const result of [rss, ddgEbay, ddgAuction, web]) {
-    if (result.status !== "fulfilled") continue;
-    if ("snippet" in result.value && result.value.snippet) snippets.push(result.value.snippet);
-    if ("text" in result.value && result.value.text) snippets.push(result.value.text);
-    prices.push(...result.value.prices);
-  }
-
-  const fromWeb = web.status === "fulfilled" ? parsePricingJson(web.value.text) : {};
-  const webId = web.status === "fulfilled" ? web.value.id : "";
-  if (fromWeb.estimated_market_value) {
-    return finalize(fromWeb, prices, "Referenced public marketplace listings.", [webId]);
-  }
-
-  const fromSnippets = await priceFromSnippets(apiKey, locked, snippets.join("\n\n"), prices);
+  const lookup = started ?? beginCompLookup(searchQuery(locked) || locked.objectType || "collectible");
+  const rss = await lookup;
+  const fromSnippets = await priceFromSnippets(apiKey, locked, rss.snippet, rss.prices);
   return finalize(
     fromSnippets.parsed,
-    prices,
-    snippets.length ? "Priced from eBay/search listing references." : "Few public comps found; kept conservative.",
-    [webId, fromSnippets.id],
+    rss.prices,
+    rss.snippet ? "Priced from one eBay listing pass." : "Few public comps found; kept conservative.",
+    [fromSnippets.id],
   );
 }

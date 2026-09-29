@@ -1,7 +1,7 @@
-import { moneySplit } from "@/lib/commission";
+import { agreementCommission } from "@/lib/commission";
 import { isHouseConsignor } from "@/lib/consignors";
 import { lotWasSold } from "@/lib/settlements";
-import { DEFAULT_COMMISSION_RATE, type AuctionLot, type PayoutRow } from "@/lib/utils";
+import type { AuctionLot, PayoutRow } from "@/lib/utils";
 
 export type PayoutItem = {
   lotId: string;
@@ -9,6 +9,7 @@ export type PayoutItem = {
   consignor: string;
   hammer: number;
   commissionRate: number;
+  commissionLabel: string;
   house: number;
   payout: number;
 };
@@ -24,18 +25,31 @@ export function buildPayoutItems(lots: AuctionLot[]): PayoutItem[] {
           consignor: lot.consignor,
           hammer: lot.currentBid,
           commissionRate: 0,
+          commissionLabel: "House",
           house: lot.currentBid,
           payout: 0,
         };
       }
-      const rate = lot.commissionRate ?? DEFAULT_COMMISSION_RATE;
-      const split = moneySplit(lot.currentBid, rate);
+      const split = agreementCommission(lot.currentBid);
+      if (!split) {
+        return {
+          lotId: lot.id,
+          title: lot.title,
+          consignor: lot.consignor,
+          hammer: lot.currentBid,
+          commissionRate: 0,
+          commissionLabel: "Not named in the agreement",
+          house: 0,
+          payout: lot.currentBid,
+        };
+      }
       return {
         lotId: lot.id,
         title: lot.title,
         consignor: lot.consignor,
         hammer: lot.currentBid,
-        commissionRate: rate,
+        commissionRate: split.rate ?? 0,
+        commissionLabel: split.label,
         house: split.house,
         payout: split.consignor,
       };

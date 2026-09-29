@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { parseListingGrade, withListedGrade } from "@/lib/listingGrade";
 import { addDemoConsignment } from "@/lib/demoAdminStore";
 import { startingBidFromBuyNow } from "@/lib/buyNow";
+import { agreementCommission } from "@/lib/commission";
 import { getSupabaseAdmin, isSupabaseConfigured } from "@/lib/supabaseClient";
 import { persistPublicImageUrls } from "@/lib/consignmentStorage";
 import { getBidderSession } from "@/lib/bidderAuth";
@@ -244,7 +245,7 @@ export async function POST(request: NextRequest) {
     pipelineStatus: saleChannel === "buy_now" ? "buy_now_pending" : "pending_approval",
     startingBid: starting,
     buyNowPrice: buyNow,
-    commissionRate: payload.commission_rate,
+    commissionRate: agreementCommission(buyNow)?.rate ?? 0,
     saleChannel,
   };
 
@@ -260,7 +261,7 @@ export async function POST(request: NextRequest) {
       reservePrice: buyNow,
       buyNowPrice: buyNow,
       startingBid: starting,
-      commissionRate: payload.commission_rate,
+      commissionRate: item.commissionRate,
       imageUrls,
       status: "pending",
       listingGrade,
@@ -283,7 +284,7 @@ export async function POST(request: NextRequest) {
     ({ data, error } = await supabase.from("consignments").insert(rest).select("id").single());
   }
   if (error && /starting_bid|reserve_price|commission_rate/i.test(error.message)) {
-    const { starting_bid: _s, reserve_price: _r, commission_rate: _c, buy_now_price: _b, ...rest } = payload;
+    const { starting_bid: _s, reserve_price: _r, buy_now_price: _b, ...rest } = payload;
     ({ data, error } = await supabase.from("consignments").insert(rest).select("id").single());
   }
   if (error && /contact_email|owner_id/i.test(error.message)) {

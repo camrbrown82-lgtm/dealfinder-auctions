@@ -62,7 +62,7 @@ export async function GET() {
       supabase.from("bids").select("lot_id"),
     ]);
     const count = new Map<string, number>();
-    for (const row of bidCounts ?? []) {
+    for (const row of [...(bidCounts ?? []), ...(absenteeCounts ?? [])]) {
       const id = row.lot_id as string;
       count.set(id, (count.get(id) ?? 0) + 1);
     }

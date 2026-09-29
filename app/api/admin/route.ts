@@ -231,6 +231,11 @@ function auctionLabel(event?: AuctionEvent | null, lot?: AuctionLot) {
   return "DealFinder warehouse (schedule a sale)";
 }
 
+function pickOpenSale(events: AuctionEvent[]) {
+  const open = salesOpenForPosting(events);
+  return open.find((event) => new Date(event.startsAt).getTime() <= Date.now()) ?? open[0] ?? null;
+}
+
 async function resolveSaleEvent(
   supabase: NonNullable<ReturnType<typeof getSupabaseAdmin>> | null,
   demo: ReturnType<typeof getAdminDemo>,
@@ -240,13 +245,15 @@ async function resolveSaleEvent(
     const events = await ensureWeeklySales(supabase);
     if (eventId) {
       const match = events.find((row) => row.id === eventId || row.auctionNumber === eventId);
-      if (match) return match;
+      if (!match || !canPostIntoSale(match)) return null;
+      return match;
     }
     return nextWeeklySale(events);
   }
   if (eventId) {
     const match = demo.events.find((row) => row.id === eventId);
-    if (match) return match;
+    if (!match || !canPostIntoSale(match)) return null;
+    return match;
   }
   return nextWeeklySale(demo.events);
 }
@@ -566,7 +573,10 @@ export async function POST(request: NextRequest) {
     const start = parseLotRangeStart(body.lotStart) ?? 9000;
     const sale = await resolveSaleEvent(supabase, demo, body.eventId);
     if (!sale) {
-      return NextResponse.json({ error: "Pick a target auction." }, { status: 400 });
+      return NextResponse.json(
+        { error: "That auction has ended. Choose this week or an upcoming sale." },
+        { status: 400 },
+      );
     }
 
     const existing = await listLotNumbers(supabase, demo.inventory);
@@ -1268,7 +1278,13 @@ export async function PATCH(request: NextRequest) {
     if (body.itemDetails != null) lot.itemDetails = body.itemDetails;
     if (body.eventId) {
       const event = demo.events.find((row) => row.id === body.eventId);
-      if (event) applyEventToLot(lot, event, body.status === "live");
+      if (!event || !canPostIntoSale(event)) {
+        return NextResponse.json(
+          { error: "That auction has ended. Choose this week or an upcoming sale." },
+          { status: 400 },
+        );
+      }
+      applyEventToLot(lot, event, body.status === "live");
     }
     if (body.relist) {
       lot.highBidder = null;
@@ -1339,9 +1355,14 @@ export async function PATCH(request: NextRequest) {
       if (body.itemDetails != null) updates.item_details = body.itemDetails;
       if (body.eventId) {
         const sale = await resolveSaleEvent(supabase, demo, body.eventId);
-        const eventId = sale ? asEventUuid(sale.id) ?? sale.id : asEventUuid(body.eventId) ?? body.eventId;
-        updates.event_id = eventId;
-        updates.ends_at = sale?.endsAt ?? new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+        if (!sale) {
+          return NextResponse.json(
+            { error: "That auction has ended. Choose this week or an upcoming sale." },
+            { status: 400 },
+          );
+        }
+        updates.event_id = asEventUuid(sale.id) ?? sale.id;
+        updates.ends_at = sale.endsAt;
         updates.status = "live";
       }
       if (body.relist) {

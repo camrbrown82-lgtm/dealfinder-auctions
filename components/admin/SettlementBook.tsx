@@ -314,7 +314,9 @@ export function SettlementBook({
       {lens !== "house" ? (
       <section className="space-y-3 print:hidden">
         <h2 className="font-display text-3xl">Consignor payouts</h2>
-        <p className="font-comic text-sm">House take 20% on hammer. Ended lots only.</p>
+        <p className="font-comic text-sm">
+          Commission follows the consignment agreement. Ended lots only.
+        </p>
         <div className="comic-table-wrap">
           <table className="w-full min-w-[640px] border-collapse font-comic">
             <thead className="bg-brand-red text-left text-white">
@@ -359,7 +361,7 @@ export function SettlementBook({
                     <td className="border-b-2 border-black p-3">{row.consignor}</td>
                     <td className="border-b-2 border-black p-3">{formatCurrency(row.hammer)}</td>
                     <td className="border-b-2 border-black p-3">
-                      {Math.round(row.commissionRate * 100)}% · {formatCurrency(row.house)}
+                      {row.commissionLabel} · {formatCurrency(row.house)}
                     </td>
                     <td className="border-b-2 border-black p-3 font-bold">{formatCurrency(row.payout)}</td>
                   </tr>

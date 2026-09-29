@@ -23,6 +23,7 @@ export type MonitorLot = {
   buyNowPrice: number;
   endsAt: string;
   bidCount: number;
+  salePhase?: "live" | "upcoming";
 };
 
 export type CustomerRow = {

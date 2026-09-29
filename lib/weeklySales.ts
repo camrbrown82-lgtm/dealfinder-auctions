@@ -147,6 +147,13 @@ export async function ensureWeeklySales(supabase: SupabaseClient | null) {
     const weeklyOpen = events.filter((event) => isWeeklySale(event) && !event.archivedAt);
     const keep = new Set(weeklyOpen.map((event) => event.id));
     const staleIds = events.filter((event) => !keep.has(event.id)).map((event) => event.id);
+    const now = Date.now();
+    const current =
+      weeklyOpen.find((event) => {
+        const start = new Date(event.startsAt).getTime();
+        const end = new Date(event.endsAt).getTime();
+        return start <= now && end > now;
+      }) ?? nextWeeklySale(weeklyOpen);
 
     const extras = events.filter((event) => staleIds.includes(event.id) && !event.archivedAt);
     if (extras.length) {

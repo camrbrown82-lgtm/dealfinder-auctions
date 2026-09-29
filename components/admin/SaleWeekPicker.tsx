@@ -27,6 +27,13 @@ function weekOptions(events: AuctionEvent[]) {
   });
 }
 
+function weekOptions(events: AuctionEvent[], now = Date.now()) {
+  return salesOpenForPosting(events, now).map((event) => ({
+    id: event.id,
+    label: `${event.auctionNumber ? `${event.auctionNumber} · ` : ""}${event.name} · ends ${endsLabel(event.endsAt)}`,
+  }));
+}
+
 export function SaleWeekPicker({
   open,
   lotLabel,
@@ -76,6 +83,7 @@ export function SaleWeekPicker({
             onChange={(e) => setValue(e.target.value)}
             className="mt-1 w-full border-4 border-black bg-white px-3 py-2 font-normal"
           >
+            {options.length === 0 ? <option value="">No current or upcoming auctions</option> : null}
             {options.map((row) => (
               <option key={row.id} value={row.id}>
                 {row.label}

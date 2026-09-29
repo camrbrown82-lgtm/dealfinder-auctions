@@ -184,7 +184,7 @@ export function LiveGrid({
   return (
     <div className="min-w-0 max-w-full space-y-4 overflow-x-clip">
       {floorSales.length > 0 && (
-        <div className="comic-panel p-4">
+        <div id="live-auctions" className="comic-panel p-4">
           <p className="font-display text-lg">Auctions</p>
           <p className="font-comic text-sm">
             {liveSale
@@ -206,6 +206,9 @@ export function LiveGrid({
                   <span className="block leading-none">{label}</span>
                   <span className="mt-1 block font-comic text-xs font-bold normal-case tracking-normal">
                     {item.event.auctionNumber || item.event.name}
+                  </span>
+                  <span className="mt-1 block font-comic text-xs font-bold normal-case tracking-normal">
+                    {when}
                   </span>
                 </button>
               );
@@ -288,7 +291,7 @@ function LotCard({
   view: ViewCount;
 }) {
   const href = `/auctions/${lot.id}`;
-  const open = isLotOpen(lot);
+  const open = isLotOpen(lot) && lot.biddingOpen !== false;
   const bidLabel = open ? "Bid now" : "View lot";
   const catalogLine = [lot.auctionNumber, lot.lotNumber].filter(Boolean).join(" · ");
   const compact = view === 4;

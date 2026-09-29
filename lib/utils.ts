@@ -48,6 +48,8 @@ export type AuctionLot = {
   saleSource?: "bid" | "buy_now" | null;
   saleChannel?: SaleChannel;
   buyNowStatus?: BuyNowStatus | null;
+  /** False when the lot's sale has already ended. */
+  biddingOpen?: boolean;
 };
 
 export type AuctionEvent = {
@@ -394,8 +396,10 @@ export function formatCountdown(endsAt: string, now = Date.now()) {
   return `${pad(hours)}h ${pad(minutes)}m ${pad(seconds)}s`;
 }
 
-export function isLotOpen(lot: Pick<AuctionLot, "endsAt" | "status">) {
-  if (lot.status === "removed" || lot.status === "ended") return false;
+export function isLotOpen(lot: Pick<AuctionLot, "endsAt" | "status">, now = Date.now()) {
+  if (lot.status === "removed" || lot.status === "ended" || lot.status === "draft") return false;
+  const end = parseLotEndMs(lot.endsAt, now);
+  if (Number.isFinite(end) && end <= now) return false;
   return true;
 }
 

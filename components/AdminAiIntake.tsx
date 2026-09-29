@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 import { ImageUrlPaste } from "@/components/ImageUrlPaste";
 import { PhotoDropzone } from "@/components/PhotoDropzone";
 import { HOUSE_CONSIGNOR } from "@/lib/consignors";
@@ -12,6 +12,8 @@ import { AiFeedback } from "@/components/AiFeedback";
 import { ItemDetailsField, ListingConditionField } from "@/components/ListingGradeFields";
 import { type ListingGrade } from "@/lib/listingGrade";
 import { listingImages, parsePastedImageUrls } from "@/lib/imageUrls";
+import { TurboSlothGenerateButton, ListingGalleryThumbs } from "@/components/TurboSlothGenerateButton";
+import type { SlothPhotoPhase } from "@/lib/turboSloth";
 
 export function AdminAiIntake({
   suggestedLotNumber,
@@ -37,7 +39,10 @@ export function AdminAiIntake({
   const [marketValue, setMarketValue] = useState("");
   const [lotNumber, setLotNumber] = useState(suggestedLotNumber);
   const [error, setError] = useState<string | null>(null);
-  const [generating, setGenerating] = useState(false);
+  const [photoPhase, setPhotoPhase] = useState<SlothPhotoPhase | null>(null);
+  const [heroIndex, setHeroIndex] = useState(0);
+  const generating = photoPhase !== null;
+  const generateLock = useRef(false);
   const [submitting, setSubmitting] = useState(false);
   const [filePreview, setFilePreview] = useState<string | null>(null);
   const [compsNote, setCompsNote] = useState<string | null>(null);
@@ -55,6 +60,7 @@ export function AdminAiIntake({
   useEffect(() => {
     setResolvedImageUrls([]);
     setStudioImageUrl(null);
+    setHeroIndex(0);
     setAiRun(null);
   }, [files, imageUrlText]);
   useEffect(() => {
@@ -73,13 +79,17 @@ export function AdminAiIntake({
   const reserve = Number(reservePrice) || 0;
 
   async function autoGenerate(fromFiles?: File[]) {
+    if (generateLock.current) return;
     setError(null);
     const photos = fromFiles ?? files;
     if (photos.length === 0 && parsePastedImageUrls(imageUrlText).length === 0) {
       setError("Add a photo or paste an image URL first.");
       return;
     }
-    setGenerating(true);
+    generateLock.current = true;
+    setStudioImageUrl(null);
+    setHeroIndex(0);
+    setPhotoPhase("reviewing");
     try {
       const catalog = await requestCatalog(photos, imageUrlText, {
         itemDetails,
@@ -92,29 +102,35 @@ export function AdminAiIntake({
       setCompsNote(catalog.comps_note ? String(catalog.comps_note) : null);
       let run = catalog.ai ?? null;
       try {
-        const studio = await requestStudioImage({
-          imageUrls: catalog.imageUrls,
-          files: photos,
-          title: String(catalog.title ?? ""),
-          objectType: String(catalog.object_type ?? ""),
-          materials: Array.isArray(catalog.materials) ? catalog.materials.map(String) : [],
-          condition: String(catalog.condition ?? ""),
-          itemDetails,
-          listingGrade,
-          displaySetting: String(catalog.display_setting ?? ""),
-          photoBrief: String(catalog.photo_brief ?? ""),
-        });
+        const studio = await requestStudioImage(
+          {
+            imageUrls: catalog.imageUrls,
+            files: photos,
+            title: String(catalog.title ?? ""),
+            objectType: String(catalog.object_type ?? ""),
+            materials: Array.isArray(catalog.materials) ? catalog.materials.map(String) : [],
+            condition: String(catalog.condition ?? ""),
+            itemDetails,
+            listingGrade,
+            displaySetting: String(catalog.display_setting ?? ""),
+            photoBrief: String(catalog.photo_brief ?? ""),
+          },
+          setPhotoPhase,
+        );
+        setHeroIndex(studio.heroIndex);
         setStudioImageUrl(studio.url);
         run = mergeAiRuns(run, studio.ai);
       } catch (studioErr) {
         setStudioImageUrl(null);
+        setHeroIndex(0);
         setError(studioErr instanceof Error ? studioErr.message : "Listing photo failed.");
       }
       setAiRun(run);
     } catch (err) {
       setError(err instanceof Error ? err.message : "AI intake failed");
     } finally {
-      setGenerating(false);
+      generateLock.current = false;
+      setPhotoPhase(null);
     }
   }
 
@@ -162,6 +178,7 @@ export function AdminAiIntake({
       setImageUrlText("");
       setResolvedImageUrls([]);
       setStudioImageUrl(null);
+      setHeroIndex(0);
       setCompsNote(null);
       setAiRun(null);
       setItemDetails("");

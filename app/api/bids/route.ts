@@ -6,7 +6,7 @@ import { nextLiveAmount, placeAbsenteeMax, placeLiveBid, type AuctionClock } fro
 import { structuredIncrement } from "@/lib/bidIncrements";
 import { getSupabaseAdmin, isSupabaseConfigured } from "@/lib/supabaseClient";
 import { isProfileComplete, type BidderProfile } from "@/lib/profileTypes";
-import { openUnsoldFloors, patchLotRow, weekFromNow } from "@/lib/openFloor";
+import { patchLotRow } from "@/lib/openFloor";
 import { recordSoldLotSettlement } from "@/lib/recordSale";
 import { notifyOutbid } from "@/lib/notifyOutbid";
 import { mapLot, type LotRow } from "@/lib/mappers";
@@ -81,40 +81,6 @@ async function writeLot(
     if (!rest.ok) return { message: rest.body || `HTTP ${rest.status}` };
   }
   return lastError ?? { message: "Could not update this lot." };
-}
-
-async function forceLotOpen(
-  supabase: NonNullable<ReturnType<typeof getSupabaseAdmin>>,
-  lotId: string,
-) {
-  const { data: row } = await supabase
-    .from("lots")
-    .select("id, event_id, ends_at")
-    .eq("id", lotId)
-    .maybeSingle();
-  let endsAt = weekFromNow();
-  if (row?.event_id) {
-    const { data: event } = await supabase
-      .from("auction_events")
-      .select("ends_at")
-      .eq("id", row.event_id)
-      .maybeSingle();
-    if (event?.ends_at && new Date(event.ends_at).getTime() > Date.now()) {
-      endsAt = String(event.ends_at);
-    }
-  } else if (row?.ends_at && new Date(String(row.ends_at)).getTime() > Date.now()) {
-    endsAt = String(row.ends_at);
-  }
-  const patch: Record<string, unknown> = {
-    status: "live",
-    ends_at: endsAt,
-  };
-  const rest = await patchLotRow(lotId, patch);
-  if (!rest.ok || !rest.data?.length) {
-    const error = await writeLot(supabase, lotId, patch);
-    return { patch, error: pgMessage(error) || rest.body || null };
-  }
-  return { patch, error: null };
 }
 
 async function recordTape(
@@ -229,11 +195,18 @@ async function persistDemo(
   if (demo.status === "removed") {
     return NextResponse.json({ error: "This lot was removed from the sale." }, { status: 400 });
   }
-  if (demo.status === "ended" && (demo.highBidder || demo.highBidderId)) {
-    return NextResponse.json({ error: "This lot is already sold." }, { status: 400 });
+  if (demo.status === "ended" || demo.status === "removed") {
+    return NextResponse.json({ error: "This lot is closed. Relist it from auction inventory to sell it again." }, { status: 400 });
   }
-  demo.status = "live";
-  demo.endsAt = weekFromNow();
+  if (new Date(demo.endsAt).getTime() <= Date.now()) {
+    return NextResponse.json({ error: "This auction has ended. Lots are view only until they are relisted." }, { status: 400 });
+  }
+  const catalogEvent = catalog?.eventId
+    ? getAdminDemo().events.find((row) => row.id === catalog.eventId)
+    : null;
+  if (catalogEvent && new Date(catalogEvent.endsAt).getTime() <= Date.now()) {
+    return NextResponse.json({ error: "This auction has ended. Lots are view only until they are relisted." }, { status: 400 });
+  }
   const previousBidderId = demo.highBidderId;
   const previousBidderName = demo.highBidder;
 
@@ -358,7 +331,6 @@ async function persistSupabase(
   const bidder = session.fullName || session.email;
   const bidderId = session.id;
   const email = session.email;
-  await openUnsoldFloors(supabase);
   let { data: lot, error: lotError } = await supabase
     .from("lots")
     .select("*")
@@ -391,11 +363,31 @@ async function persistSupabase(
   if (lot.status === "removed") {
     return NextResponse.json({ error: "This lot was removed from the sale." }, { status: 400 });
   }
-  if (lot.status === "ended" && (lot.high_bidder || lot.high_bidder_id)) {
-    return NextResponse.json({ error: "This lot is already sold." }, { status: 400 });
+  if (lot.status === "ended" || lot.status === "removed") {
+    return NextResponse.json(
+      { error: "This lot is closed. Relist it from auction inventory to sell it again." },
+      { status: 400 },
+    );
   }
-  const opened = await forceLotOpen(supabase, resolvedId);
-  Object.assign(lot, opened.patch);
+  if (lot.event_id) {
+    const { data: event } = await supabase
+      .from("auction_events")
+      .select("starts_at, ends_at")
+      .eq("id", lot.event_id)
+      .maybeSingle();
+    const now = Date.now();
+    if (event?.ends_at && new Date(String(event.ends_at)).getTime() <= now) {
+      return NextResponse.json(
+        { error: "This auction has ended. Lots are view only until they are relisted." },
+        { status: 400 },
+      );
+    }
+  } else if (lot.ends_at && new Date(String(lot.ends_at)).getTime() <= Date.now()) {
+    return NextResponse.json(
+      { error: "This auction has ended. Lots are view only until they are relisted." },
+      { status: 400 },
+    );
+  }
   const previousBidderId = (lot.high_bidder_id as string | null) ?? null;
   const previousBidderName = (lot.high_bidder as string | null) ?? null;
 

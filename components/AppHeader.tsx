@@ -26,9 +26,10 @@ export function AppHeader() {
           <Image
             src="/logo.webp"
             alt="DealFinder Auctions"
-            fill
-            className="object-fill"
-            sizes="100vw"
+            width={533}
+            height={373}
+            className="h-auto w-full"
+            sizes="(min-width: 768px) 24rem, 14rem"
             priority
           />
         </Link>

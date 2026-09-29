@@ -72,7 +72,11 @@ export function AuctionRoom({ lot }: { lot: AuctionLot }) {
   const extras = extraLotImages(lot);
   const hasWinner = Boolean(highBidder || highBidderId);
   const soldClosed = status === "ended" && hasWinner;
-  const open = status !== "removed" && !soldClosed;
+  const open =
+    status !== "removed" &&
+    !soldClosed &&
+    lot.biddingOpen !== false &&
+    isLotOpen({ endsAt, status });
   openRef.current = open;
   const youWon =
     soldClosed &&
@@ -517,6 +521,17 @@ export function AuctionRoom({ lot }: { lot: AuctionLot }) {
             <p className="font-display text-sm tracking-[0.25em] text-brand-red">PULLED FROM THE SALE</p>
             <p className="font-comic text-sm">
               This lot is no longer on the live floor. House staff moved it to unsold or settlements.
+            </p>
+            <Link href="/live" className="comic-btn inline-block">
+              Back to live lots
+            </Link>
+          </div>
+        ) : !open && !soldClosed ? (
+          <div className="comic-panel space-y-3 p-5">
+            <p className="font-display text-sm tracking-[0.25em] text-brand-red">VIEW ONLY</p>
+            <p className="font-comic text-sm">
+              Bidding is open only during the current week&apos;s auction. This lot can be looked at,
+              not bid on, until it is in that live sale.
             </p>
             <Link href="/live" className="comic-btn inline-block">
               Back to live lots
