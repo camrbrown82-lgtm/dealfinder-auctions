@@ -144,7 +144,19 @@ Redirects (cleared out of the sidebar): **/admin/exports** and **/admin/settleme
 
 ### 3.7 Email engine
 - Edit subjects/bodies: welcome/verify, outbid, winning reservation, Sunday invoice, cash receipt, consignment approved, cash-bid desk alert, etc.
-- Resend delivers from `RESEND_FROM`. Vercel.app cannot be a Resend domain; a real DNS domain is required for inbox reputation.
+- Resend delivers from `RESEND_FROM`. Vercel.app cannot be a Resend domain; verify `dealfinderauctions.com` in Resend.
+- Porkbun already has an apex MX for hosted email (`mx.dealfinderauctions.com.cust.b.hostedemail.com`). **Do not** put Resend MX/SPF on `@` / blank host — that fights that mailbox and is why verification fails.
+- In Resend → Domains → add `dealfinderauctions.com` (do not enable Receiving). Copy the Records table.
+- In Porkbun → DNS for `dealfinderauctions.com`, add **only** what Resend shows. Host is the left label, not the full name:
+
+| Porkbun Type | Host | Answer / Value | Priority |
+| --- | --- | --- | --- |
+| TXT | `send` | SPF string from Resend (usually `v=spf1 include:amazonses.com ~all`) | — |
+| MX | `send` | `feedback-smtp.REGION.amazonses.com.` (trailing **dot**, region from Resend) | `10` |
+| TXT | `resend._domainkey` | the long `p=…` key from Resend, pasted in full | — |
+
+  If Resend shows **CNAME** rows instead of TXT/MX, use CNAME with Host `send` / `rsend` and the Resend target plus a trailing dot. Never CNAME the apex (`@`).
+- After Porkbun saves, in Resend click **Verify DNS Records**. Then set Vercel `RESEND_FROM` to `DealFinder Auctions <hello@dealfinderauctions.com>`.
 
 ---
 
