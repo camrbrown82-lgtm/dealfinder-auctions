@@ -57,10 +57,10 @@ export function SiteFooter() {
             {SITE.email}
           </a>
         </div>
-        <div className="flex min-w-0 w-full flex-col items-start gap-2">
+        <div className="flex min-w-0 w-full flex-col items-start self-start gap-2">
           <p className="font-display text-xl text-white">Follow us on social</p>
-          <GoogleRatingLink className="lg:max-w-[13rem]" />
           <SocialLinks />
+          <GoogleRatingLink className="lg:max-w-[13rem]" />
         </div>
       </div>
     </footer>
