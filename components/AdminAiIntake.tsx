@@ -282,7 +282,7 @@ export function AdminAiIntake({
               />
             </label>
           </div>
-          <div className="grid gap-3 sm:grid-cols-2">
+          <div className="grid items-start gap-3 sm:grid-cols-2">
             <label className="block font-comic font-bold">
               Starting bid ($)
               <input
@@ -299,7 +299,6 @@ export function AdminAiIntake({
             </label>
             <label className="block font-comic font-bold">
               Buy now ($)
-              <span className="block font-normal">You set this — Auto-Generate does not fill buy now.</span>
               <input
                 type="number"
                 min={0}
@@ -308,6 +307,7 @@ export function AdminAiIntake({
                 required
                 className="mt-2 w-full border-4 border-black bg-white px-3 py-2 font-normal"
               />
+              <span className="mt-1 block font-normal">You set this — Auto-Generate does not fill buy now.</span>
             </label>
           </div>
           <label className="block font-comic font-bold">
@@ -320,9 +320,16 @@ export function AdminAiIntake({
               className="mt-2 w-full border-4 border-black bg-white px-3 py-2 font-normal"
             />
           </label>
-          {compsNote && (
-            <p className="border-4 border-black bg-[#FFF7D1] p-3 font-comic text-sm">{compsNote}</p>
-          )}
+          <label className="block font-comic font-bold">
+            Price comp
+            <textarea
+              value={compsNote ?? ""}
+              onChange={(e) => setCompsNote(e.target.value)}
+              rows={3}
+              placeholder="Auto-Generate fills this from public listings."
+              className="mt-2 w-full border-4 border-black bg-white px-3 py-2 font-normal"
+            />
+          </label>
           {aiRun && !generating ? (
             <AiFeedback
               staff

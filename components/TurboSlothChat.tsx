@@ -229,10 +229,10 @@ export function TurboSlothChat() {
             headerSlot,
           )
         : null}
-      <div className="pointer-events-none fixed bottom-4 right-4 z-20 hidden flex-col items-end gap-2 print:hidden sm:flex">
+      <div className="pointer-events-none fixed bottom-40 right-4 z-20 hidden flex-col items-end gap-2 print:hidden sm:flex">
         {open && !compact ? (
           <section
-            className="pointer-events-auto flex h-[min(36rem,75vh)] w-[28rem] max-w-[calc(100vw-2rem)] flex-col overflow-hidden border-4 border-black bg-[#FFF7D1] shadow-comic"
+            className="pointer-events-auto flex h-[min(36rem,calc(100dvh-18rem))] w-[28rem] max-w-[calc(100vw-2rem)] flex-col overflow-hidden border-4 border-black bg-[#FFF7D1] shadow-comic"
             role="dialog"
             aria-label="Turbo Sloth chat"
           >

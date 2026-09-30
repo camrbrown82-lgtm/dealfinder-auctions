@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import AuctionSchema, { auctionSchemaFromLot } from "@/components/AuctionSchema";
 import { LotGallery } from "@/components/LotGallery";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -41,6 +42,7 @@ export default async function AuctionLotPage({ params }: PageProps) {
 
   return (
     <div className="space-y-6">
+      <AuctionSchema {...auctionSchemaFromLot(lot)} />
       <InterestBeacon lot={lot} />
       <div className="comic-panel px-4 py-5">
         <Link

@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { SERVICE_CITIES } from "@/lib/locations";
 import { SITE } from "@/lib/site";
 
 /** Public origin used for canonical, Open Graph, and JSON-LD. Apex redirects to www. */
@@ -104,6 +105,7 @@ export function localBusinessJsonLd() {
         },
         areaServed: [
           { "@type": "City", name: "Airdrie" },
+          ...SERVICE_CITIES.map((city) => ({ "@type": "City" as const, name: city.name })),
           { "@type": "AdministrativeArea", name: "Alberta" },
         ],
       },

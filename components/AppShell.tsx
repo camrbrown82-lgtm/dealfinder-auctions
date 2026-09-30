@@ -10,7 +10,8 @@ function showTurboSloth(pathname: string) {
     pathname === "/" ||
     pathname === "/live" ||
     pathname.startsWith("/consignor") ||
-    pathname.startsWith("/auctions/")
+    pathname.startsWith("/auctions/") ||
+    pathname.startsWith("/locations")
   );
 }
 

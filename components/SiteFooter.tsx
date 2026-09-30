@@ -1,9 +1,31 @@
+import Link from "next/link";
 import { SocialLinks } from "@/components/SocialLinks";
+import { SERVICE_CITIES } from "@/lib/locations";
 import { SITE } from "@/lib/site";
 
 export function SiteFooter() {
   return (
     <footer className="max-w-full overflow-x-clip border-t-4 border-brand-ink bg-brand-red text-brand-cream">
+      <div className="mx-auto w-full max-w-[90rem] px-3 pt-4 sm:px-4">
+        <p className="font-display text-xl text-white">Bid from</p>
+        <ul className="mt-2 flex flex-wrap gap-x-4 gap-y-1 font-comic text-sm font-bold">
+          <li>
+            <Link href="/locations" className="underline decoration-2 underline-offset-2 hover:text-white">
+              All cities
+            </Link>
+          </li>
+          {SERVICE_CITIES.map((city) => (
+            <li key={city.slug}>
+              <Link
+                href={`/locations/${city.slug}`}
+                className="underline decoration-2 underline-offset-2 hover:text-white"
+              >
+                {city.name}
+              </Link>
+            </li>
+          ))}
+        </ul>
+      </div>
       <div className="mx-auto grid w-full max-w-[90rem] gap-8 px-3 py-10 sm:grid-cols-2 sm:px-4 lg:grid-cols-4">
         <div>
           <p className="font-display text-3xl text-white pop-shadow">DealFinder Auctions</p>
