@@ -18,6 +18,6 @@ export const SITE = {
 } as const;
 
 export function adminNotifyEmail() {
-  return (process.env.ADMIN_NOTIFY_EMAIL || "").trim() || "cam.r.brown82@gmail.com";
+  return (process.env.ADMIN_NOTIFY_EMAIL || "").trim() || SITE.email;
 }
 
