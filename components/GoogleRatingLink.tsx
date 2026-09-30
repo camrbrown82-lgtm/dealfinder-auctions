@@ -15,7 +15,7 @@ export function GoogleRatingLink({ className = "" }: { className?: string }) {
       target="_blank"
       rel="noreferrer"
       aria-label="Leave a Google review for DealFinder Auctions"
-      className={`inline-flex items-center gap-3 border-4 border-black bg-white px-4 py-3 text-left shadow-comic transition hover:-translate-y-0.5 hover:bg-brand-cream ${className}`}
+      className={`inline-flex max-w-full flex-wrap items-center gap-3 border-4 border-black bg-brand-cream px-4 py-3 text-left text-brand-ink shadow-comic transition hover:-translate-y-0.5 hover:bg-white ${className}`}
     >
       <span className="flex items-center gap-0.5" aria-hidden>
         <Star />

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { GoogleRatingLink } from "@/components/GoogleRatingLink";
 import { SocialLinks } from "@/components/SocialLinks";
 import { SERVICE_CITIES } from "@/lib/locations";
 import { SITE } from "@/lib/site";
@@ -56,8 +57,9 @@ export function SiteFooter() {
             {SITE.email}
           </a>
         </div>
-        <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-2">
+        <div className="flex min-w-0 w-full flex-col items-start gap-2">
           <p className="font-display text-xl text-white">Follow us on social</p>
+          <GoogleRatingLink className="lg:max-w-[13rem]" />
           <SocialLinks />
         </div>
       </div>

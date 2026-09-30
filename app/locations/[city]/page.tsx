@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { GoogleRatingLink } from "@/components/GoogleRatingLink";
 import { nearbyCities, locationBySlug, SERVICE_CITIES } from "@/lib/locations";
 import { absoluteUrl, pageMetadata } from "@/lib/seo";
 import { SITE } from "@/lib/site";
@@ -97,7 +96,6 @@ export default function CityLandingPage({ params }: PageProps) {
         <Link href="/consignor" className="comic-btn-invert">
           Consign a lot
         </Link>
-        <GoogleRatingLink />
       </div>
 
       <section className="comic-panel p-5">

@@ -1,6 +1,5 @@
 import Image from "next/image";
 import Link from "next/link";
-import { GoogleRatingLink } from "@/components/GoogleRatingLink";
 import { HomeFaqButton } from "@/components/HomeFaqButton";
 import { Logo } from "@/components/Logo";
 import { SiteFooter } from "@/components/SiteFooter";
@@ -55,7 +54,6 @@ export default function LandingPage() {
         >
           Enter the auction
         </Link>
-        <GoogleRatingLink className="relative mt-5" />
       </section>
 
       <SiteFooter />
