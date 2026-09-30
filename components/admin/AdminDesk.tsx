@@ -9,6 +9,7 @@ import { FormEvent, useEffect, useRef, useState } from "react";
 import type { PayoutItem } from "@/lib/payouts";
 import type { AuctionEvent, AuctionLot, Consignment, PayoutRow } from "@/lib/utils";
 import type { HouseDeskSettings } from "@/lib/houseDesk";
+import { AdminDarkToggle } from "@/components/admin/AdminDarkToggle";
 
 export type AdminPayload = {
   source: "demo" | "supabase";
@@ -234,7 +235,10 @@ export function AdminDeskProvider({ children }: { children: ReactNode }) {
         data-form-type="other"
         className="relative mx-auto w-full max-w-md space-y-4 comic-panel p-4 sm:p-6"
       >
-        <h1 className="font-display text-3xl text-brand-red sm:text-4xl">Admin lock</h1>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h1 className="font-display text-3xl text-brand-red sm:text-4xl">Admin lock</h1>
+          <AdminDarkToggle />
+        </div>
         <p className="font-comic text-sm">
           Staff only. Type the admin password each time you open this desk — it is not saved in the browser.
         </p>

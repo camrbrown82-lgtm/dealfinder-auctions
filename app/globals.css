@@ -106,7 +106,92 @@ input[type="radio"] {
   }
 }
 
+/* Staff desk only. The class is added on /admin and removed everywhere else. */
+html.admin-dark body {
+  background-color: #121212;
+  background-image: radial-gradient(circle, #2a2a2a 1px, transparent 1px);
+  color: #f3efe4;
+}
+
+html.admin-dark main {
+  color: #f3efe4;
+}
+
+html.admin-dark main .comic-panel,
+html.admin-dark main .comic-panel-sm,
+html.admin-dark main .comic-table-wrap {
+  background-color: #1c1c1c;
+  border-color: #3f3f3f;
+  color: #f3efe4;
+  box-shadow: 4px 4px 0 0 #000000;
+}
+
+html.admin-dark main .comic-btn-invert {
+  background-color: #2a2a2a;
+  color: #f3efe4;
+  border-color: #5a5a5a;
+  box-shadow: 3px 3px 0 0 #000000;
+}
+
+html.admin-dark main .text-brand-red {
+  color: #ff5c5c;
+}
+
+html.admin-dark main .text-black,
+html.admin-dark main .text-brand-ink,
+html.admin-dark main [class*="text-black/"] {
+  color: #f3efe4 !important;
+}
+
+html.admin-dark main .bg-white,
+html.admin-dark main .bg-brand-cream,
+html.admin-dark main .bg-brand-paper,
+html.admin-dark main [class*="FFF7D1"],
+html.admin-dark main [class*="fff7d1"] {
+  background-color: #242424 !important;
+  color: #f3efe4;
+}
+
+html.admin-dark main .bg-brand-red {
+  background-color: #c40000 !important;
+  color: #ffffff !important;
+}
+
+html.admin-dark main input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="hidden"]):not([type="range"]):not([type="submit"]):not([type="button"]):not([type="image"]):not([type="color"]),
+html.admin-dark main textarea,
+html.admin-dark main select {
+  background-color: #101010 !important;
+  color: #f3efe4 !important;
+  border-color: #5a5a5a !important;
+  box-shadow: 3px 3px 0 0 #000000;
+  color-scheme: dark;
+  -webkit-text-fill-color: #f3efe4;
+  caret-color: #f3efe4;
+}
+
+html.admin-dark main input:-webkit-autofill,
+html.admin-dark main input:-webkit-autofill:hover,
+html.admin-dark main input:-webkit-autofill:focus,
+html.admin-dark main textarea:-webkit-autofill,
+html.admin-dark main select:-webkit-autofill {
+  -webkit-text-fill-color: #f3efe4;
+  caret-color: #f3efe4;
+  box-shadow: 0 0 0 1000px #101010 inset, 3px 3px 0 0 #000000;
+}
+
 @media print {
+  html.admin-dark body,
+  html.admin-dark main,
+  html.admin-dark main .comic-panel,
+  html.admin-dark main .comic-panel-sm,
+  html.admin-dark main .comic-table-wrap,
+  html.admin-dark main .bg-white,
+  html.admin-dark main [class*="FFF7D1"] {
+    background: #fff !important;
+    background-image: none !important;
+    color: #000 !important;
+  }
+
   body {
     background: #fff !important;
     background-image: none !important;
