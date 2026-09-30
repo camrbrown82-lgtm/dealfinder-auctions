@@ -24,6 +24,9 @@ export default function LandingPage() {
         />
 
         <h1 className="relative mx-auto flex w-full max-w-6xl flex-col items-center">
+          <span className="mb-2 block font-display text-xl uppercase leading-none text-brand-cream pop-shadow sm:text-2xl">
+            {SITE.name} Airdrie
+          </span>
           <span className="relative mx-auto block h-[min(42vh,22rem)] w-full max-w-5xl">
             <Image
               src="/logo.webp"
@@ -33,9 +36,6 @@ export default function LandingPage() {
               sizes="100vw"
               priority
             />
-          </span>
-          <span className="mt-4 block font-display text-3xl uppercase leading-none text-brand-cream pop-shadow sm:text-5xl">
-            {SITE.name} Airdrie
           </span>
         </h1>
 
