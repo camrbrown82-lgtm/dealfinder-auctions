@@ -9,10 +9,10 @@ export const SITE = {
   phoneHref: "tel:+14035123220",
   email: "dealfinderauctions@gmail.com",
   social: {
-    // Paste full profile URLs when ready (https://...)
-    tiktok: "",
-    instagram: "",
-    facebook: "",
+    tiktok: "https://www.tiktok.com/@dealfinder.auctio",
+    instagram: "https://www.instagram.com/DealFinderAuctions/",
+    facebook: "https://www.facebook.com/search/top?q=dealfinder%20auctions%20airdrie",
+    youtube: "https://www.youtube.com/@DealFinderAuctions",
   },
 } as const;
 

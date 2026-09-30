@@ -80,6 +80,7 @@ export function localBusinessJsonLd() {
           url: absoluteUrl("/logo.png"),
         },
         image: absoluteUrl("/logo.png"),
+        sameAs: [SITE.social.instagram, SITE.social.facebook, SITE.social.youtube, SITE.social.tiktok],
       },
       {
         "@type": "LocalBusiness",
@@ -90,6 +91,7 @@ export function localBusinessJsonLd() {
         description: SITE_DESCRIPTION,
         email: SITE.email,
         telephone: SITE.phoneDisplay,
+        sameAs: [SITE.social.instagram, SITE.social.facebook, SITE.social.youtube, SITE.social.tiktok],
         priceRange: "$$",
         parentOrganization: { "@id": `${SITE_ORIGIN}/#organization` },
         address: {
