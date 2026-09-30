@@ -54,6 +54,13 @@ export default function RootLayout({
           }
           strategy="afterInteractive"
         />
+        {/* DigiSol Hub page-view tracker; the key only identifies DealFinder, it isn't a secret. */}
+        <Script
+          src="https://wwwdigisol.com/t.js"
+          data-key="cde4ed98b99a23dd85d2273b"
+          data-exclude="/admin"
+          strategy="afterInteractive"
+        />
         <BidderProvider>
           <div className="flex min-h-screen max-w-full flex-col overflow-x-clip">
             <AppShell>{children}</AppShell>
