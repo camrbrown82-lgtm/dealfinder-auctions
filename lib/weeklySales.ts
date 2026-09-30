@@ -1,6 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { mapAuctionEvent } from "@/lib/mapAuctionEvent";
-import { patchTableRow } from "@/lib/openFloor";
 import { termsTextFor } from "@/lib/tcTemplates";
 import type { AuctionEvent, AuctionLot } from "@/lib/utils";
 
@@ -125,11 +124,6 @@ export async function ensureWeeklySales(supabase: SupabaseClient | null) {
 
       if (match) {
         claimed.add(match.id);
-        const patched = await patchTableRow("auction_events", match.id, saleFields(sale));
-        if (!patched.ok && /archived_at/i.test(patched.body)) {
-          const { archived_at: _a, ...rest } = saleFields(sale);
-          await patchTableRow("auction_events", match.id, rest);
-        }
       } else {
         const inserted = await supabase.from("auction_events").insert(saleFields(sale, true)).select("id").maybeSingle();
         if (inserted.error && /archived_at|tc_template|terms_and|bidder_terms/i.test(inserted.error.message)) {
@@ -141,26 +135,6 @@ export async function ensureWeeklySales(supabase: SupabaseClient | null) {
         }
       }
       events = await listEvents(supabase);
-    }
-
-    events = await listEvents(supabase);
-    const weeklyOpen = events.filter((event) => isWeeklySale(event) && !event.archivedAt);
-    const keep = new Set(weeklyOpen.map((event) => event.id));
-    const staleIds = events.filter((event) => !keep.has(event.id)).map((event) => event.id);
-    const now = Date.now();
-    const current =
-      weeklyOpen.find((event) => {
-        const start = new Date(event.startsAt).getTime();
-        const end = new Date(event.endsAt).getTime();
-        return start <= now && end > now;
-      }) ?? nextWeeklySale(weeklyOpen);
-
-    const extras = events.filter((event) => staleIds.includes(event.id) && !event.archivedAt);
-    if (extras.length) {
-      const archivedAt = new Date().toISOString();
-      for (const extra of extras) {
-        await patchTableRow("auction_events", extra.id, { archived_at: archivedAt });
-      }
     }
 
     lastEnsure = Date.now();

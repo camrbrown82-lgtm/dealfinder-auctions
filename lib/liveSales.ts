@@ -1,6 +1,6 @@
 import { lotClockEnded, lotWasSold } from "@/lib/settlements";
 import { isLotOpen, type AuctionEvent, type AuctionLot } from "@/lib/utils";
-import { FIRST_WEEKLY_SALE, isWeeklySale } from "@/lib/weeklySales";
+import { FIRST_WEEKLY_SALE } from "@/lib/weeklySales";
 
 export type SaleKind = "past" | "live" | "upcoming";
 
@@ -18,25 +18,20 @@ export function saleKind(event: AuctionEvent, now = Date.now()): SaleKind {
   return "live";
 }
 
-function openWeeklyEvents(events: AuctionEvent[]) {
-  const weekly = events.filter((event) => !event.archivedAt && isWeeklySale(event));
-  return (weekly.length ? weekly : events.filter((event) => !event.archivedAt)).sort(
-    (a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime(),
-  );
+function openFloorEvents(events: AuctionEvent[]) {
+  return events
+    .filter((event) => !event.archivedAt)
+    .sort((a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime());
 }
 
-/**
- * Public floor window: current in-progress weekly sale, at most two previous hammers
- * for viewing, and later weekly sales as upcoming.
- */
+/** Every sale the desk has not archived or deleted. Past weeks stay up for viewing. */
 export function pickSaleWindow(events: AuctionEvent[], now = Date.now()): SaleWindowItem[] {
-  const classified = openWeeklyEvents(events).map((event) => ({
+  const classified = openFloorEvents(events).map((event) => ({
     event,
     kind: saleKind(event, now),
   }));
-  const past = classified.filter((item) => item.kind === "past").slice(-2);
-  const liveAll = classified.filter((item) => item.kind === "live");
-  const live = liveAll.slice(-1);
+  const past = classified.filter((item) => item.kind === "past");
+  const live = classified.filter((item) => item.kind === "live");
   const upcoming = classified.filter((item) => item.kind === "upcoming");
   return [...past, ...live, ...upcoming];
 }
@@ -103,6 +98,6 @@ export function lotsForSale(lots: AuctionLot[], sale: SaleWindowItem | undefined
 
 /** The weekly sale whose clock is running right now, or null if none is live. */
 export function currentLiveSale(events: AuctionEvent[], now = Date.now()) {
-  const live = openWeeklyEvents(events).filter((event) => saleKind(event, now) === "live");
+  const live = openFloorEvents(events).filter((event) => saleKind(event, now) === "live");
   return live.at(-1) ?? null;
 }

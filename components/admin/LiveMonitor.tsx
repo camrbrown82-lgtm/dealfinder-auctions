@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { BidAuditModal } from "@/components/admin/BidAuditModal";
 import { LotTimer } from "@/components/LotTimer";
 import { getSupabaseClient, isSupabaseConfigured } from "@/lib/supabaseClient";
@@ -18,20 +18,30 @@ export function LiveMonitor({
   const [bids, setBids] = useState<AdminBid[]>([]);
   const [busy, setBusy] = useState(false);
   const [drafts, setDrafts] = useState<Record<string, { start: string }>>({});
+  const editingStart = useRef(new Set<string>());
+
+  function editStart(lotId: string, start: string) {
+    editingStart.current.add(lotId);
+    setDrafts((current) => ({ ...current, [lotId]: { start } }));
+  }
 
   async function load() {
     const response = await fetch("/api/admin/monitor", { credentials: "include", cache: "no-store" });
     const json = await response.json();
     if (!response.ok) return;
-    setLots(json.lots ?? []);
+    const incoming = (json.lots ?? []) as MonitorLot[];
+    setLots(incoming);
     setSource(json.source ?? "demo");
-    const next: typeof drafts = {};
-    for (const lot of json.lots as MonitorLot[]) {
-      next[lot.id] = {
-        start: String(lot.startingBid),
-      };
-    }
-    setDrafts(next);
+    setDrafts((current) => {
+      const next: typeof drafts = {};
+      for (const lot of incoming) {
+        next[lot.id] =
+          editingStart.current.has(lot.id) && current[lot.id]
+            ? current[lot.id]
+            : { start: String(lot.startingBid) };
+      }
+      return next;
+    });
   }
 
   useEffect(() => {
@@ -100,6 +110,7 @@ export function LiveMonitor({
       onNotice(json.error || "Could not update pricing.");
       return;
     }
+    editingStart.current.delete(lot.id);
     onNotice(`Updated starting bid on ${lot.title}`);
     await load();
   }
@@ -151,12 +162,7 @@ export function LiveMonitor({
                   <input
                     type="number"
                     value={draft.start}
-                    onChange={(e) =>
-                      setDrafts((current) => ({
-                        ...current,
-                        [lot.id]: { ...draft, start: e.target.value },
-                      }))
-                    }
+                    onChange={(e) => editStart(lot.id, e.target.value)}
                     className="mt-1 w-28 border-4 border-black bg-white px-2 py-1"
                   />
                 </label>
@@ -219,12 +225,7 @@ export function LiveMonitor({
                         <input
                           type="number"
                           value={draft.start}
-                          onChange={(e) =>
-                            setDrafts((current) => ({
-                              ...current,
-                              [lot.id]: { ...draft, start: e.target.value },
-                            }))
-                          }
+                          onChange={(e) => editStart(lot.id, e.target.value)}
                           className="mt-1 w-24 border-4 border-black bg-white px-2 py-1"
                         />
                       </label>

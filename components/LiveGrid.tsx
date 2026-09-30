@@ -188,8 +188,8 @@ export function LiveGrid({
           <p className="font-display text-lg">Auctions</p>
           <p className="font-comic text-sm">
             {liveSale
-              ? `Live floor is ${liveLabel} only. Earlier weeks are viewing only (last two hammers). Later weeks are upcoming, not live.`
-              : "No weekly sale is live right now. Past weeks are viewing only; later weeks are upcoming."}
+              ? `Live floor is ${liveLabel} only. Earlier sales stay up for viewing until the desk removes them. Later sales are upcoming, not live.`
+              : "No sale is live right now. Past sales stay up for viewing. Later sales are upcoming."}
           </p>
           <div className="mt-3 flex flex-wrap gap-2">
             {floorSales.map((item) => {

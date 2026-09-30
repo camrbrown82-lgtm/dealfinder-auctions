@@ -185,6 +185,21 @@ export function AuctionDesk() {
     }
   }
 
+  async function setOnFloor(onFloor: boolean) {
+    if (!eventId) return;
+    try {
+      await adminJson("PATCH", {
+        entity: "event",
+        id: eventId,
+        archivedAt: onFloor ? null : new Date().toISOString(),
+      });
+      setNotice(onFloor ? "Put back on the floor." : "Moved off the floor.");
+      await load(eventId, query);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not update that auction.");
+    }
+  }
+
   async function deleteAuction() {
     if (!eventId || !desk.event) return;
     const label = desk.event.auctionNumber || desk.event.name;
@@ -248,6 +263,14 @@ export function AuctionDesk() {
           }}
         >
           {creating ? "Cancel create" : "Create auction"}
+        </button>
+        <button
+          type="button"
+          className="comic-btn-invert"
+          disabled={!eventId || busy}
+          onClick={() => void setOnFloor(Boolean(desk.event?.archivedAt))}
+        >
+          {desk.event?.archivedAt ? "Put back on the floor" : "Move off the floor"}
         </button>
         <button
           type="button"
