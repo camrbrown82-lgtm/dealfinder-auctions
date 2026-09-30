@@ -4,6 +4,7 @@ import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { FormEvent, useEffect, useState, useRef } from "react";
 import { createPortal } from "react-dom";
+import { REGISTER_FAQ_QUESTION, TURBO_SLOTH_OPEN_EVENT, registerFaqReply } from "@/lib/registerFaq";
 
 type Turn = { role: "user" | "assistant"; content: string };
 
@@ -58,6 +59,24 @@ export function TurboSlothChat() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [open]);
+
+  useEffect(() => {
+    function onFaq() {
+      setOpen(true);
+      setMessages((current) => {
+        if (current.some((turn) => turn.role === "user" && turn.content === REGISTER_FAQ_QUESTION)) {
+          return current;
+        }
+        return [
+          ...current,
+          { role: "user", content: REGISTER_FAQ_QUESTION },
+          { role: "assistant", content: registerFaqReply() },
+        ];
+      });
+    }
+    window.addEventListener(TURBO_SLOTH_OPEN_EVENT, onFaq);
+    return () => window.removeEventListener(TURBO_SLOTH_OPEN_EVENT, onFaq);
+  }, []);
 
   async function send(event: FormEvent) {
     event.preventDefault();
@@ -123,7 +142,7 @@ export function TurboSlothChat() {
               />
             ) : null}
             <p
-              className={`min-w-0 flex-1 break-words px-3 py-2 font-comic text-sm leading-snug ${
+              className={`min-w-0 flex-1 whitespace-pre-wrap break-words px-3 py-2 font-comic text-sm leading-snug ${
                 turn.role === "user" ? "border-4 border-black bg-brand-cream" : "border-4 border-black bg-white"
               }`}
             >

@@ -1,7 +1,9 @@
 import Image from "next/image";
 import Link from "next/link";
+import { HomeFaqButton } from "@/components/HomeFaqButton";
 import { Logo } from "@/components/Logo";
 import { SiteFooter } from "@/components/SiteFooter";
+import { registerFaqJsonLd } from "@/lib/registerFaq";
 import { SITE } from "@/lib/site";
 
 export default function LandingPage() {
@@ -23,10 +25,13 @@ export default function LandingPage() {
           }}
         />
 
-        <h1 className="relative mx-auto flex w-full max-w-6xl flex-col items-center">
-          <span className="mb-2 block font-display text-xl uppercase leading-none text-brand-cream pop-shadow sm:text-2xl">
-            {SITE.name} Airdrie
-          </span>
+        <div className="relative mx-auto flex w-full max-w-6xl flex-col items-center">
+          <div className="mb-2 flex flex-wrap items-center justify-center gap-x-3 gap-y-2">
+            <h1 className="block font-display text-xl uppercase leading-none text-brand-cream pop-shadow sm:text-2xl">
+              {SITE.name} Airdrie
+            </h1>
+            <HomeFaqButton />
+          </div>
           <span className="relative mx-auto block h-[min(42vh,22rem)] w-full max-w-5xl">
             <Image
               src="/logo.webp"
@@ -37,7 +42,7 @@ export default function LandingPage() {
               priority
             />
           </span>
-        </h1>
+        </div>
 
         <p className="relative mt-4 max-w-3xl font-display text-3xl uppercase leading-none text-brand-cream pop-shadow sm:text-5xl">
           The floor is live. The hammer is hot.
@@ -52,6 +57,10 @@ export default function LandingPage() {
       </section>
 
       <SiteFooter />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(registerFaqJsonLd()) }}
+      />
     </div>
   );
 }
