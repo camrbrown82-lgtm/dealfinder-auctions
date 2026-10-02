@@ -8,7 +8,7 @@ import { escapeHtml } from "@/lib/emailHtml";
 import { DEFAULT_COMMISSION_RATE, formatCurrency } from "@/lib/utils";
 import { invoiceFees, type InvoiceFeeBreakdown } from "@/lib/invoiceFees";
 import { PICKUP_INSTRUCTIONS } from "@/lib/payments";
-import { adminNotifyEmail } from "@/lib/site";
+import { SITE, adminNotifyEmail } from "@/lib/site";
 import { sendTransactionalEmail } from "@/lib/transactionalEmail";
 
 export const WIN_RESERVATION_DISCLOSURE =
@@ -600,6 +600,42 @@ export async function sendCashBidDecisionEmail(input: {
 <p>${escapeHtml(extra)}</p>
 <p>Go back to the lot and place your bid. Pay in cash when you pick up after the sale.</p>
 <p><a href="${escapeHtml(live)}" style="color:#111111;font-weight:bold;">Open live lots</a></p>`,
+  });
+}
+
+export async function sendShippingQuoteEmail(input: {
+  to: string;
+  name: string;
+  invoice: string;
+  postage: number;
+  weightKg: number;
+  lengthCm: number;
+  widthCm: number;
+  heightCm: number;
+  lots: string[];
+}) {
+  const size = `${input.lengthCm} × ${input.widthCm} × ${input.heightCm} cm, ${input.weightKg} kg`;
+  const lotList = input.lots.filter(Boolean).join(", ") || "your lots";
+  return sendTransactionalEmail({
+    templateId: "shipping_quote",
+    to: input.to,
+    forceDeliver: true,
+    simpleLayout: true,
+    vars: {
+      customer_name: input.name || "there",
+      item_title: input.invoice,
+      winning_bid: formatCurrency(input.postage),
+      payment_link: `${publicAppUrl()}/checkout`,
+      lot_link: `${publicAppUrl()}/checkout`,
+      item_list: `${size}. Lots: ${lotList}`,
+    },
+    htmlOverride: `<p>Hi ${escapeHtml(input.name || "there")},</p>
+<p>Your settlement <strong>${escapeHtml(input.invoice)}</strong> is paid and set for Canada Post shipping from the Airdrie desk.</p>
+<p>Estimated Canada Post postage: <strong>${escapeHtml(formatCurrency(input.postage))}</strong><br/>
+Parcel: ${escapeHtml(size)}<br/>
+Lots: ${escapeHtml(lotList)}</p>
+<p>The $10 handling fee is separate from this postage. We will email tracking when the parcel is on its way.</p>
+<p>${escapeHtml(SITE.addressLine)}, ${escapeHtml(SITE.cityLine)}</p>`,
   });
 }
 

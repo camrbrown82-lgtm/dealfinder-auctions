@@ -83,6 +83,11 @@ export async function PATCH(request: NextRequest) {
     fulfillment: body.fulfillment ?? "unset",
     shippingCost: Number(body.shippingCost ?? 0),
     paymentChannel: body.paymentChannel ?? (body.payment === "cash_pending" ? "cash" : "helcim"),
+    weightKg: body.weightKg,
+    lengthCm: body.lengthCm,
+    widthCm: body.widthCm,
+    heightCm: body.heightCm,
+    trackingNumber: body.trackingNumber,
   };
   const fees = invoiceFees({
     hammer: (row.lots ?? []).reduce((sum, lot) => sum + Number(lot.hammer ?? 0), 0),
