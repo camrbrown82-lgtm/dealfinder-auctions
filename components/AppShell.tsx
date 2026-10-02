@@ -1,6 +1,8 @@
 "use client";
 
+import { useEffect } from "react";
 import { usePathname } from "next/navigation";
+import { ADMIN_DARK_KEY } from "@/components/admin/AdminDarkToggle";
 import { AppHeader } from "@/components/AppHeader";
 import { SiteFooter } from "@/components/SiteFooter";
 import { TurboSlothChat } from "@/components/TurboSlothChat";
@@ -19,6 +21,18 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const landing = pathname === "/";
   const sloth = showTurboSloth(pathname) ? <TurboSlothChat /> : null;
+
+  useEffect(() => {
+    const root = document.documentElement;
+    const onAdmin = pathname.startsWith("/admin");
+    let saved = false;
+    try {
+      saved = localStorage.getItem(ADMIN_DARK_KEY) === "1";
+    } catch {
+      saved = false;
+    }
+    root.classList.toggle("admin-dark", onAdmin && saved);
+  }, [pathname]);
 
   if (landing) {
     return (

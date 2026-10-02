@@ -31,6 +31,11 @@ export type SettlementInvoiceRecord = InvoiceMark & {
   fulfillment?: "unset" | "ship" | "pickup";
   paymentChannel?: "helcim" | "cash";
   winEmailSentAt?: string | null;
+  weightKg?: number;
+  lengthCm?: number;
+  widthCm?: number;
+  heightCm?: number;
+  trackingNumber?: string;
 };
 
 export type SettlementArchiveRecord = {

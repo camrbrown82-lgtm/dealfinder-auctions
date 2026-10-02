@@ -3,6 +3,7 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { AdminDarkToggle } from "@/components/admin/AdminDarkToggle";
 import { AdminNav } from "@/components/admin/AdminNav";
 import { useAdminDesk } from "@/components/admin/AdminDesk";
 
@@ -37,9 +38,12 @@ export function AdminShell({
           <Link href="/admin" className="comic-btn-invert inline-block">
             ← Admin desk
           </Link>
-          <button type="button" className="comic-btn-invert !px-3 !py-1 !text-base" onClick={() => void logout()}>
-            Log out
-          </button>
+          <div className="flex flex-wrap gap-2">
+            <AdminDarkToggle />
+            <button type="button" className="comic-btn-invert !px-3 !py-1 !text-base" onClick={() => void logout()}>
+              Log out
+            </button>
+          </div>
         </div>
         <div className="print:hidden">
           <h1 className="break-words font-display text-3xl text-brand-red sm:text-5xl">{title}</h1>
@@ -60,6 +64,7 @@ export function AdminShell({
           <div className="mt-3">
             <AdminNav />
           </div>
+          <AdminDarkToggle className="mt-3 w-full" />
           <button type="button" className="comic-btn-invert mt-3 w-full" onClick={() => void logout()}>
             Log out
           </button>
@@ -73,6 +78,7 @@ export function AdminShell({
           <div className="comic-panel p-3">
             <p className="font-comic text-xs font-bold uppercase tracking-wide">Signed in</p>
             <p className="font-comic text-sm">Admin</p>
+            <AdminDarkToggle className="mt-3 w-full" />
             <button type="button" className="comic-btn-invert mt-3 w-full" onClick={() => void logout()}>
               Log out
             </button>

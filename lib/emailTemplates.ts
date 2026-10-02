@@ -219,6 +219,22 @@ Live lots: {{lot_link}}
 
 DealFinder Auctions`,
   },
+  {
+    id: "shipping_quote",
+    name: "Canada Post shipping quote",
+    subject: "Shipping quote for {{item_title}}",
+    body: `Hi {{customer_name}},
+
+Your settlement {{item_title}} is paid and set for Canada Post shipping from the Airdrie desk.
+
+Estimated Canada Post postage: {{winning_bid}}
+{{item_list}}
+
+The $10 handling fee is separate from this postage. We will email tracking when the parcel is on its way.
+
+DealFinder Auctions
+529 Gateway Rd NE, Airdrie, AB T4B 0J6`,
+  },
 ];
 
 export function slugifyTemplateId(name: string) {

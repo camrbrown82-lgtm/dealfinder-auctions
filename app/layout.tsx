@@ -46,6 +46,12 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={`${bangers.variable} ${comicNeue.variable}`}>
+        <script
+          dangerouslySetInnerHTML={{
+            __html:
+              'try{if(location.pathname.indexOf("/admin")===0&&localStorage.getItem("df_admin_dark")==="1"){document.documentElement.classList.add("admin-dark")}}catch(e){}',
+          }}
+        />
         <JsonLd />
         <Script
           src={

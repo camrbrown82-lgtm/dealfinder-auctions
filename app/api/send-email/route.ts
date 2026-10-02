@@ -5,6 +5,7 @@ import { getOutbox } from "@/lib/demoEmailStore";
 import { renderTemplate } from "@/lib/emailTemplates";
 import { buildEmailHtml, EMAIL_LOGO_CID, htmlToText, looksLikeHtml } from "@/lib/emailBrand";
 import { loadLiveEmailTemplates, resolveEmailLogo } from "@/lib/emailService";
+import { SITE } from "@/lib/site";
 
 export const dynamic = "force-dynamic";
 
@@ -63,6 +64,7 @@ export async function POST(request: NextRequest) {
     const { error } = await resend.emails.send({
       from,
       to,
+      replyTo: SITE.email,
       subject: rendered.subject,
       text,
       html,
