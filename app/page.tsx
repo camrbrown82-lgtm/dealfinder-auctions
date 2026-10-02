@@ -1,5 +1,7 @@
 import Image from "next/image";
 import Link from "next/link";
+import { HeaderVideo } from "@/components/HeaderVideo";
+import { FEATURED_MEDIA_ALT, FEATURED_MEDIA_URL } from "@/lib/featuredMedia";
 import { HomeFaqButton } from "@/components/HomeFaqButton";
 import { Logo } from "@/components/Logo";
 import { SiteFooter } from "@/components/SiteFooter";
@@ -9,13 +11,30 @@ import { SITE } from "@/lib/site";
 export default function LandingPage() {
   return (
     <div className="relative flex min-h-screen flex-col bg-brand-ink">
-      <Link
-        href="/admin"
-        className="absolute left-3 top-4 z-20 flex items-center justify-center border-4 border-brand-cream bg-black p-1 shadow-comic-sm"
-      >
-        <Logo />
-      </Link>
-      <div id="turbo-sloth-header" className="absolute right-3 top-4 z-20 sm:hidden" />
+      <header className="z-20 flex items-center justify-between bg-brand-ink px-3 py-4">
+        <Link
+          href="/admin"
+          className="flex items-center justify-center border-4 border-brand-cream bg-black p-1 shadow-comic-sm"
+        >
+          <Logo />
+        </Link>
+        <div className="flex items-center gap-2">
+          <HeaderVideo />
+          <Link
+            href="/media"
+            aria-label={FEATURED_MEDIA_ALT}
+            className="flex items-center justify-center overflow-hidden border-4 border-brand-cream bg-black p-1 shadow-comic-sm"
+          >
+            <img
+              src={FEATURED_MEDIA_URL}
+              alt=""
+              referrerPolicy="no-referrer"
+              className="h-10 w-10 object-cover object-[center_70%] sm:h-12 sm:w-12"
+            />
+          </Link>
+          <div id="turbo-sloth-header" className="sm:hidden" />
+        </div>
+      </header>
       <section className="relative flex min-h-[calc(100vh-12rem)] flex-1 flex-col items-center justify-center overflow-hidden px-4 py-12 text-center">
         <div
           className="pointer-events-none absolute inset-0 opacity-30"
