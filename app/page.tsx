@@ -1,7 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
 import { HeaderVideo } from "@/components/HeaderVideo";
-import { FEATURED_MEDIA } from "@/lib/featuredMedia";
 import { HomeFaqButton } from "@/components/HomeFaqButton";
 import { Logo } from "@/components/Logo";
 import { SiteFooter } from "@/components/SiteFooter";
@@ -20,23 +19,12 @@ export default function LandingPage() {
         </Link>
         <div className="flex items-center gap-2">
           <HeaderVideo />
-          {FEATURED_MEDIA.map((item, index) => (
-            <Link
-              key={item.id}
-              href={`/media#${item.id}`}
-              aria-label={item.alt}
-              className={`items-center justify-center overflow-hidden border-4 border-brand-cream bg-black p-1 shadow-comic-sm ${
-                index === 0 ? "flex" : "hidden sm:flex"
-              }`}
-            >
-              <img
-                src={item.image}
-                alt=""
-                referrerPolicy="no-referrer"
-                className="h-10 w-10 object-cover object-center sm:h-12 sm:w-12"
-              />
-            </Link>
-          ))}
+          <Link
+            href="/media"
+            className="inline-flex items-center justify-center border-4 border-brand-cream bg-brand-red px-2 py-1 font-display text-lg leading-none text-white shadow-comic-sm sm:px-3 sm:text-2xl"
+          >
+            Media
+          </Link>
           <div id="turbo-sloth-header" className="sm:hidden" />
         </div>
       </header>

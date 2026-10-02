@@ -1,11 +1,11 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { FEATURED_MEDIA, facebookVideoEmbed } from "@/lib/featuredMedia";
+import { FEATURED_MEDIA } from "@/lib/featuredMedia";
 import { pageMetadata } from "@/lib/seo";
 
 export const metadata: Metadata = pageMetadata({
   title: "Media",
-  description: "Photos and clips from the DealFinder Auctions floor in Airdrie.",
+  description: "Photos from the DealFinder Auctions floor in Airdrie.",
   path: "/media",
 });
 
@@ -25,25 +25,6 @@ export default function MediaPage() {
               referrerPolicy="no-referrer"
               className="mx-auto max-h-[70vh] w-full object-contain"
             />
-            {item.embed === "reel" && item.href ? (
-              <iframe
-                title={item.alt}
-                src={facebookVideoEmbed(item.href)}
-                className="mt-2 aspect-[9/16] w-full"
-                allow="autoplay; clipboard-write; encrypted-media; picture-in-picture; web-share"
-                allowFullScreen
-              />
-            ) : null}
-            {item.href ? (
-              <a
-                href={item.href}
-                target="_blank"
-                rel="noreferrer"
-                className="mt-2 block bg-brand-cream px-3 py-2 text-center font-display text-xl text-brand-ink"
-              >
-                Open on Facebook
-              </a>
-            ) : null}
           </figure>
         ))}
       </div>
