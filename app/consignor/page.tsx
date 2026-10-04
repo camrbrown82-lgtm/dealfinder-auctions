@@ -235,7 +235,7 @@ export default function ConsignorPage() {
       if (multipleItems) {
         setBatchItems((current) => [item, ...current.filter((row) => row.id !== item.id)]);
         setNotice(
-          "Saved to this consignment list. Add another item, or click I’m done adding items — email my list.",
+          "Saved. Add another consignment, then click Done consignments to email the whole list once.",
         );
       } else if (batchItems.length) {
         setBatchItems([]);
@@ -294,7 +294,7 @@ export default function ConsignorPage() {
       }
       setBatchItems([]);
       setMultipleItems(false);
-      setNotice("Combined confirmation emailed for every item in this list.");
+      setNotice("Done. One confirmation email is on the way for every consignment in this list.");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not send confirmation email");
     } finally {
@@ -338,6 +338,54 @@ export default function ConsignorPage() {
       </div>
 
       <form onSubmit={onSubmit} className="space-y-6">
+        <div className="comic-panel space-y-3 p-4">
+          <label className="flex items-start gap-3 font-comic text-sm font-bold">
+            <input
+              type="checkbox"
+              className="mt-1 h-5 w-5 shrink-0"
+              checked={multipleItems}
+              onChange={(e) => setMultipleItems(e.target.checked)}
+            />
+            <span>
+              Do you have multiple consignments?
+              <span className="block font-normal">
+                Check this before you submit the first item. Each submit is saved, and one confirmation
+                email goes out when you click Done consignments.
+              </span>
+            </span>
+          </label>
+          {(multipleItems || batchItems.length > 0) && (
+            <div className="space-y-3 border-4 border-black bg-brand-cream p-3">
+              <p className="font-display text-xl">Consignments in this email</p>
+              {batchItems.length === 0 ? (
+                <p className="font-comic text-sm">
+                  None yet. Submit each item, then click Done consignments.
+                </p>
+              ) : (
+                <ul className="flex flex-wrap gap-2">
+                  {batchItems.map((row) => (
+                    <li
+                      key={row.id}
+                      className="border-4 border-black bg-white px-3 py-1 font-comic text-sm font-bold"
+                    >
+                      {row.title}
+                      <span className="block font-normal">Buy now {formatCurrency(row.buyNowPrice)}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <button
+                type="button"
+                className="comic-btn w-full sm:w-auto"
+                disabled={emailingBatch || batchItems.length === 0}
+                onClick={() => void emailMyList()}
+              >
+                {emailingBatch ? "Sending…" : "Done consignments"}
+              </button>
+            </div>
+          )}
+        </div>
+
         <div className="grid items-stretch gap-6 lg:grid-cols-2">
         <div className="comic-panel flex h-full flex-col space-y-4 p-6">
           <ConsignorNameField value={consignorName} />
@@ -447,44 +495,6 @@ export default function ConsignorPage() {
             </span>
           </label>
 
-          <label className="flex items-start gap-2 font-comic text-sm font-bold">
-            <input
-              type="checkbox"
-              className="mt-1 h-4 w-4"
-              checked={multipleItems}
-              onChange={(e) => setMultipleItems(e.target.checked)}
-            />
-            <span>
-              I have multiple items to consign
-              <span className="block font-normal">
-                Leave this checked while you add more items. We hold the confirmation email and send
-                one list when you finish.
-              </span>
-            </span>
-          </label>
-
-          {batchItems.length > 0 && (
-            <div className="border-4 border-black bg-white p-3 font-comic text-sm">
-              <p className="font-display text-lg">This consignment list</p>
-              <ul className="mt-2 list-disc space-y-1 pl-5">
-                {batchItems.map((row) => (
-                  <li key={row.id}>
-                    {row.title} — starting bid {formatCurrency(row.startingBid)} · buy now{" "}
-                    {formatCurrency(row.buyNowPrice)}
-                  </li>
-                ))}
-              </ul>
-              <button
-                type="button"
-                className="comic-btn mt-3 w-full"
-                disabled={emailingBatch}
-                onClick={() => void emailMyList()}
-              >
-                {emailingBatch ? "Emailing…" : "I’m done adding items — email my list"}
-              </button>
-            </div>
-          )}
-
           {aiRun && !generating ? (
             <AiFeedback
               run={aiRun}
@@ -506,7 +516,11 @@ export default function ConsignorPage() {
               {generating ? "Cataloging + studio photo…" : "Auto-Generate Details"}
             </button>
             <button type="submit" className="comic-btn w-full sm:flex-1" disabled={submitting}>
-              {submitting ? "Submitting…" : "Submit for approval"}
+              {submitting
+                ? "Submitting…"
+                : multipleItems
+                  ? "Add consignment"
+                  : "Submit for approval"}
             </button>
           </div>
         </div>

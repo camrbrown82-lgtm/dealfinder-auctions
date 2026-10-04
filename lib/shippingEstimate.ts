@@ -1,6 +1,6 @@
 import { money } from "@/lib/invoiceFees";
 
-/** Rough Canada Post-style estimate until the desk enters actual carrier postage. */
+/** Rough checkout estimate until the shipping desk weighs the box and enters Canada Post postage. */
 export function estimateCarrierShipping(input: {
   province?: string | null;
   postalCode?: string | null;

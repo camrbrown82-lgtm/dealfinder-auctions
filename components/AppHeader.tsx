@@ -45,6 +45,9 @@ export function AppHeader() {
         <Link href="/buy-now" className={navClass}>
           Buy Now
         </Link>
+        <Link href="/media" className={navClass}>
+          Media
+        </Link>
         <ConsignLink className={navClass}>Consign</ConsignLink>
         {user ? (
           <>

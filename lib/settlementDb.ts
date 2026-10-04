@@ -53,6 +53,11 @@ export function mapInvoiceRow(row: Record<string, unknown>): SettlementInvoiceRe
     notes: String(row.notes ?? ""),
     fulfillment:
       row.fulfillment === "ship" || row.fulfillment === "pickup" ? row.fulfillment : "unset",
+    weightKg: Number(row.parcel_weight_kg ?? 0) || undefined,
+    lengthCm: Number(row.parcel_length_cm ?? 0) || undefined,
+    widthCm: Number(row.parcel_width_cm ?? 0) || undefined,
+    heightCm: Number(row.parcel_height_cm ?? 0) || undefined,
+    trackingNumber: String(row.tracking_number ?? "") || undefined,
   };
 }
 
@@ -117,6 +122,19 @@ export async function upsertSettlementInvoice(
     handling_fee: row.handling ?? 0,
     shipping_cost: row.shippingCost ?? 0,
     payment_channel: row.paymentChannel ?? (row.payment === "cash_pending" ? "cash" : "helcim"),
+    ...(row.weightKg != null ||
+    row.lengthCm != null ||
+    row.widthCm != null ||
+    row.heightCm != null ||
+    row.trackingNumber != null
+      ? {
+          parcel_weight_kg: row.weightKg ?? 0,
+          parcel_length_cm: row.lengthCm ?? 0,
+          parcel_width_cm: row.widthCm ?? 0,
+          parcel_height_cm: row.heightCm ?? 0,
+          tracking_number: row.trackingNumber ?? "",
+        }
+      : {}),
   };
   const { error } = await supabase.from("settlement_invoices").upsert(payload, {
     onConflict: "invoice_number",
@@ -141,6 +159,17 @@ export async function upsertSettlementInvoice(
     const retry = await supabase.from("settlement_invoices").upsert(rest, {
       onConflict: "invoice_number",
     });
+    if (retry.error) throw retry.error;
+    return;
+  }
+  if (error && /parcel_weight_kg|parcel_length_cm|parcel_width_cm|parcel_height_cm|tracking_number/i.test(error.message)) {
+    const rest: Record<string, unknown> = { ...payload };
+    delete rest.parcel_weight_kg;
+    delete rest.parcel_length_cm;
+    delete rest.parcel_width_cm;
+    delete rest.parcel_height_cm;
+    delete rest.tracking_number;
+    const retry = await supabase.from("settlement_invoices").upsert(rest, { onConflict: "invoice_number" });
     if (retry.error) throw retry.error;
     return;
   }
