@@ -35,9 +35,16 @@ export function AdminShell({
     return (
       <div className="min-w-0 space-y-6">
         <div className="flex flex-wrap items-center justify-between gap-3 print:hidden">
-          <Link href="/admin" className="comic-btn-invert inline-block">
-            ← Admin desk
-          </Link>
+          <div className="flex flex-wrap gap-2">
+            <Link href="/admin" className="comic-btn-invert inline-block">
+              ← Admin desk
+            </Link>
+            {pathname === "/admin/notifications" ? null : (
+              <Link href="/admin/notifications" className="comic-btn-invert inline-block">
+                Notifications
+              </Link>
+            )}
+          </div>
           <div className="flex flex-wrap gap-2">
             <AdminDarkToggle />
             <button type="button" className="comic-btn-invert !px-3 !py-1 !text-base" onClick={() => void logout()}>

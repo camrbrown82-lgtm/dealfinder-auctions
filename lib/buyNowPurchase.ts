@@ -1,3 +1,4 @@
+import { notifyConsignorSold } from "@/lib/consignorSold";
 import { getAdminDemo } from "@/lib/demoAdminStore";
 import { getDemoLot, registerDemoLot } from "@/lib/demoAuctionStore";
 import { invoiceFees } from "@/lib/invoiceFees";
@@ -101,6 +102,10 @@ export async function claimBuyNowLot(lotId: string, session: BidderProfile) {
       buyNowStatus: "sold",
     };
     await writeBuyNowInvoice(claimed, session);
+    // A Buy Now sale is a sale: the consignor gets the same sold notice.
+    await notifyConsignorSold(claimed).catch((error) => {
+      console.error("notifyConsignorSold", error instanceof Error ? error.message : error);
+    });
     return claimed;
   }
 

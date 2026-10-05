@@ -83,9 +83,11 @@ export function HelcimPayModal({
   onCompleteRef.current = onComplete;
   const onDeclinedRef = useRef(onDeclined);
   onDeclinedRef.current = onDeclined;
+  const bypassedRef = useRef(false);
 
   useEffect(() => {
     if (!open) {
+      bypassedRef.current = false;
       setSession(null);
       setMessage(null);
       setBusy(false);
@@ -116,6 +118,11 @@ export function HelcimPayModal({
           currency: String(json.currency || "CAD"),
           demo: Boolean(json.demo),
         });
+        // Card bypass: approve on the spot instead of asking for a card.
+        if (json.demo && !bypassedRef.current) {
+          bypassedRef.current = true;
+          await confirmToken(String(json.checkoutToken), undefined, true);
+        }
       } catch (error) {
         if (!cancelled) setMessage(error instanceof Error ? error.message : "Could not start Helcim.");
       } finally {
@@ -127,8 +134,7 @@ export function HelcimPayModal({
     };
   }, [open, purpose, lotId, eventId]);
 
-  async function confirm(eventMessage?: unknown, demo = false) {
-    if (!session) return;
+  async function confirmToken(checkoutToken: string, eventMessage?: unknown, demo = false) {
     setBusy(true);
     setMessage(null);
     try {
@@ -137,7 +143,7 @@ export function HelcimPayModal({
         credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          checkoutToken: session.checkoutToken,
+          checkoutToken,
           eventMessage,
           demo,
         }),
@@ -155,6 +161,11 @@ export function HelcimPayModal({
     } finally {
       setBusy(false);
     }
+  }
+
+  async function confirm(eventMessage?: unknown, demo = false) {
+    if (!session) return;
+    await confirmToken(session.checkoutToken, eventMessage, demo);
   }
 
   async function openHelcim() {
@@ -252,8 +263,8 @@ export function HelcimPayModal({
           ) : null}
           {session?.demo ? (
             <p className="border-4 border-black bg-white px-3 py-2 font-comic text-sm">
-              Payment test mode is on (`PAYMENT_TEST_MODE`). This simulates Helcim without charging a
-              card. Confirm to fire the same webhook path live checkout uses.
+              Card bypass is on. This amount is being approved without charging a card, and the sale
+              moves on exactly as it would after a live Helcim payment.
             </p>
           ) : null}
           {message ? (
@@ -269,7 +280,11 @@ export function HelcimPayModal({
                 disabled={busy || !session}
                 onClick={() => void confirm(undefined, true)}
               >
-                {busy ? "Working…" : purpose === "bid_preauth" ? "Test-approve Sunday $50 hold" : "Test-pay hammer"}
+                {busy
+                  ? "Pushing it through…"
+                  : purpose === "bid_preauth"
+                    ? "Approve the $50 hold"
+                    : "Push this payment through"}
               </button>
             ) : (
               <button
@@ -291,7 +306,7 @@ export function HelcimPayModal({
                   onDeclinedRef.current?.();
                 }}
               >
-                Test-deny Sunday hold
+                Deny the hold instead
               </button>
             ) : null}
             <button

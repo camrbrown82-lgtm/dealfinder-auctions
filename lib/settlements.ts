@@ -28,11 +28,18 @@ export function settlementLotFrom(
   };
 }
 
+/**
+ * An invoice carries one delivery choice, so it only takes a side when every
+ * lot on it agrees. A single shipped lot used to drag the whole consolidated
+ * invoice into shipping and bill the buyer handling and postage on lots they
+ * meant to collect.
+ */
 export function invoiceFulfillment(
   lots: Array<{ fulfillment?: string | null }>,
 ): FulfillmentChoice {
-  if (lots.some((lot) => lot.fulfillment === "ship")) return "ship";
-  if (lots.length > 0 && lots.every((lot) => lot.fulfillment === "pickup")) return "pickup";
+  if (lots.length === 0) return "unset";
+  if (lots.every((lot) => lot.fulfillment === "ship")) return "ship";
+  if (lots.every((lot) => lot.fulfillment === "pickup")) return "pickup";
   return "unset";
 }
 

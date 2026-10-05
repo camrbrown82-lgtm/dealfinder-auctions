@@ -7,7 +7,7 @@ import { getSupabaseAdmin, isSupabaseConfigured } from "@/lib/supabaseClient";
 import { persistPublicImageUrls } from "@/lib/consignmentStorage";
 import { getBidderSession } from "@/lib/bidderAuth";
 import type { SaleChannel } from "@/lib/saleChannel";
-import { sendConsignmentReceivedEmail } from "@/lib/notify";
+import { sendAdminConsignmentAlertEmail, sendConsignmentReceivedEmail } from "@/lib/notify";
 import {
   DEFAULT_COMMISSION_RATE,
   MOCK_CONSIGNMENTS,
@@ -348,6 +348,12 @@ export async function POST(request: NextRequest) {
 }
 
 async function maybeSendReceivedEmail(email: string, name: string, item: ConsignorItem) {
+  void sendAdminConsignmentAlertEmail({
+    consignor: name,
+    title: item.title,
+    startingBid: item.startingBid,
+    buyNowPrice: item.buyNowPrice,
+  });
   const result = await sendConsignmentReceivedEmail({
     to: email,
     name,

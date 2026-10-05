@@ -51,7 +51,9 @@ export async function sendTransactionalEmail(input: {
       input.templateId === "cash_bid_rejected" ||
       input.templateId === "password_reset" ||
       input.templateId === "sunday_bid_reminder" ||
-      input.templateId === "hold_failed",
+      input.templateId === "hold_failed" ||
+      input.templateId === "admin_consignment_alert" ||
+      input.templateId === "admin_cash_alert",
   );
   const html = simple ? buildSimpleEmailHtml(body, logoSrc) : buildEmailHtml(body, logoSrc);
   const text = looksLikeHtml(body) ? htmlToText(html) : body.replaceAll("{{logo}}", "");

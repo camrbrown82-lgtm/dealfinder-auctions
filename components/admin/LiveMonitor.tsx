@@ -1,11 +1,34 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { BidAuditModal } from "@/components/admin/BidAuditModal";
+import { LotImage } from "@/components/LotImage";
 import { LotTimer } from "@/components/LotTimer";
 import { getSupabaseClient, isSupabaseConfigured } from "@/lib/supabaseClient";
 import { formatCurrency } from "@/lib/utils";
 import type { AdminBid, MonitorLot } from "@/lib/adminTypes";
+
+/** A bid on the floor, or the opening price when nobody has bid yet. */
+function bidState(lot: MonitorLot) {
+  if (lot.highBidder) {
+    return lot.bidCount > 1 ? `Live bid · ${lot.bidCount} bids` : "Live bid";
+  }
+  return "Opening price · no bids yet";
+}
+
+function LotThumb({ lot, size }: { lot: MonitorLot; size: string }) {
+  return (
+    <div className={`${size} shrink-0 overflow-hidden border-4 border-black bg-white`}>
+      {lot.image ? (
+        <LotImage src={lot.image} alt={lot.title} className="h-full w-full object-cover" />
+      ) : (
+        <span className="flex h-full w-full items-center justify-center font-display text-xs">
+          NO PHOTO
+        </span>
+      )}
+    </div>
+  );
+}
 
 export function LiveMonitor({
   onNotice,
@@ -18,7 +41,20 @@ export function LiveMonitor({
   const [bids, setBids] = useState<AdminBid[]>([]);
   const [busy, setBusy] = useState(false);
   const [drafts, setDrafts] = useState<Record<string, { start: string }>>({});
+  const [search, setSearch] = useState("");
   const editingStart = useRef(new Set<string>());
+
+  const visible = useMemo(() => {
+    const needle = search.trim().toLowerCase();
+    if (!needle) return lots;
+    return lots.filter((lot) =>
+      [lot.title, lot.lotNumber, lot.auctionNumber, lot.highBidder, lot.consignor]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase()
+        .includes(needle),
+    );
+  }, [lots, search]);
 
   function editStart(lotId: string, start: string) {
     editingStart.current.add(lotId);
@@ -123,21 +159,44 @@ export function LiveMonitor({
         <p className="font-comic text-sm">
           This week&apos;s live lots, then upcoming lots that already have a bid. Ended weeks stay off this desk.
         </p>
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Find a lot: title, lot #, auction #, paddle"
+            className="min-w-0 flex-1 border-4 border-black bg-white px-3 py-2 font-comic sm:min-w-[260px]"
+          />
+          {search ? (
+            <button type="button" className="comic-btn-invert !text-sm" onClick={() => setSearch("")}>
+              Clear
+            </button>
+          ) : null}
+          <p className="font-comic text-sm font-bold">
+            {visible.length} of {lots.length} lots
+          </p>
+        </div>
       </div>
       <div className="space-y-3 md:hidden">
-        {lots.length === 0 ? (
-          <p className="comic-panel p-4 font-comic">No lots are live in this week&apos;s auction.</p>
+        {visible.length === 0 ? (
+          <p className="comic-panel p-4 font-comic">
+            {lots.length === 0
+              ? "No lots are live in this week's auction."
+              : "No lots match that search."}
+          </p>
         ) : null}
-        {lots.map((lot) => {
+        {visible.map((lot) => {
           const draft = drafts[lot.id] ?? { start: String(lot.startingBid) };
           return (
             <article key={lot.id} className="comic-panel space-y-3 p-3">
-              <div>
-                <p className="break-words font-display text-xl leading-none">{lot.title}</p>
-                <p className="mt-1 font-comic text-sm">
-                  {lot.auctionNumber} · {lot.lotNumber} · {(lot.status ?? "").toUpperCase()}
-                  {lot.salePhase === "upcoming" ? " · UPCOMING" : ""}
-                </p>
+              <div className="flex gap-3">
+                <LotThumb lot={lot} size="h-20 w-20" />
+                <div className="min-w-0">
+                  <p className="break-words font-display text-xl leading-none">{lot.title}</p>
+                  <p className="mt-1 font-comic text-sm">
+                    {lot.auctionNumber} · {lot.lotNumber} · {(lot.status ?? "").toUpperCase()}
+                    {lot.salePhase === "upcoming" ? " · UPCOMING" : ""}
+                  </p>
+                </div>
               </div>
               <dl className="grid grid-cols-2 gap-2 font-comic text-sm">
                 <div>
@@ -145,9 +204,9 @@ export function LiveMonitor({
                   <dd>{lot.highBidder || "—"}</dd>
                 </div>
                 <div>
-                  <dt className="text-xs font-bold uppercase">Current</dt>
+                  <dt className="text-xs font-bold uppercase">Current bid</dt>
                   <dd className="font-bold">{formatCurrency(lot.currentBid)}</dd>
-                  <dd>{lot.bidCount} attempts</dd>
+                  <dd>{bidState(lot)}</dd>
                 </div>
                 <div className="col-span-2">
                   <dt className="text-xs font-bold uppercase">Clock</dt>
@@ -185,37 +244,44 @@ export function LiveMonitor({
             <tr>
               <th className="border-b-4 border-black p-3">Lot</th>
               <th className="border-b-4 border-black p-3">High paddle</th>
-              <th className="border-b-4 border-black p-3">Max / current</th>
+              <th className="border-b-4 border-black p-3">Current bid</th>
               <th className="border-b-4 border-black p-3">Clock</th>
               <th className="border-b-4 border-black p-3">Modify start</th>
               <th className="border-b-4 border-black p-3">Audit</th>
             </tr>
           </thead>
           <tbody>
-            {lots.length === 0 ? (
+            {visible.length === 0 ? (
               <tr className="bg-[#FFF7D1]">
                 <td className="p-4 font-comic" colSpan={6}>
-                  No lots are live in this week&apos;s auction.
+                  {lots.length === 0
+                    ? "No lots are live in this week's auction."
+                    : "No lots match that search."}
                 </td>
               </tr>
             ) : null}
-            {lots.map((lot) => {
+            {visible.map((lot) => {
               const draft = drafts[lot.id] ?? {
                 start: String(lot.startingBid),
               };
               return (
                 <tr key={lot.id} className="bg-[#FFF7D1]">
                   <td className="border-b-2 border-black p-3">
-                    <p className="font-display text-lg">{lot.title}</p>
-                    <p>
-                      {lot.auctionNumber} · {lot.lotNumber} · {(lot.status ?? "").toUpperCase()}
-                      {lot.salePhase === "upcoming" ? " · UPCOMING" : ""}
-                    </p>
+                    <div className="flex items-start gap-3">
+                      <LotThumb lot={lot} size="h-16 w-16" />
+                      <div className="min-w-0">
+                        <p className="font-display text-lg">{lot.title}</p>
+                        <p>
+                          {lot.auctionNumber} · {lot.lotNumber} · {(lot.status ?? "").toUpperCase()}
+                          {lot.salePhase === "upcoming" ? " · UPCOMING" : ""}
+                        </p>
+                      </div>
+                    </div>
                   </td>
                   <td className="border-b-2 border-black p-3">{lot.highBidder || "—"}</td>
                   <td className="border-b-2 border-black p-3 font-bold">
                     {formatCurrency(lot.currentBid)}
-                    <span className="block font-normal">{lot.bidCount} attempts</span>
+                    <span className="block font-normal">{bidState(lot)}</span>
                   </td>
                   <td className="border-b-2 border-black p-3">
                     <LotTimer endsAt={lot.endsAt} />

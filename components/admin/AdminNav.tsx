@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 type NavItem = { href: string; label: string };
 
@@ -46,8 +46,43 @@ function groupOpen(pathname: string, group: NavGroup) {
   return group.items.some((item) => linkActive(pathname, item.href));
 }
 
+function useWaitingCount() {
+  const [count, setCount] = useState({ total: 0, consignments: 0 });
+  useEffect(() => {
+    let live = true;
+    async function load() {
+      try {
+        const response = await fetch("/api/admin/notifications", {
+          credentials: "include",
+          cache: "no-store",
+        });
+        if (!response.ok) return;
+        const json = (await response.json()) as {
+          counts?: { total?: number; consignments?: number };
+        };
+        if (live) {
+          setCount({
+            total: Number(json.counts?.total ?? 0),
+            consignments: Number(json.counts?.consignments ?? 0),
+          });
+        }
+      } catch {
+        /* leave the badge as it is */
+      }
+    }
+    void load();
+    const poll = window.setInterval(() => void load(), 30000);
+    return () => {
+      live = false;
+      window.clearInterval(poll);
+    };
+  }, []);
+  return count;
+}
+
 export function AdminNav() {
   const pathname = usePathname();
+  const waiting = useWaitingCount();
   const initiallyOpen = useMemo(
     () => Object.fromEntries(GROUPS.map((group) => [group.id, groupOpen(pathname, group)])),
     [pathname],
@@ -64,6 +99,21 @@ export function AdminNav() {
       >
         Live Monitor
       </Link>
+      <Link
+        href="/admin/notifications"
+        className={`flex items-center justify-between gap-2 border-4 border-black px-3 py-2 ${
+          linkActive(pathname, "/admin/notifications") ? "bg-brand-red text-white" : "bg-white"
+        }`}
+      >
+        <span className="font-bold">Notifications</span>
+        <span
+          className={`min-w-6 border-2 border-black px-2 text-center font-bold ${
+            waiting.total > 0 ? "bg-brand-red text-white" : "bg-[#FFF7D1] text-black"
+          }`}
+        >
+          {waiting.total}
+        </span>
+      </Link>
       {GROUPS.map((group) => {
         const expanded = open[group.id] ?? groupOpen(pathname, group);
         return (
@@ -79,18 +129,30 @@ export function AdminNav() {
             </button>
             {expanded ? (
               <ul className="border-t-4 border-black">
-                {group.items.map((item) => (
-                  <li key={item.href}>
-                    <Link
-                      href={item.href}
-                      className={`block px-3 py-2 ${
-                        linkActive(pathname, item.href) ? "bg-brand-red text-white" : "bg-[#FFF7D1]"
-                      }`}
-                    >
-                      {item.label}
-                    </Link>
-                  </li>
-                ))}
+                {group.items.map((item) => {
+                  // A submission waiting for approval shows up on the desk you work from.
+                  const badge =
+                    item.href === "/admin/consignments" && waiting.consignments > 0
+                      ? waiting.consignments
+                      : 0;
+                  return (
+                    <li key={item.href}>
+                      <Link
+                        href={item.href}
+                        className={`flex items-center justify-between gap-2 px-3 py-2 ${
+                          linkActive(pathname, item.href) ? "bg-brand-red text-white" : "bg-[#FFF7D1]"
+                        }`}
+                      >
+                        <span>{item.label}</span>
+                        {badge > 0 ? (
+                          <span className="min-w-6 border-2 border-black bg-brand-red px-2 text-center font-bold text-white">
+                            {badge}
+                          </span>
+                        ) : null}
+                      </Link>
+                    </li>
+                  );
+                })}
               </ul>
             ) : null}
           </div>

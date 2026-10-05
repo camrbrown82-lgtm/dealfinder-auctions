@@ -21,19 +21,23 @@ function channelLabel(row: SettlementInvoiceRecord) {
   return row.eventId ? "Auction" : "Buy Now";
 }
 
-function deliveryLabel(row: SettlementInvoiceRecord) {
-  if (row.fulfillment === "ship" || row.lots.some((lot) => lot.fulfillment === "ship")) return "Ship";
-  if (row.fulfillment === "pickup" || row.lots.some((lot) => lot.fulfillment === "pickup")) return "Pickup";
-  return "Not chosen";
-}
-
 function wantsShip(row: SettlementInvoiceRecord) {
   return row.fulfillment === "ship" || row.lots.some((lot) => lot.fulfillment === "ship");
 }
 
 function wantsPickup(row: SettlementInvoiceRecord) {
-  if (row.fulfillment === "pickup" || row.lots.some((lot) => lot.fulfillment === "pickup")) return true;
-  return !wantsShip(row);
+  return row.fulfillment === "pickup" || row.lots.some((lot) => lot.fulfillment === "pickup");
+}
+
+/** Nobody has said ship or pick up yet, so the win is still waiting on the buyer. */
+function undecided(row: SettlementInvoiceRecord) {
+  return !wantsShip(row) && !wantsPickup(row);
+}
+
+function deliveryLabel(row: SettlementInvoiceRecord) {
+  if (wantsShip(row)) return "Ship";
+  if (wantsPickup(row)) return "Pickup";
+  return "Not chosen";
 }
 
 function LotFace({ lot }: { lot: SettlementLot }) {
@@ -82,13 +86,25 @@ export function ShippingDesk() {
     void load().catch(() => setError("Could not load settlements."));
   }, []);
 
+  // One desk per invoice: shipping, pickup, or still waiting on the buyer's choice.
   const visible = useMemo(() => {
     return rows.filter((row) => {
       if (view === "ship") return wantsShip(row) && row.shipping !== "shipped";
       if (view === "pickup") return wantsPickup(row) && row.shipping !== "picked_up";
-      return row.shipping !== "shipped" && row.shipping !== "picked_up";
+      return undecided(row) && row.shipping !== "shipped" && row.shipping !== "picked_up";
     });
   }, [rows, view]);
+
+  const counts = useMemo(
+    () => ({
+      open: rows.filter(
+        (row) => undecided(row) && row.shipping !== "shipped" && row.shipping !== "picked_up",
+      ).length,
+      pickup: rows.filter((row) => wantsPickup(row) && row.shipping !== "picked_up").length,
+      ship: rows.filter((row) => wantsShip(row) && row.shipping !== "shipped").length,
+    }),
+    [rows],
+  );
 
   const selected = rows.find((row) => row.invoice === selectedId) ?? null;
 
@@ -227,7 +243,7 @@ ${tracking.trim() ? `<p>Tracking ${escapePrint(tracking.trim())}</p>` : ""}
             className={view === id ? "comic-btn" : "comic-btn-invert"}
             onClick={() => setView(id)}
           >
-            {label}
+            {label} ({counts[id]})
           </button>
         ))}
       </div>
@@ -253,10 +269,10 @@ ${tracking.trim() ? `<p>Tracking ${escapePrint(tracking.trim())}</p>` : ""}
               <tr>
                 <td className="p-3" colSpan={7}>
                   {view === "ship"
-                    ? "No shipments are waiting. A win lands here when the buyer chooses shipping."
+                    ? "No shipments are waiting. A win lands here the moment the buyer chooses shipping."
                     : view === "pickup"
-                      ? "No pickups are waiting. Wins without a shipping choice stay on this desk until the buyer asks to ship."
-                      : "No open wins. They show up here when an auction closes."}
+                      ? "No pickups are waiting. A win lands here the moment the buyer chooses local pickup."
+                      : "No open wins. A closed win waits here until the buyer picks shipping or pickup, then it moves to that desk."}
                 </td>
               </tr>
             ) : (
@@ -308,7 +324,7 @@ ${tracking.trim() ? `<p>Tracking ${escapePrint(tracking.trim())}</p>` : ""}
               </div>
             </div>
 
-            {selected.fulfillment === "ship" ? (
+            {wantsShip(selected) ? (
               <div className="comic-panel space-y-3 p-4">
                 <p className="font-display text-2xl">Parcel</p>
                 <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -401,9 +417,11 @@ ${tracking.trim() ? `<p>Tracking ${escapePrint(tracking.trim())}</p>` : ""}
             ) : (
               <div className="comic-panel space-y-3 p-4">
                 <p className="font-comic text-sm">
-                  This settlement is {deliveryLabel(selected).toLowerCase()}. Shipping quotes are for paid customers who chose shipment.
+                  {wantsPickup(selected)
+                    ? "This settlement is local pickup. Collect it at the desk, then mark it picked up."
+                    : "This buyer has not chosen shipping or pickup yet. Nothing to quote until they do."}
                 </p>
-                {selected.fulfillment === "pickup" ? (
+                {wantsPickup(selected) ? (
                   <button
                     type="button"
                     className="comic-btn"
@@ -421,7 +439,7 @@ ${tracking.trim() ? `<p>Tracking ${escapePrint(tracking.trim())}</p>` : ""}
             )}
           </div>
 
-          {selected.fulfillment === "ship" ? (
+          {wantsShip(selected) ? (
             <article className="shipping-label border-4 border-black bg-white p-4 text-black shadow-comic print:border-black print:shadow-none">
               <p className="font-comic text-xs font-bold uppercase tracking-wide">From</p>
               <p className="font-display text-2xl leading-none">{SITE.name}</p>

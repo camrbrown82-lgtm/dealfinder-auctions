@@ -51,9 +51,12 @@ export async function forfeitBidderBids(bidderId: string, bidderName?: string | 
     rows = (fallback.data as LotRow[] | null) ?? [];
   }
   if (bidderName) {
+    // Only lots with no bidder id on them. Two paddles can share a display name,
+    // and a name match would strip the other one's win.
     const { data: byName } = await supabase
       .from("lots")
       .select("id, title, starting_bid, current_bid, high_bidder, high_bidder_id, paid_at")
+      .is("high_bidder_id", null)
       .eq("high_bidder", bidderName)
       .is("paid_at", null);
     const seen = new Set(rows.map((row) => String(row.id)));

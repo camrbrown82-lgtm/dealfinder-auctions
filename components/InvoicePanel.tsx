@@ -9,7 +9,7 @@ import {
   fulfillmentLabel,
 } from "@/lib/payments";
 import { formatCurrency } from "@/lib/utils";
-import type { WinInvoice } from "@/lib/winTypes";
+import { isCashOnPickup, type WinInvoice } from "@/lib/winTypes";
 import type { FulfillmentChoice } from "@/lib/payments";
 
 export function InvoicePanel({
@@ -51,17 +51,19 @@ export function InvoicePanel({
     win.fulfillment === "ship" ? "Shipping" : win.fulfillment === "pickup" ? "Local Pickup" : "Choose fulfillment";
   const cashPending = win.payment === "cash_pending";
   const paidCash = win.paid && win.paymentChannel === "cash";
+  const cashOnPickup = isCashOnPickup(win);
 
   return (
     <article id={`invoice-${win.lotId}`} className={`comic-panel scroll-mt-24 p-4 ${emphasized ? "ring-4 ring-brand-red" : ""}`}>
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
           <p className="font-display text-sm tracking-[0.2em] text-[#FF0000]">
-            {win.winning ? "YOU WON THIS LOT" : "INVOICE"}
+            {win.winning ? "YOU BOUGHT THIS LOT" : "INVOICE"}
           </p>
           <h2 className="font-display text-3xl leading-none">{win.title || "Untitled lot"}</h2>
           <p className="mt-1 font-comic text-sm font-bold">
-            {win.lotNumber ? `Lot ${win.lotNumber}` : "Lot number pending"} · Sold for {formatCurrency(win.currentBid)}
+            {win.lotNumber ? `Lot ${win.lotNumber}` : "Lot number pending"} · Bought for{" "}
+            {formatCurrency(win.currentBid)}
           </p>
         </div>
         <p className="font-display text-3xl text-[#FF0000]">
@@ -77,7 +79,15 @@ export function InvoicePanel({
       ) : null}
       <p className="mt-2 font-comic text-sm">
         Invoice <strong>{win.invoice}</strong> · {method}
-        {win.paid ? (paidCash ? " · PAID IN CASH" : " · PAID") : cashPending ? " · CASH PENDING APPROVAL" : ""}
+        {win.paid
+          ? paidCash
+            ? " · PAID IN CASH"
+            : " · PAID"
+          : cashPending
+            ? " · CASH PENDING APPROVAL"
+            : cashOnPickup
+              ? " · SETTLED · PAY ON PICKUP"
+              : ""}
       </p>
       <p className="mt-1 font-comic text-sm">
         {win.buyerName}
@@ -222,7 +232,7 @@ export function InvoicePanel({
           {PICKUP_INSTRUCTIONS}
         </p>
       ) : null}
-      {win.winning && !win.paid && !cashPending && onPay ? (
+      {win.winning && !win.paid && !cashPending && !cashOnPickup && onPay ? (
         <button
           type="button"
           className="comic-btn mt-3 w-full"
@@ -236,7 +246,7 @@ export function InvoicePanel({
             : "Pay opens after Sunday invoice"}
         </button>
       ) : null}
-      {win.winning && !win.paid && !cashPending && onCash ? (
+      {win.winning && !win.paid && !cashPending && !cashOnPickup && onCash ? (
         <button
           type="button"
           className="comic-btn-invert mt-2 w-full"
@@ -256,6 +266,12 @@ export function InvoicePanel({
         <p className="mt-3 border-4 border-black bg-white px-3 py-2 font-comic text-sm">
           Cash payment is pending desk approval. You will get a receipt email once it is marked paid
           in cash.
+        </p>
+      ) : null}
+      {cashOnPickup ? (
+        <p className="mt-3 border-4 border-black bg-white px-3 py-2 font-comic text-sm">
+          Settled — nothing to pay online. Bring {formatCurrency(win.total)} in cash when you collect
+          this lot. Your receipt email goes out once the desk takes the cash.
         </p>
       ) : null}
       {win.paid ? (

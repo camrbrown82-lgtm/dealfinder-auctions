@@ -44,7 +44,11 @@ export async function GET() {
   let lots: AuctionLot[] = [];
   const supabase = getSupabaseAdmin();
   if (isSupabaseConfigured && supabase) {
-    const { data } = await supabase.from("lots").select("*").in("status", ["live", "paused"]).order("created_at", { ascending: false });
+    const { data } = await supabase
+      .from("lots")
+      .select("*")
+      .not("status", "in", "(removed,draft)")
+      .order("created_at", { ascending: false });
     lots = ((data ?? []) as LotRow[]).map(mapLot).filter(isListedBuyNow);
   } else {
     lots = getAdminDemo().inventory.filter(isListedBuyNow);

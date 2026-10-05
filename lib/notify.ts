@@ -93,12 +93,41 @@ export function invoiceEmailHtml(input: {
 ${wonLotsTable(lines)}`
     : `<p>You won <strong>${escapeHtml(input.title)}</strong>. Invoice <strong>${escapeHtml(input.invoice)}</strong>.</p>`;
   const receiptHref = input.receiptHref || input.payHref;
+  const checkout = checkoutHref();
+  const plural = lines.length > 1 ? "these lots" : "this lot";
   return `<p>POW, ${escapeHtml(input.name)}!</p>
 ${intro}
 <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="border-collapse:collapse;margin:16px 0;">${table}</table>
 <p>Total due: <strong>${escapeHtml(formatCurrency(input.fees.total))}</strong></p>
+${deliveryBlock(input.fulfillment, input.address, plural)}
+<p><a href="${escapeHtml(checkout)}" style="display:inline-block;background:#FF0000;color:#FFFFFF;padding:12px 18px;border:4px solid #000;font-weight:bold;text-decoration:none;">${escapeHtml(payButtonLabel(input.fulfillment))}</a></p>
+<p style="font-size:14px;">Ways to pay: card through Helcim on the checkout page, or ask for cash on pickup there and settle at the desk when you collect.</p>
 <p><a href="${escapeHtml(receiptHref)}" style="display:inline-block;background:#111111;color:#FFFFFF;padding:12px 18px;border:4px solid #000;font-weight:bold;text-decoration:none;">Download receipt</a></p>
 <p style="font-size:13px;">${escapeHtml(SITE.addressLine)}, ${escapeHtml(SITE.cityLine)}</p>`;
+}
+
+function payButtonLabel(fulfillment: string) {
+  return fulfillment === "ship" || fulfillment === "pickup"
+    ? "Pay this invoice"
+    : "Choose pickup or shipping, then pay";
+}
+
+/** Nothing is assumed. The buyer is told what each choice costs and where to make it. */
+function deliveryBlock(fulfillment: string, address: string, plural: string) {
+  const frame = (body: string) =>
+    `<div style="border:4px solid #000;background:#FFF7D1;padding:12px;margin:16px 0;">${body}</div>`;
+  if (fulfillment === "ship") {
+    return frame(`<p style="margin:0;font-weight:bold;">Set for shipping.</p>
+<p style="margin:8px 0 0;">Going to ${escapeHtml(address || "the address on your bidder card")}. The total above includes the $10 handling fee and carrier postage. Want to collect ${escapeHtml(plural)} instead? Switch to local pickup on the checkout page and the shipping lines come off.</p>`);
+  }
+  if (fulfillment === "pickup") {
+    return frame(`<p style="margin:0;font-weight:bold;">Set for local pickup — no shipping charges.</p>
+<p style="margin:8px 0 0;">${escapeHtml(PICKUP_INSTRUCTIONS)}</p>`);
+  }
+  return frame(`<p style="margin:0;font-weight:bold;">Tell us how you want ${escapeHtml(plural)} — nothing is booked yet.</p>
+<p style="margin:8px 0 0;"><strong>Local pickup:</strong> free. The total above is what you owe. ${escapeHtml(PICKUP_INSTRUCTIONS)}</p>
+<p style="margin:8px 0 0;"><strong>Shipping:</strong> adds a $10 handling fee plus actual carrier postage, with GST on the new subtotal. Your updated total shows before you pay.</p>
+<p style="margin:8px 0 0;">Pick one on the checkout page, then pay by card or ask for cash on pickup.</p>`);
 }
 
 export function welcomeEmailHtml(input: { name: string; liveHref: string; verifyHref?: string }) {
@@ -552,6 +581,106 @@ export async function sendCashReceiptEmail(input: {
       payment_link: checkoutHref(),
       lot_link: checkoutHref(),
     },
+  });
+}
+
+/** Tells a consignor their item sold and what it earns them after the split. */
+export async function sendConsignorSoldEmail(input: {
+  to: string;
+  name: string;
+  title: string;
+  lotNumber?: string | null;
+  hammer: number;
+  commissionLabel: string;
+  houseCut: number;
+  payout: number;
+  charity?: boolean;
+}) {
+  const statement = `${publicAppUrl()}/consignor`;
+  const lot = input.lotNumber?.trim() ? `Lot ${input.lotNumber.trim()} · ` : "";
+  const rows: Array<[string, string]> = [
+    ["Sold for", formatCurrency(input.hammer)],
+    [`House commission (${input.commissionLabel})`, `− ${formatCurrency(input.houseCut)}`],
+    [input.charity ? "To the charity" : "Your payout", formatCurrency(input.payout)],
+  ];
+  const table = rows
+    .map(
+      ([label, value], index) =>
+        `<tr style="background:${index % 2 ? "#FFF7D1" : "#FFFFFF"};"><td style="padding:8px;border:2px solid #000;">${escapeHtml(label)}</td><td style="padding:8px;border:2px solid #000;text-align:right;font-weight:bold;">${escapeHtml(value)}</td></tr>`,
+    )
+    .join("");
+  return sendTransactionalEmail({
+    templateId: "consignor_payout",
+    to: input.to,
+    forceDeliver: true,
+    simpleLayout: true,
+    subjectOverride: `Sold — ${input.title}`,
+    vars: {
+      customer_name: input.name,
+      item_title: input.title,
+      winning_bid: formatCurrency(input.hammer),
+      payment_link: statement,
+      lot_link: statement,
+    },
+    htmlOverride: `<p>Good news, ${escapeHtml(input.name)} — your item sold.</p>
+<p>${escapeHtml(lot)}<strong>${escapeHtml(input.title)}</strong></p>
+<table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="border-collapse:collapse;margin:16px 0;">${table}</table>
+<p style="font-size:14px;">${escapeHtml(consignmentCommissionNote())}</p>
+<p style="font-size:14px;">Payouts go out once the buyer has settled their invoice. The buyer's premium, GST, and any shipping the buyer pays are charges on their side and are not taken out of your share.</p>
+<p><a href="${escapeHtml(statement)}" style="display:inline-block;background:#111111;color:#FFFFFF;padding:12px 18px;border:4px solid #000;font-weight:bold;text-decoration:none;">See your consignments</a></p>`,
+  });
+}
+
+export async function sendAdminConsignmentAlertEmail(input: {
+  consignor: string;
+  title: string;
+  startingBid: number;
+  buyNowPrice: number;
+}) {
+  const desk = `${publicAppUrl()}/admin/notifications`;
+  const buyNow = input.buyNowPrice > 0 ? formatCurrency(input.buyNowPrice) : "not listed";
+  return sendTransactionalEmail({
+    templateId: "admin_consignment_alert",
+    to: adminNotifyEmail(),
+    forceDeliver: true,
+    simpleLayout: true,
+    vars: {
+      customer_name: input.consignor || "A consignor",
+      item_title: input.title,
+      starting_bid: formatCurrency(input.startingBid),
+      winning_bid: buyNow,
+      payment_link: desk,
+      lot_link: desk,
+    },
+    htmlOverride: `<p><strong>${escapeHtml(input.consignor || "A consignor")}</strong> submitted <strong>${escapeHtml(input.title)}</strong> for approval.</p>
+<p>Opening bid: ${escapeHtml(formatCurrency(input.startingBid))}<br/>Buy Now: ${escapeHtml(buyNow)}</p>
+<p><a href="${escapeHtml(desk)}" style="color:#111111;font-weight:bold;">Open desk notifications</a></p>`,
+  });
+}
+
+export async function sendAdminCashApprovalEmail(input: {
+  name: string;
+  email: string;
+  invoice: string;
+  total: number;
+}) {
+  const desk = `${publicAppUrl()}/admin/notifications`;
+  const who = input.name || input.email || "A buyer";
+  return sendTransactionalEmail({
+    templateId: "admin_cash_alert",
+    to: adminNotifyEmail(),
+    forceDeliver: true,
+    simpleLayout: true,
+    vars: {
+      customer_name: who,
+      item_title: input.invoice,
+      winning_bid: formatCurrency(input.total),
+      payment_link: desk,
+      lot_link: desk,
+    },
+    htmlOverride: `<p><strong>${escapeHtml(who)}</strong> (${escapeHtml(input.email)}) asked to pay <strong>cash on pickup</strong>.</p>
+<p>Invoice: <strong>${escapeHtml(input.invoice)}</strong><br/>Amount due: ${escapeHtml(formatCurrency(input.total))}</p>
+<p><a href="${escapeHtml(desk)}" style="color:#111111;font-weight:bold;">Open desk notifications</a></p>`,
   });
 }
 

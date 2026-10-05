@@ -14,6 +14,7 @@ import {
   recordHelcimTransaction,
 } from "@/lib/helcim";
 import { bidderSettlesInCash } from "@/lib/auctionRegistrations";
+import { isHelcimBypass } from "@/lib/paymentMode";
 import { getSupabaseAdmin, isSupabaseConfigured } from "@/lib/supabaseClient";
 
 export type SundayBidder = {
@@ -118,13 +119,38 @@ export async function runSundayPreauthSweep(ipAddress: string) {
     let stillOpen = true;
     if (isSupabaseConfigured && supabase) {
       const byId = await supabase.from("lots").select("ends_at, status").eq("high_bidder_id", userId);
+      // Name matching is limited to lots carrying no bidder id, so a shared
+      // display name cannot put a hold on the wrong card.
       const byName = bidder.name
-        ? await supabase.from("lots").select("ends_at, status").eq("high_bidder", bidder.name)
+        ? await supabase
+            .from("lots")
+            .select("ends_at, status")
+            .is("high_bidder_id", null)
+            .eq("high_bidder", bidder.name)
         : { data: [] as Array<{ ends_at?: string | null; status?: string | null }>, error: null };
       if (!byId.error) {
         const rows = [...(byId.data ?? []), ...(byName.data ?? [])];
         stillOpen = rows.some((lot) => lotStillOpen(lot.ends_at, lot.status));
       }
+    }
+
+    // Card bypass: approve the $50 instead of warning or forfeiting.
+    if (isHelcimBypass()) {
+      await persistBidderPreauth(userId, {
+        status: "held",
+        transactionId: `bypass-${Date.now()}`,
+        amount: preauthAmount(),
+      });
+      await recordHelcimTransaction({
+        bidderId: userId,
+        purpose: "sunday_preauth",
+        transactionId: `bypass-${Date.now()}`,
+        amount: preauthAmount(),
+        currency: helcimCurrency(),
+        status: "BYPASS",
+      });
+      held += 1;
+      continue;
     }
 
     if (payment.helcimCardToken && isHelcimConfigured()) {

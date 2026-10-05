@@ -79,13 +79,15 @@ export function AuctionRoom({ lot }: { lot: AuctionLot }) {
     lot.biddingOpen !== false &&
     isLotOpen({ endsAt, status });
   openRef.current = open;
+  // The bidder id decides who won. A display name is shared easily, and matching
+  // on it told the wrong paddle it had bought the lot.
   const youWon =
     soldClosed &&
     Boolean(
       user &&
-        (highBidderId === user.id ||
-          highBidder === user.fullName ||
-          highBidder === user.email),
+        (highBidderId
+          ? highBidderId === user.id
+          : Boolean(user.fullName) && highBidder === user.fullName),
     );
   useEffect(() => {
     if (!user || !lot.eventId) {
@@ -649,7 +651,9 @@ export function AuctionRoom({ lot }: { lot: AuctionLot }) {
         busy={payBusy}
         error={payError}
         pendingCash={authStatus === "pending"}
-        testMode={/^(1|true|yes|on)$/i.test(process.env.NEXT_PUBLIC_PAYMENT_TEST_MODE || "")}
+        testMode={/^(1|true|yes|on)$/i.test(
+          process.env.NEXT_PUBLIC_PAYMENT_TEST_MODE || process.env.NEXT_PUBLIC_HELCIM_BYPASS || "",
+        )}
         onClose={() => setPayOpen(false)}
         onHelcim={() => void authorizeHelcim()}
         onCash={() => void authorizeCash()}

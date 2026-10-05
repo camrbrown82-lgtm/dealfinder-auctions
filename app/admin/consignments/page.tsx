@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useAdminDesk } from "@/components/admin/AdminDesk";
 import { AdminShell } from "@/components/admin/AdminShell";
 import { AuctionCalendarModal } from "@/components/admin/AuctionCalendar";
+import { ConsignorLedger } from "@/components/admin/ConsignorLedger";
 import { ReviewQueue, type ReviewDraft } from "@/components/admin/ReviewQueue";
 import { openAuctionEvents } from "@/lib/auctionCalendar";
 import type { Consignment } from "@/lib/utils";
@@ -11,6 +12,7 @@ import type { Consignment } from "@/lib/utils";
 export default function AdminConsignmentsPage() {
   const { data, setNotice, mutate } = useAdminDesk();
   const [drafts, setDrafts] = useState<Record<string, ReviewDraft>>({});
+  const [ledgerKey, setLedgerKey] = useState(0);
   const [picking, setPicking] = useState<{ item: Consignment; draft: ReviewDraft } | null>(null);
   const pickingRef = useRef(picking);
   pickingRef.current = picking;
@@ -54,6 +56,7 @@ export default function AdminConsignmentsPage() {
     });
     if (!json) return;
     setPicking(null);
+    setLedgerKey((key) => key + 1);
     const lotNo = json.lot?.lotNumber ? `Lot ${json.lot.lotNumber}` : draft.title;
     const onBuyNow = Number(draft.buyNowPrice) > 0 || item.saleChannel === "buy_now";
     setNotice(
@@ -61,6 +64,26 @@ export default function AdminConsignmentsPage() {
         ? `Approved ${lotNo} into ${json.auctionLabel ?? "the sale"} and Buy Now.`
         : `Approved ${lotNo} into ${json.auctionLabel ?? "the selected sale"}.`,
     );
+  }
+
+  async function setStatus(item: Consignment, draft: ReviewDraft, status: "held" | "rejected") {
+    const json = await mutate("/api/admin", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        entity: "consignment",
+        id: item.id,
+        status,
+        title: draft.title,
+        description: draft.description,
+        startingBid: Number(draft.startingBid) || 0,
+        buyNowPrice: Number(draft.buyNowPrice) || 0,
+        consignorName: draft.consignorName,
+      }),
+    });
+    if (!json) return;
+    setLedgerKey((key) => key + 1);
+    setNotice(status === "held" ? `On hold: ${draft.title}` : `Rejected: ${draft.title}`);
   }
 
   async function approveIntoSale(eventId: string) {
@@ -74,47 +97,31 @@ export default function AdminConsignmentsPage() {
   return (
     <AdminShell
       title="Consignment pipeline"
-      subtitle="Review consignor submissions, then approve them into a sale. Warehouse house stock is cataloged separately."
+      subtitle="Approve new submissions at the top, then track every consignment by person below."
     >
-      <ReviewQueue
-        queue={data.queue}
-        drafts={drafts}
-        consignors={data.consignors ?? []}
-        onDraft={(id, draft) => setDrafts((current) => ({ ...current, [id]: draft }))}
-        onApprove={(item, draft) => void approveItem(item, draft)}
-        onHold={(item, draft) =>
-          void mutate("/api/admin", {
-            method: "PATCH",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              entity: "consignment",
-              id: item.id,
-              status: "held",
-              title: draft.title,
-              description: draft.description,
-              startingBid: Number(draft.startingBid) || 0,
-              buyNowPrice: Number(draft.buyNowPrice) || 0,
-              consignorName: draft.consignorName,
-            }),
-          })
-        }
-        onReject={(item, draft) =>
-          void mutate("/api/admin", {
-            method: "PATCH",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              entity: "consignment",
-              id: item.id,
-              status: "rejected",
-              title: draft.title,
-              description: draft.description,
-              startingBid: Number(draft.startingBid) || 0,
-              buyNowPrice: Number(draft.buyNowPrice) || 0,
-              consignorName: draft.consignorName,
-            }),
-          }).then(() => setNotice(`Rejected: ${draft.title}`))
-        }
-      />
+      <div className="space-y-8">
+        <section className="space-y-4">
+          <div className="comic-panel space-y-2 p-4">
+            <h2 className="font-display text-2xl text-brand-red sm:text-4xl">
+              Waiting for approval ({data.queue.length})
+            </h2>
+            <p className="font-comic text-sm">
+              Each submission emails the desk and raises the Notifications badge. Approve one into a
+              sale and it moves straight into that consignor&apos;s table below.
+            </p>
+          </div>
+          <ReviewQueue
+            queue={data.queue}
+            drafts={drafts}
+            consignors={data.consignors ?? []}
+            onDraft={(id, draft) => setDrafts((current) => ({ ...current, [id]: draft }))}
+            onApprove={(item, draft) => void approveItem(item, draft)}
+            onHold={(item, draft) => void setStatus(item, draft, "held")}
+            onReject={(item, draft) => void setStatus(item, draft, "rejected")}
+          />
+        </section>
+        <ConsignorLedger refreshKey={ledgerKey} />
+      </div>
       <AuctionCalendarModal
         open={Boolean(picking)}
         lotLabel={picking ? picking.draft.title : "this lot"}

@@ -7,6 +7,7 @@ import { AuctionCalendarModal } from "@/components/admin/AuctionCalendar";
 import { AuctionInventories } from "@/components/admin/AuctionInventories";
 import { HouseCatalogSettings } from "@/components/admin/HouseCatalogSettings";
 import { RelistLotsModal } from "@/components/admin/RelistLotsModal";
+import { ResetTestData } from "@/components/admin/ResetTestData";
 import { DEFAULT_HOUSE_STARTING_BID } from "@/lib/houseDesk";
 import { listingGradeOf } from "@/lib/listingGrade";
 import { openAuctionEvents } from "@/lib/auctionCalendar";
@@ -157,6 +158,7 @@ export default function AdminInventoriesPage() {
       title="Auction inventories"
       subtitle="File lots into a weekly sale. When a sale ends, unsold lots come back to the warehouse so you can relist them. Create auctions and terms on Auction desk."
     >
+      <ResetTestData />
       <HouseCatalogSettings
         settings={
           data.houseSettings ?? {

@@ -1,3 +1,4 @@
+import { notifyConsignorSold } from "@/lib/consignorSold";
 import { queueWonLot, type SaleSource } from "@/lib/pendingInvoices";
 import type { AuctionLot } from "@/lib/utils";
 
@@ -21,5 +22,9 @@ export async function recordSoldLotSettlement(
   const saleSource = lot.saleSource === "buy_now" ? "buy_now" : source;
   await queueWonLot(lot, buyer, saleSource, {
     notify: options?.notify ?? true,
+  });
+  // The seller hears about it too, not just the buyer.
+  await notifyConsignorSold(lot).catch((error) => {
+    console.error("notifyConsignorSold", error instanceof Error ? error.message : error);
   });
 }

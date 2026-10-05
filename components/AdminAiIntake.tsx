@@ -12,7 +12,6 @@ import { AiFeedback } from "@/components/AiFeedback";
 import { ItemDetailsField, ListingConditionField } from "@/components/ListingGradeFields";
 import { type ListingGrade } from "@/lib/listingGrade";
 import { listingImages, parsePastedImageUrls } from "@/lib/imageUrls";
-import { TurboSlothGenerateButton, ListingGalleryThumbs } from "@/components/TurboSlothGenerateButton";
 import type { SlothPhotoPhase } from "@/lib/turboSloth";
 
 export function AdminAiIntake({
@@ -36,6 +35,7 @@ export function AdminAiIntake({
   const [startingBid, setStartingBid] = useState(String(defaultStartingBid));
   const [startingTouched, setStartingTouched] = useState(false);
   const [reservePrice, setReservePrice] = useState("");
+  const buyNowTouched = useRef(false);
   const [marketValue, setMarketValue] = useState("");
   const [lotNumber, setLotNumber] = useState(suggestedLotNumber);
   const [error, setError] = useState<string | null>(null);
@@ -98,7 +98,12 @@ export function AdminAiIntake({
       setResolvedImageUrls(catalog.imageUrls);
       setTitle(String(catalog.title ?? ""));
       setDescription(String(catalog.description ?? ""));
-      if (catalog.estimated_market_value) setMarketValue(String(catalog.estimated_market_value));
+      if (catalog.estimated_market_value) {
+        setMarketValue(String(catalog.estimated_market_value));
+        // Every lot should carry a Buy Now price so it lands in the store too.
+        // A price typed by hand is never overwritten.
+        if (!buyNowTouched.current) setReservePrice(String(catalog.estimated_market_value));
+      }
       setCompsNote(catalog.comps_note ? String(catalog.comps_note) : null);
       let run = catalog.ai ?? null;
       try {
@@ -134,16 +139,15 @@ export function AdminAiIntake({
     }
   }
 
-  async function submit(postLive: boolean, saleChannel: "auction" | "buy_now" = "auction") {
+  async function submit(postLive: boolean) {
     setError(null);
     setSubmitting(true);
     try {
       if (!title.trim() || !description.trim()) {
         throw new Error("Generate or fill title and description before posting.");
       }
-      if (saleChannel === "buy_now" && !(Number(reservePrice) > 0)) {
-        throw new Error("Enter a Buy Now price to list this item there.");
-      }
+      // A Buy Now price is all it takes: the lot goes into the sale and the store.
+      const saleChannel = reserve > 0 ? "buy_now" : "auction";
       const warehouse =
         resolvedImageUrls.length > 0
           ? resolvedImageUrls
@@ -162,6 +166,7 @@ export function AdminAiIntake({
           startingBid: start > 0 ? start : defaultStartingBid,
           buyNowPrice: reserve,
           reservePrice: reserve,
+          estimatedMarketValue: Number(marketValue) || 0,
           commissionRate: 0,
           imageUrls,
           lotNumber,
@@ -186,13 +191,14 @@ export function AdminAiIntake({
       setAiRun(null);
       setItemDetails("");
       setListingGrade("Used");
+      buyNowTouched.current = false;
+      const sale = json.auctionLabel ?? "the next weekly sale";
+      const store = reserve > 0 ? " and into Buy Now" : "";
       await onPosted(
-        saleChannel === "buy_now"
-          ? `Saved ${lotNumber} to Buy Now.`
-          : postLive
-            ? `Posted ${lotNumber} live onto ${json.auctionLabel ?? "the next weekly sale"}.`
-            : `Saved ${lotNumber} onto ${json.auctionLabel ?? "the next weekly sale"}.`,
-        saleChannel === "buy_now" ? undefined : json.lot,
+        postLive
+          ? `Posted ${lotNumber} live onto ${sale}${store}.`
+          : `Saved ${lotNumber} onto ${sale}${store}.`,
+        json.lot,
       );
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not save lot.");
@@ -241,14 +247,8 @@ export function AdminAiIntake({
           <p className="border-4 border-black bg-[#FFF7D1] p-3 font-comic text-sm">
             Owner: {HOUSE_CONSIGNOR}. Hammer proceeds stay with the house.
           </p>
-          <PhotoDropzone
-            files={files}
-            onChange={setFiles}
-            maxFiles={4}
-            onCameraFinished={(photos) => {
-              if (photos.length > 0) void autoGenerate(photos);
-            }}
-          />
+          {/* Photos wait here. Cataloging only starts on Auto-Generate Details. */}
+          <PhotoDropzone files={files} onChange={setFiles} maxFiles={4} />
           <ImageUrlPaste value={imageUrlText} onChange={setImageUrlText} />
           <div className="flex-1">
             <ItemDetailsField details={itemDetails} onDetails={setItemDetails} />
@@ -310,11 +310,16 @@ export function AdminAiIntake({
                 type="number"
                 min={0}
                 value={reservePrice}
-                onChange={(e) => setReservePrice(e.target.value)}
+                onChange={(e) => {
+                  buyNowTouched.current = true;
+                  setReservePrice(e.target.value);
+                }}
                 className="mt-2 w-full border-4 border-black bg-white px-3 py-2 font-normal"
               />
               <span className="mt-1 block font-normal">
-                Optional. A price lists the lot on Buy Now and keeps it in the live auction.
+                {reserve > 0
+                  ? "This price lists the lot on Buy Now in every auction it sits in, and it stays in the live sale."
+                  : "Empty means this lot never reaches Buy Now. Fill it to list it in the store as well."}
               </span>
             </label>
           </div>
@@ -367,15 +372,7 @@ export function AdminAiIntake({
               disabled={submitting}
               onClick={() => void submit(true)}
             >
-              Post live to site
-            </button>
-            <button
-              type="button"
-              className="comic-btn w-full sm:flex-1"
-              disabled={submitting}
-              onClick={() => void submit(true, "buy_now")}
-            >
-              Post live and Buy Now
+              {reserve > 0 ? "Post live + Buy Now" : "Post live to site"}
             </button>
           </div>
           {error && <p className="font-display text-xl text-[#FF0000]">{error}</p>}

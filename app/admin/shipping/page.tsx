@@ -7,7 +7,7 @@ export default function AdminShippingPage() {
   return (
     <AdminShell
       title="Pickup & shipping"
-      subtitle="Closed wins land here with the photo, lot number, and title. Pickup stays on the pickup desk. Shipping moves over when the buyer chooses it."
+      subtitle="Open wins are closed lots with no delivery choice yet. The moment a buyer picks shipping or pickup, the invoice moves to that desk and leaves the others."
     >
       <ShippingDesk />
     </AdminShell>

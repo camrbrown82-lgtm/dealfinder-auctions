@@ -9,7 +9,7 @@ import { mapLot, type LotRow } from "@/lib/mappers";
 import { getSupabaseAdmin, isSupabaseConfigured } from "@/lib/supabaseClient";
 import { ensureWeeklySales } from "@/lib/weeklySales";
 import type { MonitorLot } from "@/lib/adminTypes";
-import { isLotOpen, type AuctionEvent, type AuctionLot, type LotStatus } from "@/lib/utils";
+import { isLotOpen, lotImages, type AuctionEvent, type AuctionLot, type LotStatus } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
@@ -74,6 +74,8 @@ function monitorRows(
     .map((row) => ({
       id: row.lot.id,
       title: row.lot.title,
+      image: lotImages(row.lot)[0] ?? null,
+      consignor: row.lot.consignor ?? null,
       lotNumber: row.lot.lotNumber,
       auctionNumber: row.auctionNumber,
       eventId: row.lot.eventId ?? null,

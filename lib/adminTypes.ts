@@ -12,6 +12,8 @@ export type AdminBid = {
 export type MonitorLot = {
   id: string;
   title: string;
+  image?: string | null;
+  consignor?: string | null;
   lotNumber?: string | null;
   auctionNumber?: string | null;
   eventId?: string | null;

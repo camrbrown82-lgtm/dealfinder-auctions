@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { bidderSettlesInCash } from "@/lib/auctionRegistrations";
 import { getBidderSession } from "@/lib/bidderAuth";
 import { getDemoLot } from "@/lib/demoAuctionStore";
 import { mapLot, type LotRow } from "@/lib/mappers";
@@ -13,6 +14,8 @@ import {
 import { profileAddress } from "@/lib/profileTypes";
 import { getSupabaseAdmin, isSupabaseConfigured } from "@/lib/supabaseClient";
 import { MOCK_LOTS, type AuctionLot } from "@/lib/utils";
+import { settleEndedAuctions } from "@/lib/closeEndedLots";
+import { demoOwnsLot, fetchOwnedLotRows, sessionOwnsLot } from "@/lib/winOwnership";
 import { saveWinFulfillment } from "@/lib/winFulfillment";
 import { invoicePaymentForLot, requestCashPayment } from "@/lib/cashPayment";
 import { estimateCarrierShipping } from "@/lib/shippingEstimate";
@@ -24,6 +27,15 @@ import { isLotPaid, lotPaidRecord } from "@/lib/helcim";
 
 export const dynamic = "force-dynamic";
 
+/** A settled purchase: bought outright, already paid, or the hammer fell with
+ *  this paddle on top. A lot still taking bids is not a purchase, and a lot the
+ *  paddle bid on and lost is never one. */
+function isBoughtLot(lot: AuctionLot) {
+  if (lot.paidAt || isLotPaid(lot)) return true;
+  if (lot.saleSource === "buy_now" || lot.buyNowStatus === "sold") return true;
+  return lot.status === "ended";
+}
+
 export async function GET() {
   const session = await getBidderSession();
   if (!session) return NextResponse.json({ wins: [] as WinInvoice[] });
@@ -33,21 +45,10 @@ export async function GET() {
   if (isSupabaseConfigured) {
     const supabase = getSupabaseAdmin();
     if (supabase) {
-      const { data: byId } = await supabase
-        .from("lots")
-        .select("*")
-        .eq("high_bidder_id", session.id);
-      let rows = (byId ?? []) as LotRow[];
-      if (session.fullName) {
-        const { data: byName } = await supabase
-          .from("lots")
-          .select("*")
-          .eq("high_bidder", session.fullName);
-        const seen = new Set(rows.map((row) => row.id));
-        for (const row of (byName ?? []) as LotRow[]) {
-          if (!seen.has(row.id)) rows.push(row);
-        }
-      }
+      // Flip lots whose clock has run out so a fresh win is payable right away
+      // instead of waiting on the close cron.
+      await settleEndedAuctions().catch(() => undefined);
+      const rows = await fetchOwnedLotRows(supabase, session);
       lots = rows.map(mapLot);
     }
   } else {
@@ -67,15 +68,14 @@ export async function GET() {
         helcimPurchaseTransactionId:
           demo.helcimPurchaseTransactionId ?? lot.helcimPurchaseTransactionId ?? null,
       };
-    }).filter(
-      (lot) => lot.highBidderId === session.id || lot.highBidder === session.fullName,
-    );
+    }).filter((lot) => demoOwnsLot(session, lot));
   }
 
   const address = profileAddress(session);
   const handlingClaimed = new Set<string>();
   const wins: WinInvoice[] = [];
   for (const lot of lots) {
+    if (!isBoughtLot(lot)) continue;
     const invoice = invoiceNumber(lot.id, session.id);
     const memory = lotPaidRecord(lot.id);
     const paid = isLotPaid(lot) || Boolean(memory);
@@ -148,11 +148,13 @@ export async function PATCH(request: NextRequest) {
   }
 
   let lot: AuctionLot | null = null;
+  let owns = false;
   if (isSupabaseConfigured) {
     const supabase = getSupabaseAdmin();
     if (supabase) {
       const { data } = await supabase.from("lots").select("*").eq("id", body.lotId).maybeSingle();
       lot = data ? mapLot(data as LotRow) : null;
+      if (lot) owns = await sessionOwnsLot(supabase, session, lot);
     }
   } else {
     const demo = getDemoLot(body.lotId);
@@ -166,13 +168,10 @@ export async function PATCH(request: NextRequest) {
         fulfillment: demo?.fulfillment,
       };
     }
+    if (lot) owns = demoOwnsLot(session, lot);
   }
 
   if (!lot) return NextResponse.json({ error: "Lot not found." }, { status: 404 });
-  const owns =
-    lot.highBidderId === session.id ||
-    lot.highBidder === session.fullName ||
-    lot.highBidder === session.email;
   if (!owns) {
     return NextResponse.json({ error: "Only the winner can update this invoice." }, { status: 403 });
   }
@@ -191,8 +190,13 @@ export async function PATCH(request: NextRequest) {
       if (lot.fulfillment !== "pickup") {
         await saveWinFulfillment(body.lotId, "pickup", session);
       }
-      const invoice = await requestCashPayment(body.lotId, session);
-      return NextResponse.json({ ok: true, payment: invoice.payment, invoice: invoice.invoice });
+      const { row, cashApproved } = await requestCashPayment(body.lotId, session);
+      return NextResponse.json({
+        ok: true,
+        payment: row.payment,
+        invoice: row.invoice,
+        cashApproved,
+      });
     } catch (error) {
       const message = error instanceof Error ? error.message : "Could not request cash payment.";
       return NextResponse.json({ error: message }, { status: 400 });
@@ -248,5 +252,21 @@ export async function PATCH(request: NextRequest) {
     const message = error instanceof Error ? error.message : "Could not save delivery choice.";
     return NextResponse.json({ error: message }, { status: 400 });
   }
-  return NextResponse.json({ ok: true, fulfillment: body.fulfillment, shippingCost });
+
+  // A trusted cash paddle choosing pickup is settled here: cash at the counter,
+  // no Helcim prompt and no desk approval.
+  let cashApproved = false;
+  if (body.fulfillment === "pickup" && (await bidderSettlesInCash(session.id))) {
+    const ready = invoiceReadyForSale(lot) || (await invoiceReadyForEvent(lot.eventId));
+    if (ready) {
+      try {
+        const settled = await requestCashPayment(body.lotId, session);
+        cashApproved = settled.cashApproved;
+      } catch {
+        /* leave the invoice payable online */
+      }
+    }
+  }
+
+  return NextResponse.json({ ok: true, fulfillment: body.fulfillment, shippingCost, cashApproved });
 }

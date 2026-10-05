@@ -72,7 +72,7 @@ export default async function AuctionLotPage({ params }: PageProps) {
       <div className="grid gap-8 lg:grid-cols-2">
         <div className="overflow-hidden comic-panel">
           <LotGallery
-            images={[lot.image].filter(Boolean)}
+            images={lotImages(lot)}
             alt={lot.title}
             variant="room"
             sizes="(max-width: 1024px) 100vw, 50vw"

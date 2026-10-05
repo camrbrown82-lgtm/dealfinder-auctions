@@ -28,7 +28,8 @@ export function hasBuyNowPrice(lot: {
   return Number.isFinite(price) && price > 0;
 }
 
-/** Live auction lots with a Buy Now price stay in the sale and also list on Buy Now. */
+/** Any unsold item carrying a Buy Now price lists on Buy Now, whichever auction
+ *  it sits in and whenever that auction runs. It stays in the sale as well. */
 export function isListedBuyNow(lot: {
   saleChannel?: string | null;
   sale_channel?: string | null;
@@ -41,13 +42,21 @@ export function isListedBuyNow(lot: {
   status?: string | null;
   paidAt?: string | null;
   paid_at?: string | null;
+  highBidder?: string | null;
+  high_bidder?: string | null;
+  highBidderId?: string | null;
+  high_bidder_id?: string | null;
 }) {
   const status = asBuyNowStatus(lot.buyNowStatus ?? lot.buy_now_status);
   if (status === "sold" || status === "pending_approval") return false;
-  if (lot.status === "ended" || lot.status === "removed" || lot.status === "draft") return false;
+  if (lot.status === "removed" || lot.status === "draft") return false;
   if (lot.paidAt || lot.paid_at) return false;
-  if (status === "listed" || isBuyNowChannel(lot)) return true;
-  return hasBuyNowPrice(lot) && (lot.status === "live" || lot.status === "paused");
+  // An ended lot that found a winner belongs to that paddle, not to the store.
+  const won = Boolean(
+    lot.highBidder ?? lot.high_bidder ?? lot.highBidderId ?? lot.high_bidder_id,
+  );
+  if (lot.status === "ended" && won) return false;
+  return status === "listed" || isBuyNowChannel(lot) || hasBuyNowPrice(lot);
 }
 
 export function invoiceReadyForSale(lot: {

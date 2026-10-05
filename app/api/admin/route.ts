@@ -23,6 +23,8 @@ import { uniqueImageUrls } from "@/lib/utils";
 import { openingBid } from "@/lib/buyNow";
 import { patchLotRow } from "@/lib/openFloor";
 import { recordSoldLotSettlement } from "@/lib/recordSale";
+import { notifyConsignorSold } from "@/lib/consignorSold";
+import { resetAuctionData } from "@/lib/resetTestData";
 import { attachLotToSale, ensureWeeklySales } from "@/lib/weeklySales";
 import { settleEndedAuctions } from "@/lib/closeEndedLots";
 import { canPostIntoSale, salesOpenForPosting } from "@/lib/liveSales";
@@ -335,6 +337,7 @@ type AdminBody = {
   startingBid?: number;
   reservePrice?: number;
   buyNowPrice?: number;
+  estimatedMarketValue?: number;
   currentBid?: number;
   commissionRate?: number;
   imageUrls?: string[];
@@ -393,6 +396,39 @@ export async function POST(request: NextRequest) {
   if (body.action === "seed") {
     const seeded = seedDemoLots();
     return NextResponse.json({ ok: true, seeded });
+  }
+
+  // Start-from-scratch reset. Clears every lot, bid, consignment, invoice, and
+  // sale week but keeps bidder accounts, email templates, and house settings.
+  if (body.action === "resetAuctionData") {
+    const result = await resetAuctionData();
+    return NextResponse.json({ ok: true, ...result });
+  }
+
+  // Catches up consignors whose lot sold before sold notices existed. Each lot
+  // is claimed once, so running this twice sends nothing twice.
+  if (body.action === "sendConsignorSoldNotices") {
+    if (!isSupabaseConfigured || !supabase) {
+      return NextResponse.json({ error: "Supabase is not configured." }, { status: 400 });
+    }
+    const { data } = await supabase
+      .from("lots")
+      .select("*")
+      .in("status", ["ended", "removed"]);
+    let sent = 0;
+    const skipped: Record<string, number> = {};
+    for (const row of (data ?? []) as LotRow[]) {
+      const lot = mapLot(row);
+      if (!lot.highBidderId && !lot.highBidder) continue;
+      const result = await notifyConsignorSold(lot);
+      if (result.sent) {
+        sent += 1;
+        continue;
+      }
+      const reason = result.reason ?? "unknown";
+      skipped[reason] = (skipped[reason] ?? 0) + 1;
+    }
+    return NextResponse.json({ ok: true, sent, skipped });
   }
 
   if (body.action === "purge-test-data") {
@@ -769,7 +805,10 @@ export async function POST(request: NextRequest) {
     if (!title) {
       return NextResponse.json({ error: "Title is required." }, { status: 400 });
     }
-    const buyNow = Number(body.buyNowPrice ?? body.reservePrice) || 0;
+    // No Buy Now typed? Fall back to the market estimate so the lot still
+    // reaches the Buy Now store instead of sitting in the sale alone.
+    const buyNow =
+      Number(body.buyNowPrice ?? body.reservePrice) || Number(body.estimatedMarketValue) || 0;
     const starting = openingBid(body.startingBid, buyNow, 5);
     const listingGrade = parseListingGrade(body.listingGrade);
     const itemDetails = String(body.itemDetails ?? "").trim();

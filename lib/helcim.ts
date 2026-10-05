@@ -4,7 +4,7 @@ import { markDemoLotPaid } from "@/lib/demoAuctionStore";
 import { getDemoUser, updateDemoUser } from "@/lib/demoUsers";
 import type { BidderProfile, PreauthStatus } from "@/lib/profileTypes";
 import { isPreauthStatus } from "@/lib/profileTypes";
-import { isPaymentTestMode } from "@/lib/paymentMode";
+import { isHelcimBypass, isPaymentTestMode } from "@/lib/paymentMode";
 import { getSupabaseAdmin, isSupabaseConfigured } from "@/lib/supabaseClient";
 
 export type HelcimPurpose = "bid_preauth" | "checkout_purchase";
@@ -96,7 +96,7 @@ export function helcimCurrency() {
 }
 
 export function isHelcimConfigured() {
-  if (isPaymentTestMode()) return false;
+  if (isPaymentTestMode() || isHelcimBypass()) return false;
   return Boolean(helcimApiToken());
 }
 
@@ -243,8 +243,10 @@ export async function reverseHelcimTransaction(cardTransactionId: string | numbe
 export async function saveHelcimSession(session: HelcimSession) {
   sessionStore().set(session.checkoutToken, session);
   const supabase = getSupabaseAdmin();
-  if (!isSupabaseConfigured || !supabase || session.demo) return;
-  await supabase.from("helcim_sessions").upsert({
+  if (!isSupabaseConfigured || !supabase) return;
+  // Checkout and confirm land on different serverless instances, so memory alone
+  // loses the session and confirm reports an expired checkout. Bypass included.
+  const row = {
     checkout_token: session.checkoutToken,
     secret_token: session.secretToken,
     bidder_id: session.bidderId,
@@ -254,7 +256,11 @@ export async function saveHelcimSession(session: HelcimSession) {
     currency: session.currency,
     invoice_number: session.invoiceNumber,
     created_at: session.createdAt,
-  });
+  };
+  const { error } = await supabase
+    .from("helcim_sessions")
+    .upsert({ ...row, event_id: session.eventId ?? null });
+  if (error) await supabase.from("helcim_sessions").upsert(row);
 }
 
 export async function readHelcimSession(checkoutToken: string): Promise<HelcimSession | null> {

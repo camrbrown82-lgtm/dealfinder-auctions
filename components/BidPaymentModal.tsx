@@ -75,9 +75,9 @@ export function BidPaymentModal({
           ) : null}
           {testMode ? (
             <p className="border-4 border-black bg-white px-3 py-2">
-              Payment test mode is on. Approving the {formatCurrency(BID_PREAUTH_AMOUNT)} hold marks
-              you authorized without charging a card. When Helcim sandbox is connected and test mode
-              is off, this same button opens real HelcimPay.
+              Card bypass is on. Approving the {formatCurrency(BID_PREAUTH_AMOUNT)} hold clears you to
+              bid without charging a card. Once Helcim is connected and the bypass is off, this same
+              button opens real HelcimPay.
             </p>
           ) : null}
           <div className="flex flex-col gap-2">

@@ -101,10 +101,11 @@ export async function fetchBuyNowLots(): Promise<AuctionLot[]> {
   const supabase = getSupabaseAdmin();
   if (!supabase) return [];
 
+  // Every auction, every clock. isListedBuyNow decides what is still for sale.
   const { data, error } = await supabase
     .from("lots")
     .select("*")
-    .in("status", ["live", "paused"])
+    .not("status", "in", "(removed,draft)")
     .order("created_at", { ascending: false });
 
   if (error || !data) {

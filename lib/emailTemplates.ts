@@ -219,6 +219,32 @@ Live lots: {{lot_link}}
 DealFinder Auctions`,
   },
   {
+    id: "admin_consignment_alert",
+    name: "Desk alert: consignment waiting",
+    subject: "New consignment waiting for approval — {{item_title}}",
+    body: `{{customer_name}} submitted {{item_title}} for approval.
+
+Opening bid: {{starting_bid}}
+Buy Now: {{winning_bid}}
+
+Open notifications: {{payment_link}}
+
+DealFinder Auctions`,
+  },
+  {
+    id: "admin_cash_alert",
+    name: "Desk alert: cash approval waiting",
+    subject: "Cash on pickup waiting for approval — {{customer_name}}",
+    body: `{{customer_name}} asked to pay cash on pickup.
+
+Invoice: {{item_title}}
+Amount due: {{winning_bid}}
+
+Open notifications: {{payment_link}}
+
+DealFinder Auctions`,
+  },
+  {
     id: "hold_failed",
     name: "Sunday $50 hold failed",
     subject: "Your $50 DealFinder hold did not go through",

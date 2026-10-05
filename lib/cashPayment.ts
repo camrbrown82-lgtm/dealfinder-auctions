@@ -1,7 +1,8 @@
+import { bidderSettlesInCash } from "@/lib/auctionRegistrations";
 import { demoSettlementInvoices, upsertDemoInvoice } from "@/lib/demoSettlementStore";
 import { markDemoLotPaid } from "@/lib/demoAuctionStore";
 import { invoiceFees } from "@/lib/invoiceFees";
-import { sendCashReceiptEmail } from "@/lib/notify";
+import { sendAdminCashApprovalEmail, sendCashReceiptEmail } from "@/lib/notify";
 import { mapInvoiceRow, upsertSettlementInvoice } from "@/lib/settlementDb";
 import type { SettlementInvoiceRecord } from "@/lib/settlementRecords";
 import { getSupabaseAdmin, isSupabaseConfigured } from "@/lib/supabaseClient";
@@ -13,18 +14,18 @@ function invoiceHasLot(lots: unknown, lotId: string) {
 }
 
 async function findInvoiceForLot(lotId: string, session: BidderProfile) {
+  // Keyed on the paddle id or the email only. A display name is shared between
+  // accounts, so keying on it can return another buyer's invoice.
   const supabase = getSupabaseAdmin();
   if (isSupabaseConfigured && supabase) {
-    const keys = [session.id, session.email, session.fullName].filter(Boolean);
+    const keys = [session.id, session.email].filter(Boolean);
     const { data } = await supabase.from("settlement_invoices").select("*").in("buyer_key", keys);
     const match = (data ?? []).find((row) => invoiceHasLot(row.lots, lotId));
     return match ? mapInvoiceRow(match as Record<string, unknown>) : null;
   }
   return (
     demoSettlementInvoices().find(
-      (row) =>
-        invoiceHasLot(row.lots, lotId) &&
-        [session.id, session.email, session.fullName].includes(row.buyerKey),
+      (row) => invoiceHasLot(row.lots, lotId) && [session.id, session.email].includes(row.buyerKey),
     ) ?? null
   );
 }
@@ -38,15 +39,27 @@ async function persist(row: SettlementInvoiceRecord) {
   upsertDemoInvoice(row);
 }
 
+/**
+ * Cash on pickup. A trusted-cash client is cleared on the spot; everyone else
+ * waits in the desk's pending approvals.
+ */
 export async function requestCashPayment(lotId: string, session: BidderProfile) {
   const row = await findInvoiceForLot(lotId, session);
   if (!row) throw new Error("Invoice not found yet. Wait for the hammer to close.");
   if (row.payment === "paid") throw new Error("This invoice is already paid.");
+  const trusted = Boolean(session.trustedCashUser) || (await bidderSettlesInCash(session.id));
   row.fulfillment = "pickup";
   row.shippingCost = 0;
-  row.payment = "cash_pending";
+  row.payment = trusted ? "unpaid" : "cash_pending";
   row.paymentChannel = "cash";
-  row.notes = [row.notes, "Cash payment requested on pickup."].filter(Boolean).join(" ");
+  row.notes = [
+    row.notes,
+    trusted
+      ? "Cash on pickup — trusted client, cleared without desk approval."
+      : "Cash payment requested on pickup.",
+  ]
+    .filter(Boolean)
+    .join(" ");
   const fees = invoiceFees({
     hammer: row.lots.reduce((sum, lot) => sum + Number(lot.hammer ?? 0), 0),
     fulfillment: "pickup",
@@ -58,7 +71,15 @@ export async function requestCashPayment(lotId: string, session: BidderProfile) 
   row.gst = fees.gst;
   row.total = fees.total;
   await persist(row);
-  return row;
+  if (!trusted) {
+    void sendAdminCashApprovalEmail({
+      name: row.name,
+      email: row.email,
+      invoice: row.invoice,
+      total: row.total,
+    });
+  }
+  return { row, cashApproved: trusted };
 }
 
 export async function resolveCashRequest(invoice: string, approve: boolean) {

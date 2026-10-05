@@ -63,11 +63,16 @@ export function BuyNowStore({ lots, compact = false }: { lots: AuctionLot[]; com
             const photo = lotImages(lot)[0];
             return (
               <article key={lot.id} className="comic-panel flex flex-col overflow-hidden">
-                <div className="relative aspect-square bg-black">
-                  <LotImage src={photo} alt={lot.title} fill className="object-contain" sizes="40vw" />
-                </div>
+                {/* On a lot page the gallery above already shows the photo. */}
+                {compact ? null : (
+                  <div className="relative aspect-square bg-black">
+                    <LotImage src={photo} alt={lot.title} fill className="object-contain" sizes="40vw" />
+                  </div>
+                )}
                 <div className="flex flex-1 flex-col gap-2 p-4">
-                  <h2 className="font-display text-2xl leading-none">{lot.title}</h2>
+                  <h2 className="font-display text-2xl leading-none">
+                    {compact ? "Skip the bidding — Buy Now" : lot.title}
+                  </h2>
                   <p className="font-display text-3xl text-brand-red">{formatCurrency(hammer)}</p>
                   <p className="font-comic text-sm">
                     Pickup {formatCurrency(pickup.total)} (includes 15% premium + GST)

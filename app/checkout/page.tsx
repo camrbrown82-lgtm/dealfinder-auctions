@@ -9,7 +9,7 @@ import { PreauthDisclaimer } from "@/components/PreauthDisclaimer";
 import { PICKUP_INSTRUCTIONS } from "@/lib/payments";
 import type { FulfillmentChoice } from "@/lib/payments";
 import { profileAddress } from "@/lib/profileTypes";
-import type { WinInvoice } from "@/lib/winTypes";
+import { isCashOnPickup, type WinInvoice } from "@/lib/winTypes";
 import { formatCurrency } from "@/lib/utils";
 
 export default function CheckoutPage() {
@@ -54,7 +54,9 @@ export default function CheckoutPage() {
     setNotice(
       fulfillment === "ship"
         ? "We will ship this lot. Confirm your address, then pay."
-        : "Local pickup is set. Pay this invoice now.",
+        : json.cashApproved
+          ? "Local pickup is set and this lot is settled. Pay cash at the desk when you collect it."
+          : "Local pickup is set. Pay this invoice now.",
     );
   }
 
@@ -102,7 +104,11 @@ export default function CheckoutPage() {
       return;
     }
     await load();
-    setNotice("Cash payment is pending desk approval.");
+    setNotice(
+      json.cashApproved
+        ? "Cash on pickup is set. Bring cash to the desk when you collect — no approval needed."
+        : "Cash payment is pending desk approval.",
+    );
   }
 
   useEffect(() => {
@@ -113,7 +119,8 @@ export default function CheckoutPage() {
   useEffect(() => {
     if (!focusLotId || openedPay.current) return;
     const match = wins.find((row) => row.lotId === focusLotId);
-    if (!match || match.paid || match.payment === "cash_pending" || !match.invoiceReady || !match.winning) return;
+    if (!match || match.paid || match.payment === "cash_pending" || isCashOnPickup(match)) return;
+    if (!match.invoiceReady || !match.winning) return;
     if (match.fulfillment === "unset") return;
     if (match.fulfillment === "ship" && (holdShipPay || !(match.address || "").trim())) return;
     openedPay.current = true;
@@ -152,6 +159,8 @@ export default function CheckoutPage() {
     );
   }
 
+  const settled = wins.filter((win) => win.paid || isCashOnPickup(win));
+  const openLots = wins.filter((win) => !win.paid && !isCashOnPickup(win));
   const holdLabel =
     user.preauthStatus === "held"
       ? `${formatCurrency(user.preauthAmount)} Sunday Helcim hold is sitting on your card until a sale is paid.`
@@ -164,18 +173,19 @@ export default function CheckoutPage() {
   return (
     <div className="space-y-4">
       <div className="comic-panel p-4">
-        <h1 className="font-display text-5xl text-brand-red">Your sold lots</h1>
+        <h1 className="font-display text-5xl text-brand-red">Your bought items</h1>
         <p className="font-comic text-sm">
-          Each card is a lot you won: the photo, lot number, and the price it sold for. The receipt
-          in your email has the same lines and a download. Payment stays on this page after you
-          choose pickup or shipping.
+          Each card is an item you bought: the photo, lot number, and the price it sold for. Lots
+          you are still bidding on stay on the live page until they close. The receipt in your email
+          has the same lines and a download. Payment stays on this page after you choose pickup or
+          shipping.
         </p>
         {notice && <p className="mt-3 font-display text-xl">{notice}</p>}
       </div>
 
       {wins.length === 0 ? (
         <p className="font-comic">
-          No sold lots on your paddle yet.{" "}
+          Nothing bought on your paddle yet.{" "}
           <Link href="/buy-now" className="font-bold underline">
             Browse Buy Now
           </Link>{" "}
@@ -187,10 +197,22 @@ export default function CheckoutPage() {
         </p>
       ) : (
         <div className="space-y-4">
-          {[...wins]
+          {settled.length ? (
+            <div className="comic-panel p-4">
+              <p className="font-display text-3xl text-brand-red">
+                Settled ({settled.length})
+              </p>
+              <p className="mt-1 font-comic text-sm">
+                Nothing left to pay online for these lots. Cash lots are paid at the desk when you
+                collect them.
+              </p>
+            </div>
+          ) : null}
+          {[...openLots, ...settled]
             .sort((a, b) => Number(b.lotId === focusLotId) - Number(a.lotId === focusLotId))
             .map((win) => {
-              const dueNow = win.lotId === focusLotId && win.invoiceReady && !win.paid;
+              const dueNow =
+                win.lotId === focusLotId && win.invoiceReady && !win.paid && !isCashOnPickup(win);
               return (
                 <div key={win.lotId} className="space-y-3">
                   {dueNow ? (
@@ -220,6 +242,7 @@ export default function CheckoutPage() {
         </div>
       )}
 
+      {openLots.length === 0 && wins.length > 0 ? null : (
       <div className="comic-panel space-y-3 p-5">
         <p className="font-display text-2xl">Helcim card</p>
         <PreauthDisclaimer />
@@ -237,6 +260,10 @@ export default function CheckoutPage() {
         )}
         <p className="border-4 border-black bg-white px-3 py-2 font-comic text-sm">{PICKUP_INSTRUCTIONS}</p>
       </div>
+      )}
+      {openLots.length === 0 && wins.length > 0 ? (
+        <p className="comic-panel p-4 font-comic text-sm">{PICKUP_INSTRUCTIONS}</p>
+      ) : null}
 
       <HelcimPayModal
         open={Boolean(payLotId)}
