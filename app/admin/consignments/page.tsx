@@ -16,21 +16,23 @@ export default function AdminConsignmentsPage() {
   pickingRef.current = picking;
 
   useEffect(() => {
-    const next: Record<string, ReviewDraft> = {};
-    for (const item of data.queue) {
-      next[item.id] = {
-        title: item.title,
-        description: item.description ?? "",
-        startingBid: String(item.startingBid ?? 0),
-        buyNowPrice: String(item.buyNowPrice ?? item.reservePrice ?? 0),
-        consignorName: item.consignor ?? "",
-      };
-    }
-    setDrafts(next);
+    setDrafts((current) => {
+      const next: Record<string, ReviewDraft> = {};
+      for (const item of data.queue) {
+        next[item.id] = current[item.id] ?? {
+          title: item.title,
+          description: item.description ?? "",
+          startingBid: String(item.startingBid ?? 5),
+          buyNowPrice: String(item.buyNowPrice ?? item.reservePrice ?? 0),
+          consignorName: item.consignor ?? "",
+        };
+      }
+      return next;
+    });
   }, [data.queue]);
 
   async function approveItem(item: Consignment, draft: ReviewDraft, eventId?: string) {
-    if (item.saleChannel !== "buy_now" && !eventId) {
+    if (!eventId) {
       setPicking({ item, draft });
       return;
     }
@@ -46,16 +48,17 @@ export default function AdminConsignmentsPage() {
         startingBid: Number(draft.startingBid) || 0,
         buyNowPrice: Number(draft.buyNowPrice) || 0,
         consignorName: draft.consignorName,
-        saleChannel: item.saleChannel === "buy_now" ? "buy_now" : "auction",
+        saleChannel: Number(draft.buyNowPrice) > 0 || item.saleChannel === "buy_now" ? "buy_now" : "auction",
         eventId,
       }),
     });
     if (!json) return;
     setPicking(null);
     const lotNo = json.lot?.lotNumber ? `Lot ${json.lot.lotNumber}` : draft.title;
+    const onBuyNow = Number(draft.buyNowPrice) > 0 || item.saleChannel === "buy_now";
     setNotice(
-      item.saleChannel === "buy_now"
-        ? `Approved ${lotNo} onto Buy Now.`
+      onBuyNow
+        ? `Approved ${lotNo} into ${json.auctionLabel ?? "the sale"} and Buy Now.`
         : `Approved ${lotNo} into ${json.auctionLabel ?? "the selected sale"}.`,
     );
   }

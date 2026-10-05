@@ -22,6 +22,17 @@ function houseParts(now = new Date()) {
   };
 }
 
+export function houseDateKey(now = new Date()) {
+  const parts = houseParts(now);
+  return `${parts.year}-${parts.month}-${parts.day}`;
+}
+
+/** Sunday 10:00 through 17:59 America/Edmonton — 10 a.m. Mountain, before the 6 p.m. hammer. */
+export function isSundayBidReminderWindow(now = new Date()) {
+  const parts = houseParts(now);
+  return parts.weekday === "Sun" && parts.hour >= 10 && parts.hour < SUNDAY_HAMMER_HOUR;
+}
+
 export function isAuctionEndDay(now = new Date()) {
   return houseParts(now).weekday === "Sun";
 }

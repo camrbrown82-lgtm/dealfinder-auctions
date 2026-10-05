@@ -92,9 +92,10 @@ export type Consignment = {
   listingGrade?: ListingGrade;
   saleChannel?: SaleChannel;
   contactEmail?: string | null;
+  charity?: boolean;
 };
 
-export type PipelineStatus = "pending_approval" | "buy_now_pending" | "scheduled" | "live" | "sold";
+export type PipelineStatus = "pending_approval" | "buy_now_pending" | "scheduled" | "live" | "sold" | "rejected";
 
 export type ConsignorItem = {
   id: string;
@@ -105,6 +106,9 @@ export type ConsignorItem = {
   buyNowPrice: number;
   commissionRate: number;
   saleChannel?: SaleChannel;
+  charity?: boolean;
+  lotNumber?: string | null;
+  lotHref?: string | null;
 };
 
 export function uniqueImageUrls(urls: Array<string | null | undefined>): string[] {
@@ -336,7 +340,6 @@ export function getLotById(id: string) {
 export function filterLots(lots: AuctionLot[], category: AuctionCategory) {
   const live = lots.filter(
     (lot) =>
-      lot.saleChannel !== "buy_now" &&
       lot.status !== "draft" &&
       lot.status !== "ended" &&
       lot.status !== "removed",
@@ -412,6 +415,7 @@ export const DEFAULT_COMMISSION_RATE = 0.2;
 
 export function pipelineLabel(status: PipelineStatus) {
   if (status === "pending_approval") return "Pending approval";
+  if (status === "rejected") return "Not accepted";
   if (status === "buy_now_pending") return "Buy now pending approval";
   if (status === "scheduled") return "Scheduled by DealFinder";
   if (status === "live") return "Live auction";
@@ -420,5 +424,6 @@ export function pipelineLabel(status: PipelineStatus) {
 
 export function consignmentToPipeline(status: ConsignmentStatus): PipelineStatus {
   if (status === "approved") return "scheduled";
+  if (status === "rejected") return "rejected";
   return "pending_approval";
 }

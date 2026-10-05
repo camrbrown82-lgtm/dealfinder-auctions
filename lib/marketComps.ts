@@ -209,7 +209,9 @@ function finalize(
   let reserve = asInt(parsed.suggested_reserve, 0);
   if (reserve <= 0 || reserve > market) reserve = Math.round(market * 0.8);
   let start = asInt(parsed.suggested_starting_bid, 0);
-  if (start <= 0 || start > reserve) start = Math.max(5, Math.round(market * 0.45));
+  if (start <= 0 || start > reserve) {
+    start = Math.min(reserve, Math.max(1, Math.round(market * 0.45)));
+  }
   const notes = [parsed.notes, extraNote, mid > 0 ? `Public listing median about $${mid}.` : ""]
     .filter(Boolean)
     .join(" ");

@@ -18,6 +18,7 @@ export async function sendTransactionalEmail(input: {
   to: string;
   vars: Record<string, string>;
   htmlOverride?: string;
+  subjectOverride?: string;
   forceDeliver?: boolean;
   skipLogo?: boolean;
   simpleLayout?: boolean;
@@ -34,6 +35,7 @@ export async function sendTransactionalEmail(input: {
   }
 
   const rendered = renderTemplate(template, input.vars);
+  const subject = input.subjectOverride || rendered.subject;
   const key = (process.env.RESEND_API_KEY || "").trim();
   const from = (process.env.RESEND_FROM || "DealFinder Auctions <onboarding@resend.dev>").trim();
   const body = input.htmlOverride || rendered.body;
@@ -47,7 +49,9 @@ export async function sendTransactionalEmail(input: {
       input.templateId === "cash_bid_received" ||
       input.templateId === "cash_bid_approved" ||
       input.templateId === "cash_bid_rejected" ||
-      input.templateId === "password_reset",
+      input.templateId === "password_reset" ||
+      input.templateId === "sunday_bid_reminder" ||
+      input.templateId === "hold_failed",
   );
   const html = simple ? buildSimpleEmailHtml(body, logoSrc) : buildEmailHtml(body, logoSrc);
   const text = looksLikeHtml(body) ? htmlToText(html) : body.replaceAll("{{logo}}", "");
@@ -60,7 +64,7 @@ export async function sendTransactionalEmail(input: {
       from,
       to,
       replyTo: SITE.email,
-      subject: rendered.subject,
+      subject,
       text,
       html,
       headers: {
@@ -75,7 +79,7 @@ export async function sendTransactionalEmail(input: {
       console.error("resend_send_failed", { templateId: input.templateId, message });
       getOutbox().unshift({
         to,
-        subject: rendered.subject,
+        subject,
         body: text,
         at: new Date().toISOString(),
         mode: "demo-outbox",
@@ -90,7 +94,7 @@ export async function sendTransactionalEmail(input: {
 
   getOutbox().unshift({
     to,
-    subject: rendered.subject,
+    subject,
     body: text,
     at: new Date().toISOString(),
     mode: useResend ? "resend" : "demo-outbox",

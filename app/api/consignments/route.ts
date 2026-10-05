@@ -1,14 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { parseListingGrade, withListedGrade } from "@/lib/listingGrade";
 import { addDemoConsignment } from "@/lib/demoAdminStore";
-import { startingBidFromBuyNow } from "@/lib/buyNow";
+import { openingBid } from "@/lib/buyNow";
 import { agreementCommission } from "@/lib/commission";
 import { getSupabaseAdmin, isSupabaseConfigured } from "@/lib/supabaseClient";
 import { persistPublicImageUrls } from "@/lib/consignmentStorage";
 import { getBidderSession } from "@/lib/bidderAuth";
 import type { SaleChannel } from "@/lib/saleChannel";
 import { sendConsignmentReceivedEmail } from "@/lib/notify";
-import { type ConsignmentMailLine } from "@/lib/commission";
 import {
   DEFAULT_COMMISSION_RATE,
   MOCK_CONSIGNMENTS,
@@ -43,6 +42,35 @@ function demoItems(): ConsignorItem[] {
   }));
 
   return [...fromQueue, ...fromLots];
+}
+
+function titleKey(title: string) {
+  return title.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+}
+
+const PIPELINE_RANK: Record<ConsignorItem["pipelineStatus"], number> = {
+  sold: 4,
+  live: 3,
+  scheduled: 2,
+  buy_now_pending: 1,
+  pending_approval: 1,
+  rejected: 0,
+};
+
+/** One row per item. A filed lot wins over a second pending copy of the same title. */
+function preferFiledItems(items: ConsignorItem[]) {
+  const ranked = [...items].sort(
+    (a, b) => PIPELINE_RANK[b.pipelineStatus] - PIPELINE_RANK[a.pipelineStatus],
+  );
+  const seen = new Set<string>();
+  const kept: ConsignorItem[] = [];
+  for (const item of ranked) {
+    const key = titleKey(item.title);
+    if (key && seen.has(key)) continue;
+    if (key) seen.add(key);
+    kept.push(item);
+  }
+  return kept;
 }
 
 function ownsRow(
@@ -98,12 +126,13 @@ export async function GET() {
   const items: ConsignorItem[] = ownQueue.map((row) => {
     const lot = lotByConsignment.get(row.id);
     const saleChannel = row.sale_channel === "buy_now" ? "buy_now" : "auction";
-    let pipelineStatus: ConsignorItem["pipelineStatus"] = consignmentToPipeline(row.status);
+    let pipelineStatus: ConsignorItem["pipelineStatus"] =
+      row.status === "rejected" ? "rejected" : consignmentToPipeline(row.status);
     if (saleChannel === "buy_now" && (row.status === "pending" || row.status === "held")) {
       pipelineStatus = "buy_now_pending";
     }
     if (row.status === "approved" && !lot) {
-      pipelineStatus = saleChannel === "buy_now" ? "buy_now_pending" : "pending_approval";
+      pipelineStatus = "scheduled";
     }
     if (lot?.status === "paused" || lot?.status === "draft") pipelineStatus = "scheduled";
     if (lot?.status === "live") pipelineStatus = "live";
@@ -118,6 +147,9 @@ export async function GET() {
       buyNowPrice: Number(row.buy_now_price ?? row.reserve_price ?? 0),
       commissionRate: Number(row.commission_rate ?? DEFAULT_COMMISSION_RATE),
       saleChannel,
+      charity: row.is_charity === true,
+      lotNumber: lot?.lot_number ? String(lot.lot_number) : null,
+      lotHref: lot ? `/auctions/${encodeURIComponent(String(lot.slug || lot.id))}` : null,
     };
   });
 
@@ -137,10 +169,12 @@ export async function GET() {
       startingBid: Number(lot.starting_bid ?? lot.current_bid ?? 0),
       buyNowPrice: Number(lot.buy_now_price ?? lot.reserve_price ?? 0),
       commissionRate: DEFAULT_COMMISSION_RATE,
+      lotNumber: lot.lot_number ? String(lot.lot_number) : null,
+      lotHref: `/auctions/${encodeURIComponent(String(lot.slug || lot.id))}`,
     });
   }
 
-  return NextResponse.json({ source: "supabase", items });
+  return NextResponse.json({ source: "supabase", items: preferFiledItems(items) });
 }
 
 export async function POST(request: NextRequest) {
@@ -165,12 +199,7 @@ export async function POST(request: NextRequest) {
     notes?: string;
     saleChannel?: "auction" | "buy_now";
     requestBuyNow?: boolean;
-    sendConfirmation?: boolean;
-    batchItems?: Array<{
-      title?: string;
-      startingBid?: number;
-      buyNowPrice?: number;
-    }>;
+    charity?: boolean;
   };
 
   const consignorName = session.fullName.trim() || body.consignorName?.trim();
@@ -207,15 +236,15 @@ export async function POST(request: NextRequest) {
   }
 
   const buyNow = Number(body.buyNowPrice ?? body.reservePrice) || 0;
-  if (buyNow <= 0) {
-    return NextResponse.json({ error: "Buy now price is required." }, { status: 400 });
+  if ((body.requestBuyNow || body.saleChannel === "buy_now") && buyNow <= 0) {
+    return NextResponse.json({ error: "Enter a Buy Now price to list this item there." }, { status: 400 });
   }
-  const starting = Number(body.startingBid) || startingBidFromBuyNow(buyNow);
+  const starting = openingBid(body.startingBid, buyNow, 5);
 
   const listingGrade = parseListingGrade(body.listingGrade);
   const itemDetails = String(body.itemDetails ?? body.notes ?? "").trim();
-  const saleChannel: SaleChannel =
-    body.saleChannel === "buy_now" || body.requestBuyNow ? "buy_now" : "auction";
+  const saleChannel: SaleChannel = "auction";
+  const charity = body.charity === true;
 
   const payload = {
     consignor_name: consignorName,
@@ -230,23 +259,25 @@ export async function POST(request: NextRequest) {
     estimated_high: body.estimatedMarketValue ?? null,
     estimated_low: starting,
     starting_bid: starting,
-    reserve_price: buyNow,
-    buy_now_price: buyNow,
+    reserve_price: buyNow || null,
+    buy_now_price: buyNow || null,
     commission_rate: DEFAULT_COMMISSION_RATE,
     image_urls: imageUrls,
     status: "pending" as const,
     sale_channel: saleChannel,
+    is_charity: charity,
   };
 
   const item: ConsignorItem = {
     id: crypto.randomUUID(),
     title,
     consignor: consignorName,
-    pipelineStatus: saleChannel === "buy_now" ? "buy_now_pending" : "pending_approval",
+    pipelineStatus: "pending_approval",
     startingBid: starting,
     buyNowPrice: buyNow,
     commissionRate: agreementCommission(buyNow)?.rate ?? 0,
     saleChannel,
+    charity,
   };
 
   if (!isSupabaseConfigured || !supabase) {
@@ -269,8 +300,9 @@ export async function POST(request: NextRequest) {
       condition: listingGrade,
       saleChannel,
       contactEmail: session.email.trim().toLowerCase() || null,
+      charity,
     });
-    const email = await maybeSendReceivedEmail(session.email, consignorName, item, body);
+    const email = await maybeSendReceivedEmail(session.email, consignorName, item);
     return NextResponse.json({ source: "demo", item, email });
   }
 
@@ -295,7 +327,10 @@ export async function POST(request: NextRequest) {
     const { sale_channel: _c, ...rest } = payload;
     ({ data, error } = await supabase.from("consignments").insert(rest).select("id").single());
   }
-
+  if (error && /is_charity/i.test(error.message)) {
+    const { is_charity: _charity, ...rest } = payload;
+    ({ data, error } = await supabase.from("consignments").insert(rest).select("id").single());
+  }
   if (error || !data) {
     return NextResponse.json({ error: error?.message || "Could not save consignment." }, { status: 400 });
   }
@@ -304,7 +339,7 @@ export async function POST(request: NextRequest) {
     ...item,
     id: data.id,
   } satisfies ConsignorItem;
-  const email = await maybeSendReceivedEmail(session.email, consignorName, saved, body);
+  const email = await maybeSendReceivedEmail(session.email, consignorName, saved);
   return NextResponse.json({
     source: "supabase",
     item: saved,
@@ -312,46 +347,17 @@ export async function POST(request: NextRequest) {
   });
 }
 
-function asMailLines(
-  latest: ConsignorItem,
-  extras?: Array<{ title?: string; startingBid?: number; buyNowPrice?: number }>,
-): ConsignmentMailLine[] {
-  const siblings = (extras ?? [])
-    .map((row) => ({
-      title: String(row.title ?? "").trim(),
-      startingBid: Number(row.startingBid) || 0,
-      buyNowPrice: Number(row.buyNowPrice) || 0,
-    }))
-    .filter((row) => row.title);
-  const seen = new Set<string>();
-  const lines: ConsignmentMailLine[] = [];
-  for (const row of [...siblings, latest]) {
-    const key = `${row.title}|${row.startingBid}|${row.buyNowPrice}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    lines.push({
-      title: row.title,
-      startingBid: row.startingBid,
-      buyNowPrice: row.buyNowPrice,
-    });
-  }
-  return lines;
-}
-
-async function maybeSendReceivedEmail(
-  email: string,
-  name: string,
-  item: ConsignorItem,
-  body: {
-    sendConfirmation?: boolean;
-    batchItems?: Array<{ title?: string; startingBid?: number; buyNowPrice?: number }>;
-  },
-) {
-  if (body.sendConfirmation !== true) return { sent: false as const };
+async function maybeSendReceivedEmail(email: string, name: string, item: ConsignorItem) {
   const result = await sendConsignmentReceivedEmail({
     to: email,
     name,
-    items: asMailLines(item, body.batchItems),
+    items: [
+      {
+        title: item.title,
+        startingBid: item.startingBid,
+        buyNowPrice: item.buyNowPrice,
+      },
+    ],
     commissionRate: DEFAULT_COMMISSION_RATE,
   });
   return { sent: true as const, ...result };

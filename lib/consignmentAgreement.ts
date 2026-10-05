@@ -33,10 +33,8 @@ export const CONSIGNMENT_AGREEMENT_SECTIONS: Array<{
   {
     heading: "3. Commission Structure",
     paragraphs: [
-      "Tier 1: For lots sold at or below $20: A commission rate of 50% will apply.",
-      "Tier 2: For lots sold between $21 and $49: A commission rate of $10 will apply.",
-      "Tier 3: For lots sold above $50 and below $500: A commission rate of 20% will apply.",
-      "Tier 4: For lots sold at or above $500: A commission rate of 15% will apply.",
+      "For lots sold at $50 or below: A commission rate of 50% will apply, to a maximum commission of $10.",
+      "For lots sold after $50: A commission rate of 20% will apply.",
     ],
   },
   {

@@ -31,6 +31,32 @@ const EMPTY: AuctionDeskPayload = {
   sales: [],
 };
 
+function SaleLot({
+  image,
+  lotNumber,
+  title,
+}: {
+  image?: string;
+  lotNumber?: string;
+  title: string;
+}) {
+  return (
+    <div className="flex items-center gap-2">
+      {image ? (
+        <img src={image} alt="" className="h-12 w-12 shrink-0 border-2 border-black object-cover" />
+      ) : (
+        <span className="grid h-12 w-12 shrink-0 place-items-center border-2 border-black bg-white text-[10px] leading-tight">
+          No photo
+        </span>
+      )}
+      <span>
+        <span className="block font-bold">{lotNumber || "No lot #"}</span>
+        <span className="block">{title || "Untitled lot"}</span>
+      </span>
+    </div>
+  );
+}
+
 function preauthLabel(status: string) {
   if (status === "held") return "Held";
   if (status === "denied") return "Denied";
@@ -66,7 +92,7 @@ export function AuctionDesk() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
-  const [salesView, setSalesView] = useState<SalesViewMode>("grouped");
+  const [salesView, setSalesView] = useState<SalesViewMode>("itemized");
   const [creating, setCreating] = useState(false);
   const [draft, setDraft] = useState(emptyCreate);
   const [edit, setEdit] = useState({
@@ -533,7 +559,7 @@ export function AuctionDesk() {
                   <th className="border-b-4 border-black p-3">Invoice</th>
                   <th className="border-b-4 border-black p-3">Buyer</th>
                   <th className="border-b-4 border-black p-3">Lots</th>
-                  <th className="border-b-4 border-black p-3">Items</th>
+                  <th className="border-b-4 border-black p-3">Count</th>
                   <th className="border-b-4 border-black p-3">Invoice total</th>
                   <th className="border-b-4 border-black p-3">Payment</th>
                   <th className="border-b-4 border-black p-3">Pre-auth</th>
@@ -547,7 +573,18 @@ export function AuctionDesk() {
                       {row.buyerName}
                       {row.buyerEmail ? ` · ${row.buyerEmail}` : ""}
                     </td>
-                    <td className="border-b-2 border-black p-3">{row.lotSummary}</td>
+                    <td className="border-b-2 border-black p-3">
+                      <div className="space-y-2">
+                        {row.lines.map((line) => (
+                          <SaleLot
+                            key={line.lotId}
+                            image={line.image}
+                            lotNumber={line.lotNumber}
+                            title={line.title}
+                          />
+                        ))}
+                      </div>
+                    </td>
                     <td className="border-b-2 border-black p-3">{row.itemCount}</td>
                     <td className="border-b-2 border-black p-3">{formatCurrency(row.hammer)}</td>
                     <td className="border-b-2 border-black p-3">{row.paymentStatus}</td>
@@ -564,7 +601,6 @@ export function AuctionDesk() {
                 <tr>
                   <th className="border-b-4 border-black p-3">Invoice</th>
                   <th className="border-b-4 border-black p-3">Lot</th>
-                  <th className="border-b-4 border-black p-3">Item</th>
                   <th className="border-b-4 border-black p-3">Buyer</th>
                   <th className="border-b-4 border-black p-3">Hammer</th>
                   <th className="border-b-4 border-black p-3">Payment</th>
@@ -575,8 +611,9 @@ export function AuctionDesk() {
                 {desk.sales.map((row) => (
                   <tr key={`${row.invoice}-${row.lotId}`} className="bg-[#FFF7D1]">
                     <td className="border-b-2 border-black p-3">{row.invoice}</td>
-                    <td className="border-b-2 border-black p-3">{row.lotNumber || "—"}</td>
-                    <td className="border-b-2 border-black p-3">{row.title}</td>
+                    <td className="border-b-2 border-black p-3">
+                      <SaleLot image={row.image} lotNumber={row.lotNumber} title={row.title} />
+                    </td>
                     <td className="border-b-2 border-black p-3">
                       {row.buyerName}
                       {row.buyerEmail ? ` · ${row.buyerEmail}` : ""}

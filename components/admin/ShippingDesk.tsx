@@ -3,10 +3,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { canadaPostPostage } from "@/lib/canadaPost";
 import type { SettlementInvoiceRecord } from "@/lib/settlementRecords";
+import type { SettlementLot } from "@/lib/settlements";
 import { SITE } from "@/lib/site";
 import { formatCurrency } from "@/lib/utils";
 
-type DeskView = "ship" | "pickup" | "all";
+type DeskView = "open" | "pickup" | "ship";
 
 function escapePrint(value: string) {
   return value
@@ -21,14 +22,41 @@ function channelLabel(row: SettlementInvoiceRecord) {
 }
 
 function deliveryLabel(row: SettlementInvoiceRecord) {
-  if (row.fulfillment === "ship") return "Ship";
-  if (row.fulfillment === "pickup") return "Pickup";
+  if (row.fulfillment === "ship" || row.lots.some((lot) => lot.fulfillment === "ship")) return "Ship";
+  if (row.fulfillment === "pickup" || row.lots.some((lot) => lot.fulfillment === "pickup")) return "Pickup";
   return "Not chosen";
+}
+
+function wantsShip(row: SettlementInvoiceRecord) {
+  return row.fulfillment === "ship" || row.lots.some((lot) => lot.fulfillment === "ship");
+}
+
+function wantsPickup(row: SettlementInvoiceRecord) {
+  if (row.fulfillment === "pickup" || row.lots.some((lot) => lot.fulfillment === "pickup")) return true;
+  return !wantsShip(row);
+}
+
+function LotFace({ lot }: { lot: SettlementLot }) {
+  return (
+    <div className="flex items-center gap-2">
+      {lot.image ? (
+        <img src={lot.image} alt="" className="h-14 w-14 shrink-0 border-2 border-black object-cover" />
+      ) : (
+        <span className="grid h-14 w-14 shrink-0 place-items-center border-2 border-black bg-white text-[10px] leading-tight">
+          No photo
+        </span>
+      )}
+      <span>
+        <span className="block font-bold">{lot.lotNumber || "No lot #"}</span>
+        <span className="block">{lot.title || "Untitled lot"}</span>
+      </span>
+    </div>
+  );
 }
 
 export function ShippingDesk() {
   const [rows, setRows] = useState<SettlementInvoiceRecord[]>([]);
-  const [view, setView] = useState<DeskView>("ship");
+  const [view, setView] = useState<DeskView>("open");
   const [selectedId, setSelectedId] = useState("");
   const [weightKg, setWeightKg] = useState("");
   const [lengthCm, setLengthCm] = useState("");
@@ -56,13 +84,9 @@ export function ShippingDesk() {
 
   const visible = useMemo(() => {
     return rows.filter((row) => {
-      if (view === "ship") {
-        return row.fulfillment === "ship" && row.payment === "paid" && row.shipping !== "shipped";
-      }
-      if (view === "pickup") {
-        return row.fulfillment === "pickup" && row.shipping !== "picked_up";
-      }
-      return true;
+      if (view === "ship") return wantsShip(row) && row.shipping !== "shipped";
+      if (view === "pickup") return wantsPickup(row) && row.shipping !== "picked_up";
+      return row.shipping !== "shipped" && row.shipping !== "picked_up";
     });
   }, [rows, view]);
 
@@ -120,7 +144,9 @@ export function ShippingDesk() {
 
   function printLabel() {
     if (!selected || !quote) return;
-    const lots = escapePrint(selected.lots.map((lot) => lot.title).join(", ") || "Lots");
+    const lots = escapePrint(
+      selected.lots.map((lot) => [lot.lotNumber, lot.title].filter(Boolean).join(" · ")).join("; ") || "Lots",
+    );
     const html = `<!doctype html><html><head><meta charset="utf-8"><title>Label ${selected.invoice}</title>
 <style>
   @page { size: 4in 6in; margin: 0.2in; }
@@ -190,9 +216,9 @@ ${tracking.trim() ? `<p>Tracking ${escapePrint(tracking.trim())}</p>` : ""}
       <div className="flex flex-wrap gap-2 print:hidden">
         {(
           [
-            ["ship", "Paid shipments"],
-            ["pickup", "Pickups"],
-            ["all", "All settlements"],
+            ["open", "Open wins"],
+            ["pickup", "Pickup desk"],
+            ["ship", "Shipping desk"],
           ] as const
         ).map(([id, label]) => (
           <button
@@ -213,6 +239,7 @@ ${tracking.trim() ? `<p>Tracking ${escapePrint(tracking.trim())}</p>` : ""}
         <table className="w-full min-w-[720px] border-collapse font-comic text-sm">
           <thead>
             <tr className="border-b-4 border-black text-left font-display text-lg">
+              <th className="p-2">Lots</th>
               <th className="p-2">Customer</th>
               <th className="p-2">Sale</th>
               <th className="p-2">Delivery</th>
@@ -224,10 +251,12 @@ ${tracking.trim() ? `<p>Tracking ${escapePrint(tracking.trim())}</p>` : ""}
           <tbody>
             {visible.length === 0 ? (
               <tr>
-                <td className="p-3" colSpan={6}>
+                <td className="p-3" colSpan={7}>
                   {view === "ship"
-                    ? "No paid shipments are waiting. They show up here after a customer pays and chooses shipping."
-                    : "Nothing in this list."}
+                    ? "No shipments are waiting. A win lands here when the buyer chooses shipping."
+                    : view === "pickup"
+                      ? "No pickups are waiting. Wins without a shipping choice stay on this desk until the buyer asks to ship."
+                      : "No open wins. They show up here when an auction closes."}
                 </td>
               </tr>
             ) : (
@@ -237,6 +266,15 @@ ${tracking.trim() ? `<p>Tracking ${escapePrint(tracking.trim())}</p>` : ""}
                   className={`cursor-pointer border-b border-black/20 ${selectedId === row.invoice ? "bg-brand-cream" : ""}`}
                   onClick={() => pick(row)}
                 >
+                  <td className="p-2">
+                    <div className="space-y-2">
+                      {row.lots.length ? (
+                        row.lots.map((lot) => <LotFace key={lot.id || lot.title} lot={lot} />)
+                      ) : (
+                        <span>Invoice {row.invoice} has no lot lines yet.</span>
+                      )}
+                    </div>
+                  </td>
                   <td className="p-2">
                     <span className="font-bold">{row.name || "Customer"}</span>
                     <span className="block text-xs">{row.invoice}</span>
@@ -261,9 +299,13 @@ ${tracking.trim() ? `<p>Tracking ${escapePrint(tracking.trim())}</p>` : ""}
               <p className="font-comic text-sm">{selected.email}</p>
               <p className="font-comic text-sm">{selected.phone}</p>
               <p className="font-comic text-sm">{selected.address || "No shipping address on the settlement."}</p>
-              <p className="mt-2 font-comic text-sm">
-                {channelLabel(selected)} · {deliveryLabel(selected)} · {selected.lots.map((lot) => lot.title).join(", ") || "No lots"}
-              </p>
+              <div className="mt-3 space-y-2">
+                {selected.lots.length ? (
+                  selected.lots.map((lot) => <LotFace key={lot.id || lot.title} lot={lot} />)
+                ) : (
+                  <p className="font-comic text-sm">This invoice has no lot lines yet.</p>
+                )}
+              </div>
             </div>
 
             {selected.fulfillment === "ship" ? (
@@ -345,7 +387,7 @@ ${tracking.trim() ? `<p>Tracking ${escapePrint(tracking.trim())}</p>` : ""}
                   <button
                     type="button"
                     className="comic-btn"
-                    disabled={busy || !tracking.trim()}
+                    disabled={busy || !tracking.trim() || selected.payment !== "paid"}
                     onClick={() =>
                       void save({ shipping: "shipped" }).then((saved) => {
                         if (saved) setNotice(`Marked shipped. Tracking ${tracking.trim()}.`);

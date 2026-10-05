@@ -1,4 +1,5 @@
 import { checkoutHref, lotHref, publicAppUrl } from "@/lib/appUrl";
+import { receiptPageUrl } from "@/lib/receiptToken";
 import {
   consignmentCommissionNote,
   consignmentItemListText,
@@ -29,6 +30,33 @@ export function winReservationEmailHtml(input: {
 <p><a href="${escapeHtml(input.lotHref)}">View your lot</a></p>`;
 }
 
+export type WonLotLine = {
+  title: string;
+  lotNumber?: string | null;
+  hammer: number;
+};
+
+function wonLotsTable(lots: WonLotLine[]) {
+  const rows = lots
+    .map((lot, index) => {
+      const number = lot.lotNumber?.trim() ? escapeHtml(lot.lotNumber.trim()) : "—";
+      return `<tr style="background:${index % 2 ? "#FFF7D1" : "#FFFFFF"};">
+<td style="padding:8px;border:2px solid #000;">${number}</td>
+<td style="padding:8px;border:2px solid #000;">${escapeHtml(lot.title)}</td>
+<td style="padding:8px;border:2px solid #000;text-align:right;font-weight:bold;">${escapeHtml(formatCurrency(lot.hammer))}</td>
+</tr>`;
+    })
+    .join("");
+  return `<table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="border-collapse:collapse;margin:16px 0;">
+<tr style="background:#FF0000;color:#FFFFFF;">
+<th style="padding:8px;border:2px solid #000;text-align:left;">Lot</th>
+<th style="padding:8px;border:2px solid #000;text-align:left;">Item</th>
+<th style="padding:8px;border:2px solid #000;text-align:right;">Closing bid</th>
+</tr>
+${rows}
+</table>`;
+}
+
 export function invoiceEmailHtml(input: {
   name: string;
   invoice: string;
@@ -40,9 +68,10 @@ export function invoiceEmailHtml(input: {
   fulfillment: string;
   address: string;
   batch?: boolean;
+  lots?: WonLotLine[];
+  receiptHref?: string;
 }) {
-  const ship = input.fulfillment === "ship";
-  const method = ship ? "Shipping" : input.fulfillment === "pickup" ? "Local Pickup" : "Choose fulfillment at checkout";
+  const lines = input.lots ?? [];
   const rows = [
     ["Hammer", formatCurrency(input.fees.hammer)],
     ["15% buyer's premium", formatCurrency(input.fees.premium)],
@@ -59,18 +88,17 @@ export function invoiceEmailHtml(input: {
         `<tr style="background:${index % 2 ? "#FFF7D1" : "#FFFFFF"};"><td style="padding:8px;border:2px solid #000;">${escapeHtml(label)}</td><td style="padding:8px;border:2px solid #000;text-align:right;font-weight:bold;">${escapeHtml(value)}</td></tr>`,
     )
     .join("");
+  const intro = lines.length
+    ? `<p>Invoice <strong>${escapeHtml(input.invoice)}</strong>. Each line is the price that lot sold for.</p>
+${wonLotsTable(lines)}`
+    : `<p>You won <strong>${escapeHtml(input.title)}</strong>. Invoice <strong>${escapeHtml(input.invoice)}</strong>.</p>`;
+  const receiptHref = input.receiptHref || input.payHref;
   return `<p>POW, ${escapeHtml(input.name)}!</p>
-${input.batch ? `<p>Sunday close is in. This is your consolidated invoice <strong>${escapeHtml(input.invoice)}</strong> for every winning bid and Buy-Now reservation from this auction.</p>` : `<p>You won <strong>${escapeHtml(input.title)}</strong>. Invoice <strong>${escapeHtml(input.invoice)}</strong>.</p>`}
-<p><strong>${escapeHtml(input.title)}</strong></p>
-<p>Fulfillment: <strong>${escapeHtml(method)}</strong><br/>${escapeHtml(input.address || "Confirm your address at checkout.")}</p>
-${ship ? "" : `<p>${escapeHtml(PICKUP_INSTRUCTIONS)}</p>`}
+${intro}
 <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="border-collapse:collapse;margin:16px 0;">${table}</table>
-<p>
-  <a href="${escapeHtml(input.payHref)}" style="display:inline-block;background:#FF0000;color:#FFFFFF;padding:12px 18px;border:4px solid #000;font-weight:bold;text-decoration:none;">Pay with Helcim</a>
-  &nbsp;
-  <a href="${escapeHtml(input.cashHref)}" style="display:inline-block;background:#FFFFFF;color:#000000;padding:12px 18px;border:4px solid #000;font-weight:bold;text-decoration:none;">Request Cash Payment on Pickup</a>
-</p>
-<p><a href="${escapeHtml(input.lotHref)}">View lot</a> · <a href="${escapeHtml(publicAppUrl() + "/checkout")}">My won items / invoices</a></p>`;
+<p>Total due: <strong>${escapeHtml(formatCurrency(input.fees.total))}</strong></p>
+<p><a href="${escapeHtml(receiptHref)}" style="display:inline-block;background:#111111;color:#FFFFFF;padding:12px 18px;border:4px solid #000;font-weight:bold;text-decoration:none;">Download receipt</a></p>
+<p style="font-size:13px;">${escapeHtml(SITE.addressLine)}, ${escapeHtml(SITE.cityLine)}</p>`;
 }
 
 export function welcomeEmailHtml(input: { name: string; liveHref: string; verifyHref?: string }) {
@@ -120,7 +148,6 @@ export function consignmentApprovedEmailHtml(input: {
   name: string;
   title: string;
   lotHref: string;
-  dashboardHref: string;
   items: ConsignmentMailLine[];
   commissionNote: string;
 }) {
@@ -132,8 +159,8 @@ export function consignmentApprovedEmailHtml(input: {
 <p>${heading}</p>
 ${consignmentLinesHtml(input.items)}
 <p style="border:4px solid #000;background:#FFF7D1;padding:12px;font-weight:bold;">${escapeHtml(input.commissionNote)}</p>
-<p><a href="${escapeHtml(input.lotHref)}" style="color:#111111;font-weight:bold;">View the lot</a></p>
-<p>You can track your consignments after you log in: <a href="${escapeHtml(input.dashboardHref)}">${escapeHtml(input.dashboardHref)}</a></p>`;
+<p><a href="${escapeHtml(input.lotHref)}" style="color:#111111;font-weight:bold;">Open this lot in the live auction</a></p>
+<p>${escapeHtml(input.lotHref)}</p>`;
 }
 
 export function consignmentReceivedEmailHtml(input: {
@@ -195,7 +222,6 @@ export async function sendConsignmentApprovedEmail(input: {
       name: displayName,
       title: first.title,
       lotHref: link,
-      dashboardHref: dashboard,
       items,
       commissionNote: note,
     }),
@@ -383,6 +409,29 @@ export async function sendWelcomeEmail(to: string, name: string, verifyHref?: st
   });
 }
 
+export async function sendHoldFailedEmail(input: { to: string; name: string }) {
+  const link = `${publicAppUrl()}/live`;
+  const name = input.name || "Bidder";
+  return sendTransactionalEmail({
+    templateId: "hold_failed",
+    to: input.to,
+    forceDeliver: true,
+    simpleLayout: true,
+    subjectOverride: "Your $50 DealFinder hold did not go through",
+    vars: {
+      customer_name: name,
+      item_title: "$50 hold",
+      winning_bid: "$50",
+      payment_link: link,
+      lot_link: link,
+    },
+    htmlOverride: `<p>Hi ${escapeHtml(name)},</p>
+<p>Your $50 payment did not go through. If you do not authorize it now, all of your bids on this sale will be forfeited.</p>
+<p><a href="${escapeHtml(link)}" style="color:#111111;font-weight:bold;">Authorize the $50 hold</a></p>
+<p>${escapeHtml(link)}</p>`,
+  });
+}
+
 export async function sendOutbidEmail(input: {
   to: string;
   name: string;
@@ -448,31 +497,38 @@ export async function sendWinInvoiceEmail(input: {
   fulfillment: string;
   address: string;
   batch?: boolean;
+  lots?: WonLotLine[];
 }) {
-  const payHref = checkoutHref(input.lotId);
-  const cashHref = `${checkoutHref(input.lotId)}&cash=1`;
+  const multi = (input.lots?.length ?? 0) > 1;
+  const receiptHref = receiptPageUrl(input.invoice, true);
+  const lotLink = multi ? receiptPageUrl(input.invoice) : lotHref(input.slug || input.lotId);
   const html = invoiceEmailHtml({
     name: input.name,
     invoice: input.invoice,
     title: input.title,
-    lotHref: lotHref(input.slug || input.lotId),
-    payHref,
-    cashHref,
+    lotHref: lotLink,
+    payHref: receiptHref,
+    cashHref: receiptHref,
     fees: input.fees,
     fulfillment: input.fulfillment,
     address: input.address,
     batch: input.batch,
+    lots: input.lots,
+    receiptHref,
   });
+  const subjectTitle = (input.lots?.length ?? 0) > 1 ? `${input.lots!.length} lots` : input.title;
   return sendTransactionalEmail({
     templateId: "winning_invoice",
     to: input.to,
+    forceDeliver: true,
+    subjectOverride: `Your DealFinder receipt — ${subjectTitle}`,
     vars: {
       customer_name: input.name,
-      item_title: input.title,
+      item_title: subjectTitle,
       winning_bid: formatCurrency(input.fees.hammer),
-      payment_link: payHref,
-      lot_link: lotHref(input.slug || input.lotId),
-      cash_link: cashHref,
+      payment_link: receiptHref,
+      lot_link: receiptPageUrl(input.invoice),
+      cash_link: receiptHref,
       invoice_total: formatCurrency(input.fees.total),
     },
     htmlOverride: html,

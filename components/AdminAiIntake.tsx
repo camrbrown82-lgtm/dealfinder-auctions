@@ -141,6 +141,9 @@ export function AdminAiIntake({
       if (!title.trim() || !description.trim()) {
         throw new Error("Generate or fill title and description before posting.");
       }
+      if (saleChannel === "buy_now" && !(Number(reservePrice) > 0)) {
+        throw new Error("Enter a Buy Now price to list this item there.");
+      }
       const warehouse =
         resolvedImageUrls.length > 0
           ? resolvedImageUrls
@@ -156,7 +159,7 @@ export function AdminAiIntake({
           description,
           listingGrade,
           itemDetails,
-          startingBid: start || defaultStartingBid,
+          startingBid: start > 0 ? start : defaultStartingBid,
           buyNowPrice: reserve,
           reservePrice: reserve,
           commissionRate: 0,
@@ -288,6 +291,7 @@ export function AdminAiIntake({
               <input
                 type="number"
                 min={0}
+                step="0.01"
                 value={startingBid}
                 onChange={(e) => {
                   setStartingTouched(true);
@@ -296,6 +300,9 @@ export function AdminAiIntake({
                 required
                 className="mt-2 w-full border-4 border-black bg-white px-3 py-2 font-normal"
               />
+              <span className="mt-1 block font-normal">
+                New lots open at ${defaultStartingBid}. Type a lower price to open this lot there. The next lot goes back to ${defaultStartingBid}.
+              </span>
             </label>
             <label className="block font-comic font-bold">
               Buy now ($)
@@ -304,10 +311,11 @@ export function AdminAiIntake({
                 min={0}
                 value={reservePrice}
                 onChange={(e) => setReservePrice(e.target.value)}
-                required
                 className="mt-2 w-full border-4 border-black bg-white px-3 py-2 font-normal"
               />
-              <span className="mt-1 block font-normal">You set this — Auto-Generate does not fill buy now.</span>
+              <span className="mt-1 block font-normal">
+                Optional. A price lists the lot on Buy Now and keeps it in the live auction.
+              </span>
             </label>
           </div>
           <label className="block font-comic font-bold">
@@ -367,7 +375,7 @@ export function AdminAiIntake({
               disabled={submitting}
               onClick={() => void submit(true, "buy_now")}
             >
-              Save to Buy Now
+              Post live and Buy Now
             </button>
           </div>
           {error && <p className="font-display text-xl text-[#FF0000]">{error}</p>}

@@ -8,7 +8,7 @@ import { AuctionRoom } from "@/components/AuctionRoom";
 import { BuyNowStore } from "@/components/BuyNowStore";
 import { fetchLot } from "@/lib/lots";
 import { listingGradeOf } from "@/lib/listingGrade";
-import { isBuyNowChannel } from "@/lib/saleChannel";
+import { isListedBuyNow } from "@/lib/saleChannel";
 import { lotImages } from "@/lib/utils";
 import { pageMetadata } from "@/lib/seo";
 
@@ -46,11 +46,16 @@ export default async function AuctionLotPage({ params }: PageProps) {
       <InterestBeacon lot={lot} />
       <div className="comic-panel px-4 py-5">
         <Link
-          href={isBuyNowChannel(lot) ? "/buy-now" : "/live"}
+          href="/live"
           className="font-display text-lg text-brand-red underline"
         >
-          {isBuyNowChannel(lot) ? "← Back to Buy Now" : "← Back to live lots"}
+          ← Back to live lots
         </Link>
+        {isListedBuyNow(lot) ? (
+          <Link href="/buy-now" className="ml-4 font-display text-lg text-brand-red underline">
+            Buy Now
+          </Link>
+        ) : null}
         <p className="mt-3 inline-block border-4 border-black bg-white px-3 py-1 font-display text-brand-red shadow-comic-red-sm">
           {listingGradeOf(lot)}
         </p>
@@ -81,7 +86,10 @@ export default async function AuctionLotPage({ params }: PageProps) {
           </div>
         </div>
 
-        {isBuyNowChannel(lot) ? <BuyNowStore lots={[lot]} compact /> : <AuctionRoom lot={lot} />}
+        <div className="space-y-4">
+          {isListedBuyNow(lot) ? <BuyNowStore lots={[lot]} compact /> : null}
+          <AuctionRoom lot={lot} />
+        </div>
       </div>
     </div>
   );

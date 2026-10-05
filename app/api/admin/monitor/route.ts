@@ -50,7 +50,6 @@ function monitorRows(
 ): MonitorLot[] {
   const byId = new Map(events.map((event) => [event.id, event]));
   return lots
-    .filter((lot) => lot.saleChannel !== "buy_now")
     .map((lot) => {
       const event = lot.eventId ? byId.get(lot.eventId) : undefined;
       const kind = event && !event.archivedAt ? saleKind(event) : null;
@@ -111,11 +110,42 @@ export async function GET() {
       const id = row.lot_id as string;
       count.set(id, (count.get(id) ?? 0) + 1);
     }
-    const lots = monitorRows(
-      ((data ?? []) as LotRow[]).map((row) => mapLot(row)),
-      events,
-      (lotId) => count.get(lotId) ?? 0,
-    );
+    const mapped = ((data ?? []) as LotRow[]).map((row) => mapLot(row));
+    const lotIds = mapped.map((lot) => lot.id);
+    const latestBid = new Map<string, { bidder: string; amount: number }>();
+    if (lotIds.length) {
+      const { data: bidRows } = await supabase
+        .from("bids")
+        .select("lot_id, bidder_name, amount, created_at")
+        .in("lot_id", lotIds)
+        .order("created_at", { ascending: false })
+        .limit(400);
+      for (const row of bidRows ?? []) {
+        const id = String(row.lot_id ?? "");
+        if (!id || latestBid.has(id)) continue;
+        latestBid.set(id, { bidder: String(row.bidder_name ?? ""), amount: Number(row.amount ?? 0) });
+      }
+    }
+    const nameById = new Map<string, string>();
+    const missingIds = mapped
+      .filter((lot) => !lot.highBidder && lot.highBidderId)
+      .map((lot) => lot.highBidderId as string);
+    if (missingIds.length) {
+      const { data: profiles } = await supabase.from("profiles").select("id, full_name").in("id", missingIds);
+      for (const row of profiles ?? []) nameById.set(String(row.id), String(row.full_name ?? ""));
+    }
+    const lots = monitorRows(mapped, events, (lotId) => count.get(lotId) ?? 0).map((row) => {
+      const source = mapped.find((lot) => lot.id === row.id);
+      const tape = latestBid.get(row.id);
+      const named = source?.highBidder || (source?.highBidderId ? nameById.get(source.highBidderId) : "") || tape?.bidder || "";
+      const amount = Math.max(row.currentBid, tape?.amount ?? 0);
+      return {
+        ...row,
+        highBidder: named || null,
+        currentBid: amount,
+        bidCount: Math.max(row.bidCount, tape ? 1 : 0),
+      };
+    });
     return NextResponse.json({ lots, sale: salePayload(events), source: "supabase" });
   }
 

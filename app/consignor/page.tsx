@@ -3,7 +3,6 @@
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { ImageUrlPaste } from "@/components/ImageUrlPaste";
 import { PhotoDropzone } from "@/components/PhotoDropzone";
-import { houseCommissionPercent } from "@/lib/commission";
 import { CONSIGNMENT_AGREEMENT_SECTIONS } from "@/lib/consignmentAgreement";
 import { ConsignmentTermsModal } from "@/components/ConsignmentTermsModal";
 import { AiFeedback } from "@/components/AiFeedback";
@@ -19,7 +18,6 @@ import { ItemDetailsField, ListingConditionField } from "@/components/ListingGra
 import { type ListingGrade } from "@/lib/listingGrade";
 import type { SlothPhotoPhase } from "@/lib/turboSloth";
 import {
-  DEFAULT_COMMISSION_RATE,
   formatCurrency,
   pipelineLabel,
   type ConsignorItem,
@@ -29,8 +27,6 @@ const COMMISSION_TIERS =
   CONSIGNMENT_AGREEMENT_SECTIONS.find((section) => section.heading.startsWith("3."))?.paragraphs ?? [];
 
 const LOCAL_KEY = "dealfinder-consignor-items";
-const BATCH_KEY = "dealfinder-consignment-batch";
-const BATCH_FLAG_KEY = "dealfinder-consignment-batch-on";
 
 export default function ConsignorPage() {
   const { user, ready, requestAuth } = useBidder();
@@ -40,6 +36,7 @@ export default function ConsignorPage() {
   const [resolvedImageUrls, setResolvedImageUrls] = useState<string[]>([]);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
+  const [startingBid, setStartingBid] = useState("5");
   const [buyNowPrice, setBuyNowPrice] = useState("");
   const [marketValue, setMarketValue] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -58,38 +55,30 @@ export default function ConsignorPage() {
   const [itemDetails, setItemDetails] = useState("");
   const [listingGrade, setListingGrade] = useState<ListingGrade>("Used");
   const [requestBuyNow, setRequestBuyNow] = useState(false);
-  const [multipleItems, setMultipleItems] = useState(false);
-  const [batchItems, setBatchItems] = useState<ConsignorItem[]>([]);
-  const [emailingBatch, setEmailingBatch] = useState(false);
+  const [charity, setCharity] = useState(false);
 
   const buyNow = Number(buyNowPrice) || 0;
-  const housePercent = houseCommissionPercent(DEFAULT_COMMISSION_RATE);
 
   async function loadItems() {
-    const local = readLocal(consignorName || user?.fullName || "");
-    const response = await fetch("/api/consignments", { credentials: "include" });
+    const response = await fetch("/api/consignments", { credentials: "include", cache: "no-store" });
     const json = await parseApiJson<{ items?: ConsignorItem[]; error?: string }>(response);
     if (!response.ok) {
       setError(json.error || "Could not load status table");
-      setItems(local);
+      setItems(readLocal(consignorName || user?.fullName || ""));
       return;
     }
-    const remote = (json.items ?? []) as ConsignorItem[];
-    const merged = [...local, ...remote].filter(
-      (item, index, list) => list.findIndex((row) => row.id === item.id) === index,
-    );
-    setItems(merged);
+    clearLocal();
+    setItems((json.items ?? []) as ConsignorItem[]);
   }
 
   useEffect(() => {
-    setMultipleItems(readBatchFlag());
-    setBatchItems(readBatch());
+    try {
+      window.sessionStorage.removeItem("dealfinder-consignment-batch");
+      window.sessionStorage.removeItem("dealfinder-consignment-batch-on");
+    } catch {
+      /* ignore */
+    }
   }, []);
-
-  useEffect(() => {
-    writeBatchFlag(multipleItems);
-    writeBatch(batchItems);
-  }, [multipleItems, batchItems]);
 
   useEffect(() => {
     if (user?.fullName) setConsignorName(user.fullName);
@@ -189,6 +178,10 @@ export default function ConsignorPage() {
     event.preventDefault();
     setError(null);
     setNotice(null);
+    if (requestBuyNow && buyNow <= 0) {
+      setError("Enter a Buy Now price to list this item there.");
+      return;
+    }
     setTermsOpen(true);
   }
 
@@ -206,6 +199,7 @@ export default function ConsignorPage() {
           consignorName,
           title,
           description,
+          startingBid: Number(startingBid) > 0 ? Number(startingBid) : 5,
           buyNowPrice: buyNow,
           estimatedMarketValue: Number(marketValue) || 0,
           listingGrade,
@@ -214,14 +208,7 @@ export default function ConsignorPage() {
           termsAccepted: true,
           saleChannel: requestBuyNow ? "buy_now" : "auction",
           requestBuyNow,
-          sendConfirmation: !multipleItems,
-          batchItems: !multipleItems
-            ? batchItems.map((row) => ({
-                title: row.title,
-                startingBid: row.startingBid,
-                buyNowPrice: row.buyNowPrice,
-              }))
-            : undefined,
+          charity,
         }),
       });
       const json = await parseApiJson<{ item?: ConsignorItem; error?: string }>(response);
@@ -229,29 +216,18 @@ export default function ConsignorPage() {
         throw new Error(json.error || "Submit failed");
       }
       const item = json.item as ConsignorItem;
-      writeLocal(item);
       setItems((current) => [item, ...current.filter((row) => row.id !== item.id)]);
       setTermsOpen(false);
-      if (multipleItems) {
-        setBatchItems((current) => [item, ...current.filter((row) => row.id !== item.id)]);
-        setNotice(
-          "Saved. Add another consignment, then click Done consignments to email the whole list once.",
-        );
-      } else if (batchItems.length) {
-        setBatchItems([]);
-        setNotice(
-          "Submitted. Combined confirmation emailed for every item in this list, including this one.",
-        );
-      } else {
-        setNotice(
-          requestBuyNow
-            ? "Submitted as Buy Now, pending admin approval. A confirmation email is on the way."
-            : "Submitted for pending approval. A confirmation email is on the way. DealFinder will assign lot # and sale date.",
-        );
-      }
+      setNotice(
+        requestBuyNow
+          ? "Submitted as Buy Now, pending admin approval. A confirmation email is on the way."
+          : "Submitted for pending approval. A confirmation email is on the way. DealFinder will assign lot # and sale date.",
+      );
       setRequestBuyNow(false);
+      setCharity(false);
       setTitle("");
       setDescription("");
+      setStartingBid("5");
       setBuyNowPrice("");
       setMarketValue("");
       setFiles([]);
@@ -267,38 +243,6 @@ export default function ConsignorPage() {
       setError(err instanceof Error ? err.message : "Submit failed");
     } finally {
       setSubmitting(false);
-    }
-  }
-
-  async function emailMyList() {
-    if (batchItems.length === 0) return;
-    setError(null);
-    setEmailingBatch(true);
-    try {
-      const response = await fetch("/api/consignments/confirmation", {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          items: batchItems.map((row) => ({
-            id: row.id,
-            title: row.title,
-            startingBid: row.startingBid,
-            buyNowPrice: row.buyNowPrice,
-          })),
-        }),
-      });
-      const json = await parseApiJson<{ error?: string }>(response);
-      if (!response.ok) {
-        throw new Error(json.error || "Could not send confirmation email");
-      }
-      setBatchItems([]);
-      setMultipleItems(false);
-      setNotice("Done. One confirmation email is on the way for every consignment in this list.");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not send confirmation email");
-    } finally {
-      setEmailingBatch(false);
     }
   }
 
@@ -338,54 +282,6 @@ export default function ConsignorPage() {
       </div>
 
       <form onSubmit={onSubmit} className="space-y-6">
-        <div className="comic-panel space-y-3 p-4">
-          <label className="flex items-start gap-3 font-comic text-sm font-bold">
-            <input
-              type="checkbox"
-              className="mt-1 h-5 w-5 shrink-0"
-              checked={multipleItems}
-              onChange={(e) => setMultipleItems(e.target.checked)}
-            />
-            <span>
-              Do you have multiple consignments?
-              <span className="block font-normal">
-                Check this before you submit the first item. Each submit is saved, and one confirmation
-                email goes out when you click Done consignments.
-              </span>
-            </span>
-          </label>
-          {(multipleItems || batchItems.length > 0) && (
-            <div className="space-y-3 border-4 border-black bg-brand-cream p-3">
-              <p className="font-display text-xl">Consignments in this email</p>
-              {batchItems.length === 0 ? (
-                <p className="font-comic text-sm">
-                  None yet. Submit each item, then click Done consignments.
-                </p>
-              ) : (
-                <ul className="flex flex-wrap gap-2">
-                  {batchItems.map((row) => (
-                    <li
-                      key={row.id}
-                      className="border-4 border-black bg-white px-3 py-1 font-comic text-sm font-bold"
-                    >
-                      {row.title}
-                      <span className="block font-normal">Buy now {formatCurrency(row.buyNowPrice)}</span>
-                    </li>
-                  ))}
-                </ul>
-              )}
-              <button
-                type="button"
-                className="comic-btn w-full sm:w-auto"
-                disabled={emailingBatch || batchItems.length === 0}
-                onClick={() => void emailMyList()}
-              >
-                {emailingBatch ? "Sending…" : "Done consignments"}
-              </button>
-            </div>
-          )}
-        </div>
-
         <div className="grid items-stretch gap-6 lg:grid-cols-2">
         <div className="comic-panel flex h-full flex-col space-y-4 p-6">
           <ConsignorNameField value={consignorName} />
@@ -443,14 +339,30 @@ export default function ConsignorPage() {
             />
           </label>
           <label className="block font-comic font-bold">
-            Buy now ($)
-            <span className="block font-normal">You set this — Auto-Generate does not fill buy now.</span>
+            Starting bid ($)
+            <span className="block font-normal">
+              Lots open at $5. Type a lower price to open this item there. The next item goes back to $5.
+            </span>
             <input
               type="number"
-              min={1}
+              min={0}
+              step="0.01"
+              value={startingBid}
+              onChange={(e) => setStartingBid(e.target.value)}
+              className="mt-2 w-full border-4 border-black bg-white px-3 py-2 font-normal"
+            />
+          </label>
+          <label className="block font-comic font-bold">
+            Buy now ($)
+            <span className="block font-normal">
+              Optional. Leave this blank to consign for the live auction only. A price also lists the
+              item on Buy Now after DealFinder approves it.
+            </span>
+            <input
+              type="number"
+              min={0}
               value={buyNowPrice}
               onChange={(e) => setBuyNowPrice(e.target.value)}
-              required
               className="mt-2 w-full border-4 border-black bg-white px-3 py-2 font-normal"
             />
           </label>
@@ -475,10 +387,26 @@ export default function ConsignorPage() {
               ))}
             </ul>
             <p className="mt-2">
-              Typical hammer share is {housePercent}%. Final commission follows the agreement you
-              accept on submit. You cannot pick a custom percent here.
+              Final commission follows the agreement you accept on submit. You cannot pick a custom
+              percent here.
             </p>
           </div>
+
+          <label className="flex items-start gap-2 font-comic text-sm font-bold">
+            <input
+              type="checkbox"
+              className="mt-1 h-4 w-4"
+              checked={charity}
+              onChange={(e) => setCharity(e.target.checked)}
+            />
+            <span>
+              Charity consignment
+              <span className="block font-normal">
+                Check this if the proceeds are for a charity or fundraising partner. Staff will see it
+                when they approve the lot.
+              </span>
+            </span>
+          </label>
 
           <label className="flex items-start gap-2 font-comic text-sm font-bold">
             <input
@@ -488,9 +416,10 @@ export default function ConsignorPage() {
               onChange={(e) => setRequestBuyNow(e.target.checked)}
             />
             <span>
-              Set as Buy Now, pending admin approval
+              Also list on Buy Now
               <span className="block font-normal">
-                Staff must approve before this item appears on the public Buy Now page.
+                Needs a Buy Now price. After approval it stays in the live auction and appears on Buy
+                Now.
               </span>
             </span>
           </label>
@@ -515,12 +444,14 @@ export default function ConsignorPage() {
             >
               {generating ? "Cataloging + studio photo…" : "Auto-Generate Details"}
             </button>
-            <button type="submit" className="comic-btn w-full sm:flex-1" disabled={submitting}>
-              {submitting
-                ? "Submitting…"
-                : multipleItems
-                  ? "Add consignment"
-                  : "Submit for approval"}
+            <button
+              type="submit"
+              disabled={submitting}
+              aria-label={submitting ? "Submitting" : "Submit for approval"}
+              className="block bg-transparent p-0 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src="/consign-submit.png" alt="" className="h-36 w-auto sm:h-44" />
             </button>
           </div>
         </div>
@@ -567,9 +498,20 @@ export default function ConsignorPage() {
         </p>
         <StatusTable
           items={items.filter(
-            (item) => item.pipelineStatus !== "pending_approval" && item.pipelineStatus !== "buy_now_pending",
+            (item) =>
+              item.pipelineStatus !== "pending_approval" &&
+              item.pipelineStatus !== "buy_now_pending" &&
+              item.pipelineStatus !== "rejected",
           )}
           empty="No accepted lots yet."
+        />
+      </section>
+
+      <section className="space-y-3">
+        <h2 className="font-display text-3xl text-brand-red">Not accepted</h2>
+        <StatusTable
+          items={items.filter((item) => item.pipelineStatus === "rejected")}
+          empty="Nothing was turned down."
         />
       </section>
     </div>
@@ -587,7 +529,17 @@ function StatusTable({ items, empty }: { items: ConsignorItem[]; empty: string }
             <article key={item.id} className="comic-panel space-y-1 p-3 font-comic">
               <p className="font-display text-lg leading-5">{item.title}</p>
               <p>{item.consignor}</p>
-              <p className="font-bold uppercase">{pipelineLabel(item.pipelineStatus)}</p>
+              <p className="font-bold uppercase">
+                {pipelineLabel(item.pipelineStatus)}
+                {item.lotNumber ? ` · ${item.lotNumber}` : ""}
+                {item.charity ? " · Charity" : ""}
+              </p>
+              {item.lotHref ? (
+                <a href={item.lotHref} className="font-bold underline">
+                  Open in the live auction
+                </a>
+              ) : null}
+              <p>Opens at {formatCurrency(item.startingBid || 0)}</p>
               <p>Buy now {formatCurrency(item.buyNowPrice || 0)}</p>
             </article>
           ))
@@ -600,13 +552,14 @@ function StatusTable({ items, empty }: { items: ConsignorItem[]; empty: string }
               <th className="border-b-4 border-black p-3">Lot</th>
               <th className="border-b-4 border-black p-3">Consignor</th>
               <th className="border-b-4 border-black p-3">Status</th>
+              <th className="border-b-4 border-black p-3">Opens at</th>
               <th className="border-b-4 border-black p-3">Buy now</th>
             </tr>
           </thead>
           <tbody>
             {items.length === 0 ? (
               <tr className="bg-brand-cream">
-                <td className="p-3" colSpan={4}>
+                <td className="p-3" colSpan={5}>
                   {empty}
                 </td>
               </tr>
@@ -617,6 +570,16 @@ function StatusTable({ items, empty }: { items: ConsignorItem[]; empty: string }
                   <td className="border-b-2 border-black p-3">{item.consignor}</td>
                   <td className="border-b-2 border-black p-3 font-bold uppercase">
                     {pipelineLabel(item.pipelineStatus)}
+                    {item.lotNumber ? ` · ${item.lotNumber}` : ""}
+                    {item.charity ? " · Charity" : ""}
+                    {item.lotHref ? (
+                      <a href={item.lotHref} className="mt-1 block font-bold normal-case underline">
+                        Open in the live auction
+                      </a>
+                    ) : null}
+                  </td>
+                  <td className="border-b-2 border-black p-3">
+                    {formatCurrency(item.startingBid || 0)}
                   </td>
                   <td className="border-b-2 border-black p-3">
                     {formatCurrency(item.buyNowPrice || 0)}
@@ -645,47 +608,11 @@ function readLocal(name: string): ConsignorItem[] {
   }
 }
 
-function writeLocal(item: ConsignorItem) {
+function clearLocal() {
   try {
-    const raw = window.localStorage.getItem(LOCAL_KEY);
-    const list = raw ? (JSON.parse(raw) as ConsignorItem[]) : [];
-    window.localStorage.setItem(LOCAL_KEY, JSON.stringify([item, ...list]));
-  } catch {
-    /* ignore quota */
-  }
-}
-
-function readBatch(): ConsignorItem[] {
-  if (typeof window === "undefined") return [];
-  try {
-    const raw = window.sessionStorage.getItem(BATCH_KEY);
-    return raw ? (JSON.parse(raw) as ConsignorItem[]) : [];
-  } catch {
-    return [];
-  }
-}
-
-function writeBatch(items: ConsignorItem[]) {
-  try {
-    window.sessionStorage.setItem(BATCH_KEY, JSON.stringify(items));
-  } catch {
-    /* ignore quota */
-  }
-}
-
-function readBatchFlag() {
-  if (typeof window === "undefined") return false;
-  try {
-    return window.sessionStorage.getItem(BATCH_FLAG_KEY) === "1";
-  } catch {
-    return false;
-  }
-}
-
-function writeBatchFlag(on: boolean) {
-  try {
-    window.sessionStorage.setItem(BATCH_FLAG_KEY, on ? "1" : "0");
+    window.localStorage.removeItem(LOCAL_KEY);
   } catch {
     /* ignore */
   }
 }
+

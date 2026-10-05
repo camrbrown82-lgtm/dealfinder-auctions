@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { LotImage } from "@/components/LotImage";
 import { useAdminDesk } from "@/components/admin/AdminDesk";
 import { AdminShell } from "@/components/admin/AdminShell";
-import { isBuyNowChannel } from "@/lib/saleChannel";
+import { isListedBuyNow } from "@/lib/saleChannel";
 import { formatCurrency, lotImages, type AuctionLot } from "@/lib/utils";
 
 export default function AdminBuyNowPage() {
@@ -12,7 +12,7 @@ export default function AdminBuyNowPage() {
   const [drafts, setDrafts] = useState<Record<string, { title: string; description: string; price: string }>>({});
 
   const lots = useMemo(
-    () => data.inventory.filter(isBuyNowChannel),
+    () => data.inventory.filter(isListedBuyNow),
     [data.inventory],
   );
 
@@ -58,12 +58,21 @@ export default function AdminBuyNowPage() {
   return (
     <AdminShell
       title="Buy Now"
-      subtitle="House-owned items list immediately. Consignor Buy Now requests stay in the consignment pipeline until you approve them."
+      subtitle="Lots with a Buy Now price stay in the live auction and show here. Someone can bid, or pay the Buy Now price and take it off the floor."
     >
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-wrap items-center gap-3">
         <a href="/api/admin/buy-now/export" className="comic-btn inline-block">
           Export .xlsx
         </a>
+        <p className="max-w-xl font-comic text-sm">
+          Approved Buy Now lots export to Facebook from{" "}
+          <a className="font-bold underline" href="/feeds/facebook-catalog.csv">
+            the catalog feed
+          </a>
+          . In Commerce Manager, schedule{" "}
+          <span className="font-bold">https://www.dealfinderauctions.com/feeds/facebook-catalog.csv</span>.
+          Sold lots are marked out of stock on the next fetch. Facebook can only pull that file once an hour. The sale itself is locked here the moment someone starts checkout, so a second buyer cannot take it.
+        </p>
       </div>
       {lots.length === 0 ? (
         <p className="comic-panel p-4 font-comic">

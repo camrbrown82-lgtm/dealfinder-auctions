@@ -20,7 +20,7 @@ import { auctionTermsColumns, mapAuctionEvent } from "@/lib/mapAuctionEvent";
 import { persistPublicImageUrls } from "@/lib/consignmentStorage";
 import { uniqueConsignorNames } from "@/lib/consignors";
 import { uniqueImageUrls } from "@/lib/utils";
-import { startingBidFromBuyNow } from "@/lib/buyNow";
+import { openingBid } from "@/lib/buyNow";
 import { patchLotRow } from "@/lib/openFloor";
 import { recordSoldLotSettlement } from "@/lib/recordSale";
 import { attachLotToSale, ensureWeeklySales } from "@/lib/weeklySales";
@@ -769,13 +769,14 @@ export async function POST(request: NextRequest) {
     if (!title) {
       return NextResponse.json({ error: "Title is required." }, { status: 400 });
     }
-    const starting = Number(body.startingBid) || 0;
     const buyNow = Number(body.buyNowPrice ?? body.reservePrice) || 0;
+    const starting = openingBid(body.startingBid, buyNow, 5);
     const listingGrade = parseListingGrade(body.listingGrade);
     const itemDetails = String(body.itemDetails ?? "").trim();
     const description = withListedGrade(body.description ?? "", listingGrade);
-    const saleChannel = body.saleChannel === "buy_now" ? "buy_now" : "auction";
-    const sale = saleChannel === "buy_now" ? null : await resolveSaleEvent(supabase, demo, body.eventId);
+    const alsoBuyNow = body.saleChannel === "buy_now" || buyNow > 0;
+    const saleChannel = "auction" as const;
+    const sale = await resolveSaleEvent(supabase, demo, body.eventId);
     const status: LotStatus = "live";
     const endsAt = sale?.endsAt ?? new Date(Date.now() + 1000 * 60 * 60 * 24 * 365).toISOString();
 
@@ -808,18 +809,18 @@ export async function POST(request: NextRequest) {
           image_url: image,
           image_urls: images,
           starting_bid: starting,
-          current_bid: saleChannel === "buy_now" ? buyNow || starting : starting,
+          current_bid: starting,
           reserve_price: buyNow || null,
           buy_now_price: buyNow || null,
           min_increment: structuredIncrement(starting),
           ends_at: eventEnds,
           status,
-          event_id: saleChannel === "buy_now" ? null : eventId,
+          event_id: eventId,
           lot_number: lotNumber,
           listing_grade: listingGrade,
           item_details: itemDetails || null,
           sale_channel: saleChannel,
-          buy_now_status: saleChannel === "buy_now" ? "listed" : null,
+          buy_now_status: alsoBuyNow ? "listed" : null,
         };
       const { data, error } = await insertLotRow(supabase, insertRow);
       if (error) {
@@ -834,15 +835,15 @@ export async function POST(request: NextRequest) {
       );
       const lot = mapLot(data as LotRow);
       lot.saleChannel = saleChannel;
-      lot.buyNowStatus = saleChannel === "buy_now" ? "listed" : lot.buyNowStatus;
+      lot.buyNowStatus = alsoBuyNow ? "listed" : lot.buyNowStatus;
       if (sale) attachLotToSale(lot, sale);
       return NextResponse.json(
         withHouseSettings(
           {
             ok: true,
             lot,
-            href: saleChannel === "buy_now" ? "/buy-now" : "/live",
-            auctionLabel: saleChannel === "buy_now" ? "Buy Now" : auctionLabel(sale, lot),
+            href: "/live",
+            auctionLabel: alsoBuyNow ? `${auctionLabel(sale, lot)} · Buy Now` : auctionLabel(sale, lot),
             saleStartsAt: sale?.startsAt ?? null,
             postedLive: true,
           },
@@ -863,22 +864,22 @@ export async function POST(request: NextRequest) {
       category: body.category ?? "Oddities",
       image,
       images,
-      currentBid: saleChannel === "buy_now" ? buyNow || starting : starting,
-      minIncrement: structuredIncrement(saleChannel === "buy_now" ? buyNow || starting : starting),
+      currentBid: starting,
+      minIncrement: structuredIncrement(starting),
       endsAt,
       consignor: body.consignorName?.trim() || "House stock",
       description,
       status,
-      eventId: saleChannel === "buy_now" ? null : sale?.id || null,
+      eventId: sale?.id || null,
       lotNumber,
-      auctionNumber: saleChannel === "buy_now" ? null : sale?.auctionNumber ?? null,
+      auctionNumber: sale?.auctionNumber ?? null,
       startingBid: starting,
       reservePrice: buyNow || null,
       buyNowPrice: buyNow || null,
       listingGrade,
       itemDetails: itemDetails || null,
       saleChannel,
-      buyNowStatus: saleChannel === "buy_now" ? "listed" : null,
+      buyNowStatus: alsoBuyNow ? "listed" : null,
     };
     if (sale) attachLotToSale(lot, sale);
     addDemoLot(lot);
@@ -888,8 +889,8 @@ export async function POST(request: NextRequest) {
         {
           ok: true,
           lot,
-          href: saleChannel === "buy_now" ? "/buy-now" : "/live",
-          auctionLabel: saleChannel === "buy_now" ? "Buy Now" : auctionLabel(sale, lot),
+          href: "/live",
+          auctionLabel: alsoBuyNow ? `${auctionLabel(sale, lot)} · Buy Now` : auctionLabel(sale, lot),
           saleStartsAt: sale?.startsAt ?? null,
           postedLive: true,
         },
@@ -988,16 +989,14 @@ export async function PATCH(request: NextRequest) {
         item.buyNowPrice = buyNow;
         item.reservePrice = buyNow;
       }
-      if (!item.startingBid && item.buyNowPrice) {
-        item.startingBid = startingBidFromBuyNow(item.buyNowPrice);
-      }
+      item.startingBid = openingBid(item.startingBid, item.buyNowPrice ?? item.reservePrice, 5);
       if (body.consignorName != null) item.consignor = body.consignorName.trim();
       if (body.status) item.status = body.status as ConsignmentStatus;
       if (body.status === "approved") {
-        const listBuyNow = body.saleChannel === "buy_now" || item.saleChannel === "buy_now";
+        const listBuyNow = body.saleChannel === "buy_now" || item.saleChannel === "buy_now" || Number(item.buyNowPrice ?? item.reservePrice) > 0;
         const claimed = await allocateFromHouse(null, demo);
         const lotNumber = claimed.lotNumber;
-        const event = listBuyNow ? null : await resolveSaleEvent(null, demo, body.eventId);
+        const event = await resolveSaleEvent(null, demo, body.eventId);
         const { image, images } = lotPhotos(item.imageUrls);
         const lot: AuctionLot = {
           id: `lot-${item.id}`,
@@ -1018,7 +1017,7 @@ export async function PATCH(request: NextRequest) {
           buyNowPrice: item.buyNowPrice ?? item.reservePrice ?? null,
           listingGrade: item.listingGrade,
           itemDetails: item.notes ?? null,
-          saleChannel: listBuyNow ? "buy_now" : "auction",
+          saleChannel: "auction",
           buyNowStatus: listBuyNow ? "listed" : null,
         };
         if (event) applyEventToLot(lot, event);
@@ -1097,11 +1096,13 @@ export async function PATCH(request: NextRequest) {
       }
       if (body.status === "approved" && consignment) {
         const row = consignment as ConsignmentRow;
-        const listBuyNow = body.saleChannel === "buy_now" || row.sale_channel === "buy_now";
         const reserve = Number(row.buy_now_price ?? row.reserve_price ?? 0);
-        const starting =
-          Number(row.starting_bid ?? row.estimated_low) ||
-          (reserve ? startingBidFromBuyNow(reserve) : 0);
+        const listBuyNow = reserve > 0 || body.saleChannel === "buy_now" || row.sale_channel === "buy_now";
+        const starting = openingBid(
+          body.startingBid ?? row.starting_bid ?? row.estimated_low,
+          reserve,
+          5,
+        );
         let photos = row.image_urls ?? [];
         try {
           photos = await persistPublicImageUrls(supabase, photos);
@@ -1109,7 +1110,7 @@ export async function PATCH(request: NextRequest) {
           photos = row.image_urls ?? [];
         }
         const { image, images } = lotPhotos(photos);
-        const event = listBuyNow ? null : await resolveSaleEvent(supabase, demo, body.eventId);
+        const event = await resolveSaleEvent(supabase, demo, body.eventId);
         const eventId = event ? asEventUuid(event.id) ?? event.id : null;
         const eventEnds =
           event?.endsAt ?? new Date(Date.now() + 1000 * 60 * 60 * 24 * (listBuyNow ? 365 : 1)).toISOString();
@@ -1129,13 +1130,12 @@ export async function PATCH(request: NextRequest) {
             ends_at: eventEnds,
             title: row.title,
             description: row.description ?? existing.description,
-            current_bid: listBuyNow ? reserve || starting || Number(existing.current_bid) : starting || Number(existing.current_bid),
+            current_bid: starting || Number(existing.current_bid),
             starting_bid: starting || Number(existing.starting_bid),
-            sale_channel: listBuyNow ? "buy_now" : "auction",
+            sale_channel: "auction",
             buy_now_status: listBuyNow ? "listed" : null,
           };
           if (eventId) reopen.event_id = eventId;
-          if (listBuyNow) reopen.event_id = null;
           reopen.image_url = image;
           reopen.image_urls = images;
           const patched = await patchLotRow(String(existing.id), reopen);
@@ -1181,17 +1181,17 @@ export async function PATCH(request: NextRequest) {
             image_url: image,
             image_urls: images,
             starting_bid: starting,
-            current_bid: listBuyNow ? reserve || starting : starting,
+            current_bid: starting,
             reserve_price: reserve || null,
             buy_now_price: reserve || null,
             min_increment: structuredIncrement(starting),
             ends_at: eventEnds,
             status: houseStatus,
-            event_id: listBuyNow ? null : eventId,
+            event_id: eventId,
             lot_number: lotNumber,
             listing_grade: parseListingGrade(row.listing_grade ?? row.condition),
             item_details: String(row.notes ?? "").trim() || null,
-            sale_channel: listBuyNow ? "buy_now" : "auction",
+            sale_channel: "auction",
             buy_now_status: listBuyNow ? "listed" : null,
           };
           let { data: lotRow, error: lotError } = await insertLotRow(supabase, insertRow);
@@ -1253,11 +1253,13 @@ export async function PATCH(request: NextRequest) {
     if (body.description != null) lot.description = body.description;
     if (body.currentBid != null) lot.currentBid = body.currentBid;
     if (body.startingBid != null) {
-      lot.startingBid = body.startingBid;
+      const opening = openingBid(body.startingBid, lot.buyNowPrice ?? lot.reservePrice, 5);
+      lot.startingBid = opening;
       const clock = getDemoLot(lot.id);
-      if (clock && clock.bids.length === 0) {
-        clock.currentBid = body.startingBid;
-        lot.currentBid = body.startingBid;
+      const unbid = !lot.highBidder && !lot.highBidderId && (!clock || clock.bids.length === 0);
+      if (unbid) {
+        if (clock) clock.currentBid = opening;
+        lot.currentBid = opening;
       }
     }
     if (body.reservePrice != null || body.buyNowPrice != null) {
@@ -1265,13 +1267,11 @@ export async function PATCH(request: NextRequest) {
       lot.reservePrice = buyNow || null;
       lot.buyNowPrice = buyNow || null;
     }
-    if (body.saleChannel) {
+    if (body.saleChannel === "buy_now" || Number(body.buyNowPrice ?? body.reservePrice) > 0) {
+      lot.saleChannel = "auction";
+      lot.buyNowStatus = "listed";
+    } else if (body.saleChannel) {
       lot.saleChannel = body.saleChannel;
-      lot.buyNowStatus = body.saleChannel === "buy_now" ? lot.buyNowStatus ?? "listed" : null;
-      if (body.saleChannel === "buy_now") {
-        lot.eventId = null;
-        lot.auctionNumber = null;
-      }
     }
     if (body.lotNumber != null) lot.lotNumber = body.lotNumber.trim();
     if (body.category) lot.category = body.category;
@@ -1339,16 +1339,28 @@ export async function PATCH(request: NextRequest) {
       if (body.title != null) updates.title = body.title;
       if (body.description != null) updates.description = body.description;
       if (body.currentBid != null) updates.current_bid = body.currentBid;
-      if (body.startingBid != null) updates.starting_bid = body.startingBid;
+      if (body.startingBid != null) {
+        const opening = openingBid(body.startingBid, body.buyNowPrice ?? body.reservePrice, 5);
+        updates.starting_bid = opening;
+        const lotId = String(body.id ?? "");
+        const { data: priced } = lotId
+          ? await supabase.from("lots").select("high_bidder, high_bidder_id").eq("id", lotId).maybeSingle()
+          : { data: null };
+        if (!priced?.high_bidder && !priced?.high_bidder_id) {
+          updates.current_bid = opening;
+          updates.min_increment = structuredIncrement(opening);
+        }
+      }
       if (body.reservePrice != null || body.buyNowPrice != null) {
         const buyNow = Number(body.buyNowPrice ?? body.reservePrice) || 0;
         updates.reserve_price = buyNow || null;
         updates.buy_now_price = buyNow || null;
       }
-      if (body.saleChannel) {
+      if (body.saleChannel === "buy_now" || Number(body.buyNowPrice ?? body.reservePrice) > 0) {
+        updates.sale_channel = "auction";
+        updates.buy_now_status = "listed";
+      } else if (body.saleChannel) {
         updates.sale_channel = body.saleChannel;
-        updates.buy_now_status = body.saleChannel === "buy_now" ? "listed" : null;
-        if (body.saleChannel === "buy_now") updates.event_id = null;
       }
       if (body.lotNumber != null) updates.lot_number = body.lotNumber.trim();
       if (body.category) updates.category = body.category;

@@ -83,7 +83,7 @@ export async function fetchLiveCatalog(): Promise<{
       lot.auctionNumber = row.event_id ? numbers.get(row.event_id) ?? null : lot.auctionNumber;
       return lot;
     })
-    .filter((lot) => lot.saleChannel !== "buy_now" && lot.status !== "removed" && lot.status !== "draft")
+    .filter((lot) => lot.status !== "removed" && lot.status !== "draft")
     .map((lot) => {
       const event = events.find((row) => row.id === lot.eventId);
       const acceptsBids = event ? !event.archivedAt && saleKind(event) !== "past" : false;
@@ -104,8 +104,7 @@ export async function fetchBuyNowLots(): Promise<AuctionLot[]> {
   const { data, error } = await supabase
     .from("lots")
     .select("*")
-    .eq("sale_channel", "buy_now")
-    .eq("buy_now_status", "listed")
+    .in("status", ["live", "paused"])
     .order("created_at", { ascending: false });
 
   if (error || !data) {

@@ -497,12 +497,53 @@ export async function markLotPaid(lotId: string, transactionId: string) {
         helcim_purchase_transaction_id: transactionId,
       })
       .eq("id", lotId);
+  } else if (error && !/paid_at|helcim_purchase/i.test(error.message)) {
     return { paidAt, transactionId };
   }
-  if (error && /paid_at|helcim_purchase/i.test(error.message)) {
-    return { paidAt, transactionId };
-  }
+  await syncSettlementPayment(lotId);
   return { paidAt, transactionId };
+}
+
+async function syncSettlementPayment(lotId: string) {
+  const supabase = getSupabaseAdmin();
+  if (!isSupabaseConfigured || !supabase) return;
+  const matched = await supabase.from("settlement_invoices").select("*").contains("lots", [{ id: lotId }]);
+  const rows =
+    matched.error
+      ? (
+          await supabase.from("settlement_invoices").select("*").limit(400)
+        ).data?.filter((row: { lots?: unknown }) =>
+          Array.isArray(row.lots) &&
+          row.lots.some((item: { id?: string }) => String(item?.id ?? "") === lotId),
+        ) ?? []
+      : matched.data ?? [];
+  for (const raw of rows) {
+    const lots: Array<{ id?: string }> = Array.isArray(raw.lots) ? raw.lots : [];
+    const ids = lots.map((item) => String(item?.id ?? "")).filter((id) => id.length > 0);
+    if (!ids.length) continue;
+    const paid = await supabase.from("lots").select("id, paid_at").in("id", ids);
+    const paidIds = new Set(
+      (paid.data ?? []).filter((row) => row.paid_at).map((row) => String(row.id)),
+    );
+    const paidCount = ids.filter((id) => paidIds.has(id)).length;
+    const current = String(raw.payment_status ?? "unpaid");
+    const next =
+      paidCount === 0
+        ? current === "cash_pending"
+          ? "cash_pending"
+          : "unpaid"
+        : paidCount >= ids.length
+          ? "paid"
+          : "partial";
+    if (next === current) continue;
+    await supabase
+      .from("settlement_invoices")
+      .update({
+        payment_status: next,
+        ...(next === "paid" ? { payment_channel: "helcim" } : {}),
+      })
+      .eq("invoice_number", raw.invoice_number);
+  }
 }
 
 export function lotPaidRecord(lotId: string) {

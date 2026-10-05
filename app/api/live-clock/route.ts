@@ -6,6 +6,8 @@ import { isAuctionEndDay } from "@/lib/auctionEndDay";
 import { runSundayPreauthSweep } from "@/lib/sundayPreauth";
 import { issueEndedAuctionInvoices } from "@/lib/auctionCloseInvoices";
 import { settleEndedAuctions } from "@/lib/closeEndedLots";
+import { isSundayBidReminderWindow } from "@/lib/auctionEndDay";
+import { sendSundayBidReminders } from "@/lib/sundayBidReminder";
 
 export const dynamic = "force-dynamic";
 export const fetchCache = "force-no-store";
@@ -18,6 +20,9 @@ declare global {
 
 export async function GET() {
   void settleEndedAuctions().catch(() => undefined);
+  if (isSundayBidReminderWindow()) {
+    await sendSundayBidReminders().catch(() => undefined);
+  }
   if (isAuctionEndDay()) {
     const now = Date.now();
     if (!globalThis.__dealfinderSundaySweepAt || now - globalThis.__dealfinderSundaySweepAt > 10 * 60 * 1000) {

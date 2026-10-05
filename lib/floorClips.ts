@@ -43,6 +43,25 @@ export async function listFloorClips(supabase: SupabaseClient): Promise<FloorCli
   }));
 }
 
+export async function deleteFloorClip(supabase: SupabaseClient, id: string) {
+  const { data, error } = await supabase
+    .from("floor_clips")
+    .select("id, storage_path")
+    .eq("id", id)
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) throw new Error("That video is already gone.");
+  const path = String(data.storage_path ?? "").trim();
+  if (path) {
+    const removed = await supabase.storage.from(FLOOR_CLIPS_BUCKET).remove([path]);
+    if (removed.error && !/not found|does not exist/i.test(removed.error.message)) {
+      throw new Error(removed.error.message);
+    }
+  }
+  const deleted = await supabase.from("floor_clips").delete().eq("id", id);
+  if (deleted.error) throw new Error(deleted.error.message);
+}
+
 export function floorClipCaption(title: string) {
   return `New at DealFinder Auctions: ${title}. See it at https://www.dealfinderauctions.com/media`;
 }

@@ -4,6 +4,7 @@ import { patchLotRow } from "@/lib/openFloor";
 import type { FulfillmentChoice } from "@/lib/payments";
 import type { BidderProfile } from "@/lib/profileTypes";
 import { mapInvoiceRow, upsertSettlementInvoice } from "@/lib/settlementDb";
+import { invoiceFulfillment } from "@/lib/settlements";
 import { estimateCarrierShipping } from "@/lib/shippingEstimate";
 import { getSupabaseAdmin, isSupabaseConfigured } from "@/lib/supabaseClient";
 
@@ -47,7 +48,10 @@ export async function saveWinFulfillment(
       for (const raw of data ?? []) {
         if (!invoiceHasLot(raw.lots, lotId)) continue;
         const record = mapInvoiceRow(raw as Record<string, unknown>);
-        record.fulfillment = fulfillment;
+        record.lots = record.lots.map((lot) =>
+          lot.id === lotId ? { ...lot, fulfillment } : lot,
+        );
+        record.fulfillment = invoiceFulfillment(record.lots);
         record.shippingCost = shippingCost;
         if (address) record.address = address;
         const fees = invoiceFees({

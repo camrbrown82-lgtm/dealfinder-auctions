@@ -3,6 +3,7 @@ import { listDemoLots } from "@/lib/demoAuctionStore";
 import { getDemoUser, listDemoUsers } from "@/lib/demoUsers";
 import { mapLot, type LotRow } from "@/lib/mappers";
 import { recordSoldLotSettlement } from "@/lib/recordSale";
+import { refreshOpenSettlementLots } from "@/lib/settlementSync";
 import { lotWasSold } from "@/lib/settlements";
 import { getSupabaseAdmin, isSupabaseConfigured } from "@/lib/supabaseClient";
 import type { AuctionLot } from "@/lib/utils";
@@ -48,6 +49,8 @@ export async function closeEndedSoldLots() {
           postalCode: buyer ? String(buyer.postal_code ?? "") : "",
         },
         lot.auctionNumber,
+        "bid",
+        { notify: false },
       );
       closed += 1;
     }
@@ -89,7 +92,13 @@ export async function closeEndedSoldLots() {
         status: "ended",
         fulfillment: demo.fulfillment,
       } as AuctionLot);
-    await recordSoldLotSettlement(lot, user ?? { fullName: demo.highBidder, id: demo.highBidderId });
+    await recordSoldLotSettlement(
+      lot,
+      user ?? { fullName: demo.highBidder, id: demo.highBidderId },
+      undefined,
+      "bid",
+      { notify: false },
+    );
     closed += 1;
   }
   return { closed };
@@ -167,6 +176,7 @@ export async function returnUnsoldFromClosedSales() {
 export async function settleEndedAuctions() {
   const sold = await closeEndedSoldLots();
   const unsold = await returnUnsoldFromClosedSales();
-  return { closed: sold.closed, returned: unsold.returned };
+  const settlements = await refreshOpenSettlementLots();
+  return { closed: sold.closed, returned: unsold.returned, refreshed: settlements.refreshed };
 }
 

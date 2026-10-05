@@ -26,6 +26,8 @@ function asLots(value: unknown): SettlementLot[] {
       title: String(row.title ?? ""),
       lotNumber: (row.lotNumber as string | null | undefined) ?? null,
       hammer: Number(row.hammer ?? 0),
+      image: row.image ? String(row.image) : null,
+      fulfillment: row.fulfillment === "ship" || row.fulfillment === "pickup" ? row.fulfillment : "unset",
     };
   });
 }

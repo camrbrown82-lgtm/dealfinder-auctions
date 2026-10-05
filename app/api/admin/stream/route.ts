@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { isAdminSession, unauthorized } from "@/lib/adminAuth";
-import { ensureFloorClipBucket, FLOOR_CLIPS_BUCKET, listFloorClips } from "@/lib/floorClips";
+import { deleteFloorClip, ensureFloorClipBucket, FLOOR_CLIPS_BUCKET, listFloorClips } from "@/lib/floorClips";
 import { getSupabaseAdmin, isSupabaseConfigured } from "@/lib/supabaseClient";
 
 export const dynamic = "force-dynamic";
@@ -17,6 +17,23 @@ export async function GET() {
   } catch (error) {
     const message = error instanceof Error ? error.message : "Could not load clips.";
     return NextResponse.json({ error: message, clips: [] }, { status: 400 });
+  }
+}
+
+export async function DELETE(request: NextRequest) {
+  if (!isAdminSession()) return unauthorized();
+  const supabase = getSupabaseAdmin();
+  if (!isSupabaseConfigured || !supabase) {
+    return NextResponse.json({ error: "Supabase is not configured." }, { status: 400 });
+  }
+  const id = new URL(request.url).searchParams.get("id")?.trim() ?? "";
+  if (!id) return NextResponse.json({ error: "Missing video." }, { status: 400 });
+  try {
+    await deleteFloorClip(supabase, id);
+    return NextResponse.json({ ok: true });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Could not delete that video.";
+    return NextResponse.json({ error: message }, { status: 400 });
   }
 }
 

@@ -7,6 +7,14 @@
     {
       "path": "/api/cron/auction-close",
       "schedule": "5 0 * * 1"
+    },
+    {
+      "path": "/api/cron/bid-reminder?when=mdt",
+      "schedule": "0 16 * * 0"
+    },
+    {
+      "path": "/api/cron/bid-reminder?when=mst",
+      "schedule": "0 17 * * 0"
     }
   ]
 }

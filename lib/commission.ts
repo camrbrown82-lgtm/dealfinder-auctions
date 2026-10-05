@@ -10,9 +10,8 @@ export function houseCommissionPercent(rate = DEFAULT_COMMISSION_RATE) {
   return Math.round(rate * 100);
 }
 
-export function consignmentCommissionNote(rate = DEFAULT_COMMISSION_RATE) {
-  const pct = houseCommissionPercent(rate);
-  return `House commission follows the consignor agreement. DealFinder keeps ${pct}% of the hammer on most sales and you receive the rest. Final commission is based on the sale price (see the agreement for the other price tiers).`;
+export function consignmentCommissionNote(_rate = DEFAULT_COMMISSION_RATE) {
+  return "House commission follows the consignor agreement. Lots sold at $50 or below are 50%, to a maximum commission of $10. After $50, the commission is 20%.";
 }
 
 export type ConsignmentMailLine = {
@@ -30,7 +29,7 @@ export function consignmentItemListText(items: ConsignmentMailLine[]) {
     .join("\n");
 }
 
-/** Section 3 of the consignment agreement. Every sale price above $0 falls in one tier. */
+/** Section 3 of the consignment agreement. $50 or below is 50% up to $10. After $50 is 20%. */
 export function agreementCommission(soldFor: number): {
   house: number;
   consignor: number;
@@ -39,18 +38,16 @@ export function agreementCommission(soldFor: number): {
 } | null {
   const amount = Math.round(soldFor * 100) / 100;
   if (!(amount > 0)) return null;
-  if (amount <= 20) {
-    const split = moneySplit(amount, 0.5);
-    return { ...split, label: "50%", rate: 0.5 };
+  if (amount <= 50) {
+    const half = Math.round(amount * 0.5);
+    const house = Math.min(10, half);
+    return {
+      house,
+      consignor: Math.max(0, Math.round(amount - house)),
+      label: house < half ? "$10 max" : "50%",
+      rate: house < half ? null : 0.5,
+    };
   }
-  if (amount < 50) {
-    const house = 10;
-    return { house, consignor: Math.max(0, Math.round(amount - house)), label: "$10", rate: null };
-  }
-  if (amount < 500) {
-    const split = moneySplit(amount, 0.2);
-    return { ...split, label: "20%", rate: 0.2 };
-  }
-  const split = moneySplit(amount, 0.15);
-  return { ...split, label: "15%", rate: 0.15 };
+  const split = moneySplit(amount, 0.2);
+  return { ...split, label: "20%", rate: 0.2 };
 }

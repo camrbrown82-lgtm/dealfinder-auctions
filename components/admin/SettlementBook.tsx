@@ -597,33 +597,45 @@ function InvoiceCard({
         <thead>
           <tr className="bg-black text-left text-white">
             <th className="p-2">Lot</th>
-            <th className="p-2">Item</th>
             <th className="p-2 text-right">Hammer</th>
           </tr>
         </thead>
         <tbody>
           {invoice.lots.map((lot) => (
             <tr key={lot.id} className="border-t-2 border-black">
-              <td className="p-2">{lot.lotNumber ?? "—"}</td>
-              <td className="p-2">{lot.title}</td>
+              <td className="p-2">
+                <div className="flex items-center gap-2">
+                  {lot.image ? (
+                    <img src={lot.image} alt="" className="h-12 w-12 shrink-0 border-2 border-black object-cover" />
+                  ) : (
+                    <span className="grid h-12 w-12 shrink-0 place-items-center border-2 border-black bg-white text-[10px]">
+                      No photo
+                    </span>
+                  )}
+                  <span>
+                    <span className="block font-bold">{lot.lotNumber || "No lot #"}</span>
+                    <span className="block">{lot.title || "Untitled lot"}</span>
+                  </span>
+                </div>
+              </td>
               <td className="p-2 text-right">{formatCurrency(lot.hammer)}</td>
             </tr>
           ))}
           <tr className="border-t-2 border-black">
-            <td className="p-2" colSpan={2}>
+            <td className="p-2">
               Hammer subtotal
             </td>
             <td className="p-2 text-right">{formatCurrency(fees.hammer)}</td>
           </tr>
           <tr className="border-t-2 border-black">
-            <td className="p-2" colSpan={2}>
+            <td className="p-2">
               15% buyer&apos;s premium
             </td>
             <td className="p-2 text-right">{formatCurrency(fees.premium)}</td>
           </tr>
           {fees.handling > 0 ? (
             <tr className="border-t-2 border-black">
-              <td className="p-2" colSpan={2}>
+              <td className="p-2">
                 Shipping handling fee
               </td>
               <td className="p-2 text-right">{formatCurrency(fees.handling)}</td>
@@ -631,20 +643,20 @@ function InvoiceCard({
           ) : null}
           {fees.shipping > 0 ? (
             <tr className="border-t-2 border-black">
-              <td className="p-2" colSpan={2}>
+              <td className="p-2">
                 Carrier shipping
               </td>
               <td className="p-2 text-right">{formatCurrency(fees.shipping)}</td>
             </tr>
           ) : null}
           <tr className="border-t-2 border-black">
-            <td className="p-2" colSpan={2}>
+            <td className="p-2">
               5% GST
             </td>
             <td className="p-2 text-right">{formatCurrency(fees.gst)}</td>
           </tr>
           <tr className="border-t-2 border-black font-bold">
-            <td className="p-2" colSpan={2}>
+            <td className="p-2">
               Total due
             </td>
             <td className="p-2 text-right">{formatCurrency(fees.total)}</td>

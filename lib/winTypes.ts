@@ -24,4 +24,6 @@ export type WinInvoice = {
   paymentChannel?: "helcim" | "cash";
   invoiceReady?: boolean;
   lotNumber?: string | null;
+  image?: string | null;
+  receiptUrl?: string | null;
 };

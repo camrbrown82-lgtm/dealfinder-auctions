@@ -31,6 +31,7 @@ export type AuctionDeskSaleLine = {
   lotId: string;
   lotNumber: string;
   title: string;
+  image: string;
   buyerName: string;
   buyerEmail: string;
   buyerPhone: string;
@@ -272,6 +273,7 @@ export async function loadAuctionDesk(eventId?: string | null): Promise<AuctionD
         lotId: line.id,
         lotNumber: line.lotNumber ?? "",
         title: line.title,
+        image: line.image || lot?.image || "",
         buyerName: invoice.name,
         buyerEmail: invoice.email,
         buyerPhone: invoice.phone,
@@ -352,21 +354,27 @@ export function filterAuctionDesk(desk: AuctionDeskPayload, query: string): Auct
 export function groupDeskSales(sales: AuctionDeskSaleLine[]) {
   const groups = new Map<
     string,
-    AuctionDeskSaleLine & { itemCount: number; lotSummary: string }
+    AuctionDeskSaleLine & {
+      itemCount: number;
+      lotSummary: string;
+      lines: AuctionDeskSaleLine[];
+    }
   >();
   for (const row of sales) {
     const existing = groups.get(row.invoice);
-    const lotLabel = row.lotNumber || row.title;
+    const lotLabel = [row.lotNumber, row.title].filter(Boolean).join(" · ") || "Lot";
     if (!existing) {
       groups.set(row.invoice, {
         ...row,
         itemCount: 1,
         lotSummary: lotLabel,
+        lines: [row],
       });
       continue;
     }
     existing.itemCount += 1;
     existing.hammer += row.hammer;
+    existing.lines.push(row);
     existing.lotSummary = `${existing.lotSummary}; ${lotLabel}`;
     existing.title = `${existing.itemCount} lots`;
     existing.lotNumber = existing.lotSummary;

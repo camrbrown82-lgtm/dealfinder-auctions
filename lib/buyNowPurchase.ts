@@ -4,8 +4,9 @@ import { invoiceFees } from "@/lib/invoiceFees";
 import { mapLot, type LotRow } from "@/lib/mappers";
 import { invoiceNumber } from "@/lib/payments";
 import { profileAddress, type BidderProfile } from "@/lib/profileTypes";
-import { isBuyNowChannel, isListedBuyNow } from "@/lib/saleChannel";
+import { isListedBuyNow } from "@/lib/saleChannel";
 import { emptyMark, type SettlementInvoiceRecord } from "@/lib/settlementRecords";
+import { settlementLotFrom } from "@/lib/settlements";
 import { upsertDemoInvoice } from "@/lib/demoSettlementStore";
 import { upsertSettlementInvoice } from "@/lib/settlementDb";
 import { getSupabaseAdmin, isSupabaseConfigured } from "@/lib/supabaseClient";
@@ -29,22 +30,15 @@ async function writeBuyNowInvoice(lot: AuctionLot, session: BidderProfile) {
     phone: session.phone,
     address: profileAddress(session),
     paymentMethod: session.paymentMethod,
-    lots: [
-      {
-        id: lot.id,
-        title: lot.title,
-        lotNumber: lot.lotNumber ?? null,
-        hammer,
-      },
-    ],
+    lots: [settlementLotFrom({ ...lot, hammer })],
     total: fees.total,
     hammer: fees.hammer,
     premium: fees.premium,
     handling: fees.handling,
     gst: fees.gst,
     shippingCost: fees.shipping,
-    fulfillment: lot.fulfillment ?? "unset",
     ...emptyMark(),
+    fulfillment: lot.fulfillment ?? "unset",
     payment: "unpaid",
     paymentChannel: "helcim",
   };
@@ -63,7 +57,6 @@ export async function claimBuyNowLot(lotId: string, session: BidderProfile) {
     const { data, error } = await supabase.from("lots").select("*").eq("id", lotId).maybeSingle();
     if (error || !data) throw new Error("Lot not found.");
     const lot = mapLot(data as LotRow);
-    if (!isBuyNowChannel(lot)) throw new Error("This item is not a Buy Now listing.");
     if (!isListedBuyNow(lot) && !(lot.highBidderId === session.id && lot.saleSource === "buy_now")) {
       throw new Error("This Buy Now item is no longer available.");
     }
@@ -78,15 +71,25 @@ export async function claimBuyNowLot(lotId: string, session: BidderProfile) {
         status: "ended",
         ends_at: endedAt,
         sale_source: "buy_now",
-        sale_channel: "buy_now",
-        buy_now_status: "listed",
+        buy_now_status: "sold",
       };
-      let { error: updateError } = await supabase.from("lots").update(patch).eq("id", lot.id);
+      let { data: claimedRows, error: updateError } = await supabase
+        .from("lots")
+        .update(patch)
+        .eq("id", lot.id)
+        .in("status", ["live", "paused"])
+        .select("id");
       if (updateError && /sale_channel|buy_now_status/i.test(updateError.message)) {
         const { sale_channel: _c, buy_now_status: _s, ...rest } = patch;
-        ({ error: updateError } = await supabase.from("lots").update(rest).eq("id", lot.id));
+        ({ data: claimedRows, error: updateError } = await supabase
+          .from("lots")
+          .update(rest)
+          .eq("id", lot.id)
+          .neq("status", "ended")
+          .select("id"));
       }
       if (updateError) throw new Error(updateError.message);
+      if (!claimedRows?.length) throw new Error("This Buy Now item is no longer available.");
     }
     const claimed: AuctionLot = {
       ...lot,
@@ -95,8 +98,7 @@ export async function claimBuyNowLot(lotId: string, session: BidderProfile) {
       highBidderId: session.id,
       status: "ended",
       saleSource: "buy_now",
-      saleChannel: "buy_now",
-      buyNowStatus: "listed",
+      buyNowStatus: "sold",
     };
     await writeBuyNowInvoice(claimed, session);
     return claimed;
@@ -105,7 +107,6 @@ export async function claimBuyNowLot(lotId: string, session: BidderProfile) {
   const demo = getAdminDemo();
   const lot = demo.inventory.find((row) => row.id === lotId || row.slug === lotId);
   if (!lot) throw new Error("Lot not found.");
-  if (!isBuyNowChannel(lot)) throw new Error("This item is not a Buy Now listing.");
   if (!isListedBuyNow(lot) && lot.highBidderId !== session.id) {
     throw new Error("This Buy Now item is no longer available.");
   }
@@ -116,8 +117,7 @@ export async function claimBuyNowLot(lotId: string, session: BidderProfile) {
   lot.status = "ended";
   lot.endsAt = new Date().toISOString();
   lot.saleSource = "buy_now";
-  lot.saleChannel = "buy_now";
-  lot.buyNowStatus = "listed";
+  lot.buyNowStatus = "sold";
   const clock = getDemoLot(lot.id);
   if (clock) {
     clock.currentBid = hammer;

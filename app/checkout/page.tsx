@@ -18,7 +18,10 @@ export default function CheckoutPage() {
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [payLotId, setPayLotId] = useState<string | null>(null);
+  const [focusLotId, setFocusLotId] = useState<string | null>(null);
+  const [holdShipPay, setHoldShipPay] = useState(false);
   const cashRequested = useRef(false);
+  const openedPay = useRef(false);
 
   async function load() {
     const response = await fetch("/api/wins", { credentials: "include" });
@@ -28,6 +31,7 @@ export default function CheckoutPage() {
 
   useEffect(() => {
     if (!user) return;
+    setFocusLotId(new URLSearchParams(window.location.search).get("lot"));
     void load();
   }, [user]);
 
@@ -45,8 +49,13 @@ export default function CheckoutPage() {
       setNotice(typeof json.error === "string" ? json.error : "Could not save ship or pickup.");
       return;
     }
+    setHoldShipPay(fulfillment === "ship");
     await load();
-    setNotice(fulfillment === "ship" ? "We will ship this lot. Confirm your address below." : "This lot is marked for local pickup.");
+    setNotice(
+      fulfillment === "ship"
+        ? "We will ship this lot. Confirm your address, then pay."
+        : "Local pickup is set. Pay this invoice now.",
+    );
   }
 
   async function saveAddress(
@@ -73,8 +82,9 @@ export default function CheckoutPage() {
       setNotice(typeof json.error === "string" ? json.error : "Could not save shipping address.");
       return;
     }
+    setHoldShipPay(false);
     await load();
-    setNotice("Shipping address saved. Estimated postage is on the invoice.");
+    setNotice("Shipping address saved. Pay this invoice now.");
   }
 
   async function requestCash(lotId: string) {
@@ -94,6 +104,21 @@ export default function CheckoutPage() {
     await load();
     setNotice("Cash payment is pending desk approval.");
   }
+
+  useEffect(() => {
+    if (!focusLotId || !wins.length) return;
+    document.getElementById(`invoice-${focusLotId}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [focusLotId, wins]);
+
+  useEffect(() => {
+    if (!focusLotId || openedPay.current) return;
+    const match = wins.find((row) => row.lotId === focusLotId);
+    if (!match || match.paid || match.payment === "cash_pending" || !match.invoiceReady || !match.winning) return;
+    if (match.fulfillment === "unset") return;
+    if (match.fulfillment === "ship" && (holdShipPay || !(match.address || "").trim())) return;
+    openedPay.current = true;
+    setPayLotId(match.lotId);
+  }, [focusLotId, holdShipPay, wins]);
 
   useEffect(() => {
     if (!user || !wins.length) return;
@@ -139,13 +164,61 @@ export default function CheckoutPage() {
   return (
     <div className="space-y-4">
       <div className="comic-panel p-4">
-        <h1 className="font-display text-5xl text-brand-red">Winning checkout</h1>
+        <h1 className="font-display text-5xl text-brand-red">Your sold lots</h1>
         <p className="font-comic text-sm">
-          Auction hammers settle after Sunday&apos;s consolidated invoice. Buy Now purchases can
-          be paid immediately. After each claim, pick local pickup or shipping. Pickup is hammer
-          + 15% premium + GST. Shipping adds a $10 handling fee, estimated carrier postage, and GST.
+          Each card is a lot you won: the photo, lot number, and the price it sold for. The receipt
+          in your email has the same lines and a download. Payment stays on this page after you
+          choose pickup or shipping.
         </p>
+        {notice && <p className="mt-3 font-display text-xl">{notice}</p>}
       </div>
+
+      {wins.length === 0 ? (
+        <p className="font-comic">
+          No sold lots on your paddle yet.{" "}
+          <Link href="/buy-now" className="font-bold underline">
+            Browse Buy Now
+          </Link>{" "}
+          or{" "}
+          <Link href="/live" className="font-bold underline">
+            live lots
+          </Link>
+          .
+        </p>
+      ) : (
+        <div className="space-y-4">
+          {[...wins]
+            .sort((a, b) => Number(b.lotId === focusLotId) - Number(a.lotId === focusLotId))
+            .map((win) => {
+              const dueNow = win.lotId === focusLotId && win.invoiceReady && !win.paid;
+              return (
+                <div key={win.lotId} className="space-y-3">
+                  {dueNow ? (
+                    <div className="comic-panel border-brand-red bg-brand-cream p-4">
+                      <p className="font-display text-3xl text-brand-red">Pay this Buy Now now</p>
+                      <p className="mt-1 font-comic text-sm">
+                        {win.fulfillment === "unset"
+                          ? "Choose local pickup or shipping below. Payment opens as soon as that choice is saved."
+                          : win.fulfillment === "ship" && (holdShipPay || !(win.address || "").trim())
+                            ? "Confirm the shipping address. Payment opens after you save it."
+                            : "Pickup or shipping is set. Helcim is opening so you can pay this invoice now."}
+                      </p>
+                    </div>
+                  ) : null}
+                  <InvoicePanel
+                    win={win}
+                    busy={busy === win.lotId}
+                    emphasized={dueNow}
+                    onFulfillment={(lotId, fulfillment) => void chooseFulfillment(lotId, fulfillment)}
+                    onPay={(lotId) => setPayLotId(lotId)}
+                    onCash={(lotId) => void requestCash(lotId)}
+                    onAddress={(lotId, address) => void saveAddress(lotId, address)}
+                  />
+                </div>
+              );
+            })}
+        </div>
+      )}
 
       <div className="comic-panel space-y-3 p-5">
         <p className="font-display text-2xl">Helcim card</p>
@@ -163,36 +236,7 @@ export default function CheckoutPage() {
           </p>
         )}
         <p className="border-4 border-black bg-white px-3 py-2 font-comic text-sm">{PICKUP_INSTRUCTIONS}</p>
-        {notice && <p className="font-display text-xl">{notice}</p>}
       </div>
-
-      {wins.length === 0 ? (
-        <p className="font-comic">
-          No hammers on your paddle yet.{" "}
-          <Link href="/buy-now" className="font-bold underline">
-            Browse Buy Now
-          </Link>{" "}
-          or{" "}
-          <Link href="/live" className="font-bold underline">
-            live lots
-          </Link>
-          .
-        </p>
-      ) : (
-        <div className="space-y-4">
-          {wins.map((win) => (
-            <InvoicePanel
-              key={win.lotId}
-              win={win}
-              busy={busy === win.lotId}
-              onFulfillment={(lotId, fulfillment) => void chooseFulfillment(lotId, fulfillment)}
-              onPay={(lotId) => setPayLotId(lotId)}
-              onCash={(lotId) => void requestCash(lotId)}
-              onAddress={(lotId, address) => void saveAddress(lotId, address)}
-            />
-          ))}
-        </div>
-      )}
 
       <HelcimPayModal
         open={Boolean(payLotId)}

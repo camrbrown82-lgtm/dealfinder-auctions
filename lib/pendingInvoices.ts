@@ -56,7 +56,9 @@ export async function queueWonLot(
     email?: string | null;
   },
   source: SaleSource,
+  options?: { notify?: boolean },
 ) {
+  const notify = options?.notify ?? source === "buy_now";
   const userId = buyerId(buyer);
   const supabase = getSupabaseAdmin();
   if (isSupabaseConfigured && supabase && userId) {
@@ -79,7 +81,7 @@ export async function queueWonLot(
       }
     }
     const alreadyReserved = Boolean(existing.data?.reservation_email_sent_at);
-    if (!alreadyReserved && buyer.email) {
+    if (!alreadyReserved && notify && buyer.email) {
       await sendWinReservationEmail({
         to: buyer.email,
         name: buyer.fullName || buyer.email,
@@ -93,11 +95,16 @@ export async function queueWonLot(
         .from("pending_invoice_items")
         .update({ reservation_email_sent_at: new Date().toISOString() })
         .eq("lot_id", lot.id);
+    } else if (!alreadyReserved && !notify) {
+      await supabase
+        .from("pending_invoice_items")
+        .update({ reservation_email_sent_at: new Date().toISOString() })
+        .eq("lot_id", lot.id);
     }
     return;
   }
 
-  if (buyer.email) {
+  if (notify && buyer.email) {
     await sendWinReservationEmail({
       to: buyer.email,
       name: buyer.fullName || buyer.email,

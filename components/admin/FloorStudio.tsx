@@ -11,6 +11,16 @@ const SOCIALS = [
   { label: "Instagram", href: "https://www.instagram.com/" },
 ] as const;
 
+function cameraDenied(err: unknown) {
+  const name = err instanceof DOMException ? err.name : "";
+  if (name === "NotAllowedError" || name === "SecurityError") {
+    return "The browser blocked the camera. Allow camera access for this site, then press Start camera again.";
+  }
+  if (name === "NotFoundError") return "No camera was found on this computer.";
+  if (name === "NotReadableError") return "Another app is using the camera. Close it, then press Start camera again.";
+  return "The camera did not start. Allow it in the browser prompt and try again.";
+}
+
 function recorderMime() {
   const types = ["video/webm;codecs=vp9,opus", "video/webm;codecs=vp8,opus", "video/webm", "video/mp4"];
   return types.find((type) => typeof MediaRecorder !== "undefined" && MediaRecorder.isTypeSupported(type)) || "";
@@ -23,7 +33,17 @@ async function clipFile(url: string, title: string, local?: Blob | null) {
   return new File([blob], name, { type: blob.type || "video/webm" });
 }
 
-function ClipExport({ clip, localBlob }: { clip: FloorClip; localBlob?: Blob | null }) {
+function ClipExport({
+  clip,
+  localBlob,
+  deleting,
+  onDelete,
+}: {
+  clip: FloorClip;
+  localBlob?: Blob | null;
+  deleting: boolean;
+  onDelete: (clip: FloorClip) => void;
+}) {
   const [notice, setNotice] = useState("");
 
   async function download() {
@@ -71,6 +91,9 @@ function ClipExport({ clip, localBlob }: { clip: FloorClip; localBlob?: Blob | n
             {social.label}
           </button>
         ))}
+        <button type="button" className="comic-btn" disabled={deleting} onClick={() => onDelete(clip)}>
+          {deleting ? "Deleting…" : "Delete"}
+        </button>
       </div>
       {notice ? <p className="font-comic text-sm">{notice}</p> : null}
     </div>
@@ -82,13 +105,15 @@ export function FloorStudio() {
   const recorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const streamRef = useRef<MediaStream | null>(null);
+  const [preview, setPreview] = useState<MediaStream | null>(null);
   const [title, setTitle] = useState("");
-  const [phase, setPhase] = useState<"idle" | "live" | "recording" | "saving">("idle");
+  const [phase, setPhase] = useState<"idle" | "starting" | "live" | "recording" | "saving">("idle");
   const [seconds, setSeconds] = useState(0);
   const [error, setError] = useState("");
   const [clips, setClips] = useState<FloorClip[]>([]);
   const [freshBlob, setFreshBlob] = useState<Blob | null>(null);
   const [freshId, setFreshId] = useState("");
+  const [deletingId, setDeletingId] = useState("");
 
   useEffect(() => {
     void fetch("/api/admin/stream")
@@ -101,6 +126,14 @@ export function FloorStudio() {
   }, []);
 
   useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    video.srcObject = preview;
+    if (!preview) return;
+    void video.play().catch(() => undefined);
+  }, [preview]);
+
+  useEffect(() => {
     if (phase !== "recording") return;
     const timer = window.setInterval(() => setSeconds((value) => value + 1), 1000);
     return () => window.clearInterval(timer);
@@ -108,15 +141,35 @@ export function FloorStudio() {
 
   async function startCamera() {
     setError("");
-    const stream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: "environment" },
-      audio: true,
-    });
-    streamRef.current = stream;
-    if (videoRef.current) {
-      videoRef.current.srcObject = stream;
-      await videoRef.current.play();
+    setPhase("starting");
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setError("This browser will not open the camera here. Use https://www.dealfinderauctions.com in Chrome or Edge.");
+      setPhase("idle");
+      return;
     }
+    const attempts: MediaStreamConstraints[] = [
+      { audio: true, video: { facingMode: { ideal: "environment" } } },
+      { audio: true, video: true },
+      { audio: false, video: true },
+    ];
+    let stream: MediaStream | null = null;
+    let reason = "Allow the camera when the browser asks, then press Start camera again.";
+    for (const constraints of attempts) {
+      try {
+        stream = await navigator.mediaDevices.getUserMedia(constraints);
+        break;
+      } catch (err) {
+        reason = cameraDenied(err);
+      }
+    }
+    if (!stream) {
+      setError(reason);
+      setPhase("idle");
+      return;
+    }
+    streamRef.current?.getTracks().forEach((track) => track.stop());
+    streamRef.current = stream;
+    setPreview(stream);
     setPhase("live");
   }
 
@@ -192,6 +245,24 @@ export function FloorStudio() {
     setPhase("live");
   }
 
+  async function removeClip(clip: FloorClip) {
+    if (!window.confirm(`Delete ${clip.title}? It comes off the media page.`)) return;
+    setDeletingId(clip.id);
+    setError("");
+    const response = await fetch(`/api/admin/stream?id=${encodeURIComponent(clip.id)}`, { method: "DELETE" });
+    const body = (await response.json()) as { error?: string };
+    setDeletingId("");
+    if (!response.ok) {
+      setError(body.error || "Could not delete that video.");
+      return;
+    }
+    setClips((current) => current.filter((row) => row.id !== clip.id));
+    if (freshId === clip.id) {
+      setFreshId("");
+      setFreshBlob(null);
+    }
+  }
+
   const clock = `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
   const latest = clips.find((clip) => clip.id === freshId) ?? null;
 
@@ -208,15 +279,28 @@ export function FloorStudio() {
           />
         </label>
         <div className="relative overflow-hidden border-4 border-black bg-black">
-          <video ref={videoRef} muted playsInline className="aspect-video w-full bg-black object-contain" />
+          <video ref={videoRef} muted playsInline autoPlay className="aspect-video w-full bg-black object-contain" />
+          {phase === "idle" || phase === "starting" ? (
+            <p className="absolute inset-0 flex items-center justify-center px-4 text-center font-display text-3xl text-white">
+              {phase === "starting" ? "Starting camera…" : "Press Start camera to see the picture"}
+            </p>
+          ) : null}
+          {phase === "live" ? (
+            <p className="absolute left-3 top-3 bg-black px-2 py-1 font-display text-xl text-white">Camera on</p>
+          ) : null}
           {phase === "recording" ? (
             <p className="absolute left-3 top-3 bg-brand-red px-2 py-1 font-display text-xl text-white">Live {clock}</p>
           ) : null}
         </div>
         <div className="flex flex-wrap gap-2">
-          {phase === "idle" ? (
-            <button type="button" className="comic-btn" onClick={() => void startCamera().catch(() => setError("Allow the camera to film an item."))}>
-              Start camera
+          {phase === "idle" || phase === "starting" ? (
+            <button
+              type="button"
+              className="comic-btn"
+              disabled={phase === "starting"}
+              onClick={() => void startCamera()}
+            >
+              {phase === "starting" ? "Starting camera…" : "Start camera"}
             </button>
           ) : null}
           {phase === "live" ? (
@@ -231,14 +315,19 @@ export function FloorStudio() {
           ) : null}
           {phase === "saving" ? <p className="font-display text-2xl text-brand-red">Saving…</p> : null}
         </div>
-        {error ? <p className="font-comic text-sm text-brand-red">{error}</p> : null}
+        {error ? <p className="border-4 border-black bg-brand-red p-3 font-comic text-white">{error}</p> : null}
       </div>
 
       {latest ? (
         <div className="comic-panel space-y-3 p-4">
           <p className="font-display text-2xl text-brand-red">Saved to Media</p>
           <video src={latest.publicUrl} controls playsInline className="aspect-video w-full bg-black" />
-          <ClipExport clip={latest} localBlob={freshBlob} />
+          <ClipExport
+            clip={latest}
+            localBlob={freshBlob}
+            deleting={deletingId === latest.id}
+            onDelete={(clip) => void removeClip(clip)}
+          />
         </div>
       ) : null}
 
@@ -248,7 +337,12 @@ export function FloorStudio() {
         {clips.map((clip) => (
           <div key={clip.id} className="border-t-4 border-black pt-3">
             <video src={clip.publicUrl} controls playsInline className="mb-2 aspect-video w-full max-w-md bg-black" />
-            <ClipExport clip={clip} localBlob={clip.id === freshId ? freshBlob : null} />
+            <ClipExport
+              clip={clip}
+              localBlob={clip.id === freshId ? freshBlob : null}
+              deleting={deletingId === clip.id}
+              onDelete={(item) => void removeClip(item)}
+            />
           </div>
         ))}
       </div>

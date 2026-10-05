@@ -18,6 +18,7 @@ import { invoicePaymentForLot, requestCashPayment } from "@/lib/cashPayment";
 import { estimateCarrierShipping } from "@/lib/shippingEstimate";
 import type { WinInvoice } from "@/lib/winTypes";
 import { invoiceReadyForEvent } from "@/lib/auctionCloseInvoices";
+import { receiptPageUrl } from "@/lib/receiptToken";
 import { invoiceReadyForSale } from "@/lib/saleChannel";
 import { isLotPaid, lotPaidRecord } from "@/lib/helcim";
 
@@ -116,6 +117,8 @@ export async function GET() {
       paymentChannel: settlement?.paymentChannel ?? "helcim",
       invoiceReady,
       lotNumber: lot.lotNumber ?? null,
+      image: lot.image || null,
+      receiptUrl: settlement?.invoice ? receiptPageUrl(settlement.invoice, true) : null,
     });
   }
 

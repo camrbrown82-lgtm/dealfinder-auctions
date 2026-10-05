@@ -16,6 +16,10 @@ export async function recordSoldLotSettlement(
   },
   _auctionNumber?: string | null,
   source: SaleSource = "bid",
+  options?: { notify?: boolean },
 ) {
-  await queueWonLot(lot, buyer, lot.saleSource === "buy_now" ? "buy_now" : source);
+  const saleSource = lot.saleSource === "buy_now" ? "buy_now" : source;
+  await queueWonLot(lot, buyer, saleSource, {
+    notify: options?.notify ?? true,
+  });
 }

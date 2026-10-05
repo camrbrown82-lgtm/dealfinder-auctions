@@ -85,6 +85,26 @@ function mapRow(row: {
   };
 }
 
+/** Cash-on-pickup paddles are not forfeited when a Helcim hold does not clear. */
+export async function bidderSettlesInCash(userId: string) {
+  if (await isTrustedCashUser(userId)) return true;
+  const local = Array.from(memory().values()).some(
+    (row) => row.userId === userId && row.paymentMethod === "cash" && row.authStatus === "approved",
+  );
+  if (local) return true;
+  const supabase = getSupabaseAdmin();
+  if (!isSupabaseConfigured || !supabase) return false;
+  const { data, error } = await supabase
+    .from("auction_registrations")
+    .select("user_id")
+    .eq("user_id", userId)
+    .eq("payment_method", "cash")
+    .eq("auth_status", "approved")
+    .limit(1);
+  if (error) return false;
+  return Boolean(data?.length);
+}
+
 export async function isTrustedCashUser(userId: string) {
   if (trustedMemory().has(userId)) return true;
   const supabase = getSupabaseAdmin();

@@ -17,21 +17,37 @@ export function isBuyNowChannel(lot: {
   return asSaleChannel(lot.saleChannel ?? lot.sale_channel) === "buy_now";
 }
 
+export function hasBuyNowPrice(lot: {
+  buyNowPrice?: number | null;
+  buy_now_price?: number | string | null;
+  reservePrice?: number | null;
+  reserve_price?: number | string | null;
+}) {
+  const raw = lot.buyNowPrice ?? lot.buy_now_price ?? lot.reservePrice ?? lot.reserve_price ?? 0;
+  const price = Number(raw);
+  return Number.isFinite(price) && price > 0;
+}
+
+/** Live auction lots with a Buy Now price stay in the sale and also list on Buy Now. */
 export function isListedBuyNow(lot: {
   saleChannel?: string | null;
   sale_channel?: string | null;
   buyNowStatus?: string | null;
   buy_now_status?: string | null;
+  buyNowPrice?: number | null;
+  buy_now_price?: number | string | null;
+  reservePrice?: number | null;
+  reserve_price?: number | string | null;
   status?: string | null;
   paidAt?: string | null;
   paid_at?: string | null;
 }) {
-  if (!isBuyNowChannel(lot)) return false;
   const status = asBuyNowStatus(lot.buyNowStatus ?? lot.buy_now_status);
-  if (status !== "listed") return false;
-  if (lot.status === "ended" || lot.status === "removed") return false;
+  if (status === "sold" || status === "pending_approval") return false;
+  if (lot.status === "ended" || lot.status === "removed" || lot.status === "draft") return false;
   if (lot.paidAt || lot.paid_at) return false;
-  return true;
+  if (status === "listed" || isBuyNowChannel(lot)) return true;
+  return hasBuyNowPrice(lot) && (lot.status === "live" || lot.status === "paused");
 }
 
 export function invoiceReadyForSale(lot: {

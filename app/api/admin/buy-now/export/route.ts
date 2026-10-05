@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { isAdminSession, unauthorized } from "@/lib/adminAuth";
 import { getAdminDemo } from "@/lib/demoAdminStore";
 import { mapLot, type LotRow } from "@/lib/mappers";
-import { isBuyNowChannel } from "@/lib/saleChannel";
+import { isListedBuyNow } from "@/lib/saleChannel";
 import { getSupabaseAdmin, isSupabaseConfigured } from "@/lib/supabaseClient";
 import { xlsxWorkbook } from "@/lib/xlsxWorkbook";
 import type { AuctionLot } from "@/lib/utils";
@@ -44,10 +44,10 @@ export async function GET() {
   let lots: AuctionLot[] = [];
   const supabase = getSupabaseAdmin();
   if (isSupabaseConfigured && supabase) {
-    const { data } = await supabase.from("lots").select("*").eq("sale_channel", "buy_now").order("created_at", { ascending: false });
-    lots = ((data ?? []) as LotRow[]).map(mapLot);
+    const { data } = await supabase.from("lots").select("*").in("status", ["live", "paused"]).order("created_at", { ascending: false });
+    lots = ((data ?? []) as LotRow[]).map(mapLot).filter(isListedBuyNow);
   } else {
-    lots = getAdminDemo().inventory.filter(isBuyNowChannel);
+    lots = getAdminDemo().inventory.filter(isListedBuyNow);
   }
 
   const body = xlsxWorkbook([{ name: "Buy Now", rows: rowsFor(lots) }]);

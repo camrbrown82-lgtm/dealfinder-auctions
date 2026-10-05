@@ -55,7 +55,7 @@ export function BuyNowStore({ lots, compact = false }: { lots: AuctionLot[]; com
       {lots.length === 0 ? (
         <p className="comic-panel p-5 font-comic">Nothing listed for Buy Now right now. Check back after intake.</p>
       ) : (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div className={compact ? "grid gap-4" : "grid gap-4 sm:grid-cols-2 lg:grid-cols-3"}>
           {lots.map((lot) => {
             const hammer = buyNowPriceOf(lot) ?? lot.currentBid;
             const pickup = invoiceFees({ hammer, fulfillment: "pickup" });

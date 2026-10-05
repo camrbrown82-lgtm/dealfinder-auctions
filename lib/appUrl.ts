@@ -1,20 +1,20 @@
+import { SITE_ORIGIN } from "@/lib/seo";
+
 export function isLocalAppHost(value: string) {
   return /localhost|127\.0\.0\.1|0\.0\.0\.0/i.test(value);
 }
 
+/** Public links. Production always uses www.dealfinderauctions.com, never the vercel.app host. */
 export function publicAppUrl() {
   const explicit = (process.env.NEXT_PUBLIC_SITE_URL || process.env.SITE_URL || "").trim().replace(/\/$/, "");
-  const onVercel = Boolean(process.env.VERCEL);
-  if (explicit && !(onVercel && isLocalAppHost(explicit))) return explicit;
+  if (explicit && isLocalAppHost(explicit)) return explicit;
 
   if (process.env.VERCEL_ENV === "preview") {
     const preview = (process.env.VERCEL_URL || "").trim();
     if (preview) return `https://${preview.replace(/^https?:\/\//, "")}`.replace(/\/$/, "");
   }
 
-  const vercel = (process.env.VERCEL_PROJECT_PRODUCTION_URL || "").trim();
-  if (vercel) return `https://${vercel.replace(/^https?:\/\//, "")}`.replace(/\/$/, "");
-  return "https://dealfinder-auctions.vercel.app";
+  return SITE_ORIGIN;
 }
 
 export function lotHref(slugOrId: string) {

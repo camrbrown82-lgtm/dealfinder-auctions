@@ -1,4 +1,5 @@
-import { isAuctionEndDay, isPastSundayHammer, lotEndsOnAuctionDay } from "@/lib/auctionEndDay";
+import { houseDateKey, isAuctionEndDay, isPastSundayHammer, lotEndsOnAuctionDay } from "@/lib/auctionEndDay";
+import { sendHoldFailedEmail } from "@/lib/notify";
 import { listDemoLots } from "@/lib/demoAuctionStore";
 import { listDemoUsers } from "@/lib/demoUsers";
 import { forfeitBidderBids } from "@/lib/forfeitBids";
@@ -12,6 +13,7 @@ import {
   processPreauthWithToken,
   recordHelcimTransaction,
 } from "@/lib/helcim";
+import { bidderSettlesInCash } from "@/lib/auctionRegistrations";
 import { getSupabaseAdmin, isSupabaseConfigured } from "@/lib/supabaseClient";
 
 export type SundayBidder = {
@@ -68,6 +70,34 @@ export async function denySundayPreauth(userId: string, fullName?: string | null
   return lots;
 }
 
+function lotStillOpen(endsAt: string | null | undefined, status: string | null | undefined) {
+  if (status === "ended" || status === "removed") return false;
+  if (!endsAt) return status === "live" || status === "paused";
+  const end = new Date(endsAt).getTime();
+  return Number.isFinite(end) && end > Date.now();
+}
+
+async function warnHoldFailed(userId: string, name: string) {
+  const supabase = getSupabaseAdmin();
+  if (!supabase) return;
+  const date = houseDateKey();
+  const id = `hold_warn_${userId}_${date}`.slice(0, 80);
+  const existing = await supabase.from("email_settings").select("id").eq("id", id).maybeSingle();
+  if (existing.data) return;
+  const { data: profile } = await supabase.from("profiles").select("email, full_name").eq("id", userId).maybeSingle();
+  const email = String(profile?.email ?? "").trim();
+  if (!email.includes("@")) return;
+  const claimed = await supabase.from("email_settings").insert({ id, logo_data_url: date }).select("id");
+  if (claimed.error) return;
+  const sent = await sendHoldFailedEmail({
+    to: email,
+    name: String(profile?.full_name ?? "").trim() || name,
+  });
+  if (!sent.ok) {
+    await supabase.from("email_settings").delete().eq("id", id);
+  }
+}
+
 export async function runSundayPreauthSweep(ipAddress: string) {
   if (!isAuctionEndDay()) {
     return { ran: false, processed: 0, held: 0, forfeited: 0 };
@@ -82,6 +112,20 @@ export async function runSundayPreauthSweep(ipAddress: string) {
     const userId = demo?.id || bidder.id;
     const payment = await loadBidderPayment(userId);
     if (payment.preauthStatus === "held") continue;
+    if (await bidderSettlesInCash(userId)) continue;
+
+    const supabase = getSupabaseAdmin();
+    let stillOpen = true;
+    if (isSupabaseConfigured && supabase) {
+      const byId = await supabase.from("lots").select("ends_at, status").eq("high_bidder_id", userId);
+      const byName = bidder.name
+        ? await supabase.from("lots").select("ends_at, status").eq("high_bidder", bidder.name)
+        : { data: [] as Array<{ ends_at?: string | null; status?: string | null }>, error: null };
+      if (!byId.error) {
+        const rows = [...(byId.data ?? []), ...(byName.data ?? [])];
+        stillOpen = rows.some((lot) => lotStillOpen(lot.ends_at, lot.status));
+      }
+    }
 
     if (payment.helcimCardToken && isHelcimConfigured()) {
       try {
@@ -112,13 +156,23 @@ export async function runSundayPreauthSweep(ipAddress: string) {
         held += 1;
         continue;
       } catch {
+        if (stillOpen && !forfeitUnheld) {
+          await warnHoldFailed(userId, bidder.name);
+          continue;
+        }
+        if (!stillOpen) continue;
         await denySundayPreauth(userId, bidder.name);
         forfeited += 1;
         continue;
       }
     }
 
-    if (forfeitUnheld) {
+    if (stillOpen && !forfeitUnheld) {
+      await warnHoldFailed(userId, bidder.name);
+      continue;
+    }
+
+    if (forfeitUnheld && stillOpen) {
       await denySundayPreauth(userId, bidder.name);
       forfeited += 1;
     }

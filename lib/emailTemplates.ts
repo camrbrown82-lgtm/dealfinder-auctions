@@ -53,13 +53,12 @@ DealFinder Auctions`,
   {
     id: "winning_invoice",
     name: "Winning Bidder Invoice & Pickup Instructions",
-    subject: "Sunday invoice for {{item_title}}",
+    subject: "Your DealFinder receipt — {{item_title}}",
     body: `POW, {{customer_name}}!
 
-Your consolidated Sunday invoice is ready for {{item_title}} ({{winning_bid}}).
+Your lots sold. Invoice total {{invoice_total}}.
 
-Pay with Helcim: {{payment_link}}
-Or request cash payment on pickup: {{cash_link}}
+Download your receipt: {{payment_link}}
 
 DealFinder Auctions desk`,
   },
@@ -216,6 +215,30 @@ DealFinder Auctions`,
 The desk did not approve cash-on-pickup bidding for {{item_title}}. You can still bid by authorizing the $50 Helcim card hold.
 
 Live lots: {{lot_link}}
+
+DealFinder Auctions`,
+  },
+  {
+    id: "hold_failed",
+    name: "Sunday $50 hold failed",
+    subject: "Your $50 DealFinder hold did not go through",
+    body: `Hi {{customer_name}},
+
+Your $50 payment did not go through. If you do not authorize it now, all of your bids on this sale will be forfeited.
+
+Authorize the hold: {{payment_link}}
+
+DealFinder Auctions`,
+  },
+  {
+    id: "sunday_bid_reminder",
+    name: "Sunday bid reminder",
+    subject: "Sunday reminder: get your bids in before 6 p.m.",
+    body: `Hi {{customer_name}},
+
+This is your Sunday reminder to get your bids in. Tonight's DealFinder sale closes at 6:00 p.m. Mountain Time.
+
+Open the live lots: {{lot_link}}
 
 DealFinder Auctions`,
   },

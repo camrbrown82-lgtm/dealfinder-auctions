@@ -61,6 +61,7 @@ export type ConsignmentRow = {
   contact_email?: string | null;
   owner_id?: string | null;
   sale_channel?: string | null;
+  is_charity?: boolean | null;
 };
 
 function asUrlList(value: unknown): string[] {
@@ -132,5 +133,6 @@ export function mapConsignment(row: ConsignmentRow): Consignment {
     status: row.status,
     saleChannel: asSaleChannel(row.sale_channel),
     contactEmail: row.contact_email ?? null,
+    charity: row.is_charity === true,
   };
 }

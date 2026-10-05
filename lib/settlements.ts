@@ -9,7 +9,32 @@ export type SettlementLot = {
   title: string;
   lotNumber?: string | null;
   hammer: number;
+  image?: string | null;
+  fulfillment?: FulfillmentChoice;
 };
+
+export function settlementLotFrom(
+  lot: Pick<AuctionLot, "id" | "title" | "lotNumber" | "currentBid" | "image" | "images" | "fulfillment"> & {
+    hammer?: number;
+  },
+): SettlementLot {
+  return {
+    id: lot.id,
+    title: lot.title,
+    lotNumber: lot.lotNumber ?? null,
+    hammer: Number(lot.hammer ?? lot.currentBid ?? 0),
+    image: lot.image || lot.images?.[0] || null,
+    fulfillment: lot.fulfillment === "ship" || lot.fulfillment === "pickup" ? lot.fulfillment : "unset",
+  };
+}
+
+export function invoiceFulfillment(
+  lots: Array<{ fulfillment?: string | null }>,
+): FulfillmentChoice {
+  if (lots.some((lot) => lot.fulfillment === "ship")) return "ship";
+  if (lots.length > 0 && lots.every((lot) => lot.fulfillment === "pickup")) return "pickup";
+  return "unset";
+}
 
 export type BuyerSettlement = {
   invoice: string;
@@ -64,9 +89,7 @@ export function lotIsUnsoldOrNoBid(lot: AuctionLot, now = Date.now()) {
 }
 
 function groupFulfillment(lots: AuctionLot[]): FulfillmentChoice {
-  if (lots.some((lot) => lot.fulfillment === "ship")) return "ship";
-  if (lots.length > 0 && lots.every((lot) => lot.fulfillment === "pickup")) return "pickup";
-  return "unset";
+  return invoiceFulfillment(lots);
 }
 
 export function withBuyerFees(
@@ -138,12 +161,7 @@ function invoicesForSale(
         phone: profile?.phone ?? "",
         address,
         paymentMethod: profile?.paymentMethod ?? "",
-        lots: group.map((lot) => ({
-          id: lot.id,
-          title: lot.title,
-          lotNumber: lot.lotNumber,
-          hammer: lot.currentBid,
-        })),
+        lots: group.map((lot) => settlementLotFrom(lot)),
         fulfillment,
         shippingCost,
       });

@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { consignmentCommissionNote } from "@/lib/commission";
 import { filesToDataUrls } from "@/lib/files";
 import { buildEmailHtml } from "@/lib/emailHtml";
 import {
@@ -82,12 +83,11 @@ export function EmailEngine({ onNotice }: { onNotice: (message: string) => void 
       item_title: itemTitle,
       winning_bid: winningBid,
       payment_link: paymentLink,
-      lot_link: "https://dealfinder-auctions.vercel.app/live",
-      verify_link: "https://dealfinder-auctions.vercel.app/verify-email",
+      lot_link: "https://www.dealfinderauctions.com/live",
+      verify_link: "https://www.dealfinderauctions.com/verify-email",
       starting_bid: "$45",
       buy_now: "$100",
-      commission_note:
-        "House commission follows the consignor agreement. DealFinder keeps 20% of the hammer on most sales and you receive the rest. Final commission is based on the sale price.",
+      commission_note: consignmentCommissionNote(),
       item_list: `${itemTitle} — starting bid $45, buy now $100`,
     });
     return {

@@ -15,6 +15,7 @@ import type { FulfillmentChoice } from "@/lib/payments";
 export function InvoicePanel({
   win,
   busy,
+  emphasized = false,
   onFulfillment,
   onPay,
   onCash,
@@ -22,6 +23,7 @@ export function InvoicePanel({
 }: {
   win: WinInvoice;
   busy?: boolean;
+  emphasized?: boolean;
   onFulfillment?: (lotId: string, fulfillment: FulfillmentChoice) => void;
   onPay?: (lotId: string) => void;
   onCash?: (lotId: string) => void;
@@ -51,18 +53,28 @@ export function InvoicePanel({
   const paidCash = win.paid && win.paymentChannel === "cash";
 
   return (
-    <article className="comic-panel p-4">
+    <article id={`invoice-${win.lotId}`} className={`comic-panel scroll-mt-24 p-4 ${emphasized ? "ring-4 ring-brand-red" : ""}`}>
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
           <p className="font-display text-sm tracking-[0.2em] text-[#FF0000]">
             {win.winning ? "YOU WON THIS LOT" : "INVOICE"}
           </p>
-          <h2 className="font-display text-3xl leading-none">{win.title}</h2>
+          <h2 className="font-display text-3xl leading-none">{win.title || "Untitled lot"}</h2>
+          <p className="mt-1 font-comic text-sm font-bold">
+            {win.lotNumber ? `Lot ${win.lotNumber}` : "Lot number pending"} · Sold for {formatCurrency(win.currentBid)}
+          </p>
         </div>
         <p className="font-display text-3xl text-[#FF0000]">
           {formatCurrency(win.total)}
         </p>
       </div>
+      {win.image ? (
+        <img
+          src={win.image}
+          alt=""
+          className="mt-3 h-28 w-28 border-4 border-black object-cover"
+        />
+      ) : null}
       <p className="mt-2 font-comic text-sm">
         Invoice <strong>{win.invoice}</strong> · {method}
         {win.paid ? (paidCash ? " · PAID IN CASH" : " · PAID") : cashPending ? " · CASH PENDING APPROVAL" : ""}
@@ -218,7 +230,9 @@ export function InvoicePanel({
           onClick={() => onPay(win.lotId)}
         >
           {win.invoiceReady
-            ? `Pay ${formatCurrency(win.total)} with Helcim`
+            ? emphasized
+              ? `Pay now ${formatCurrency(win.total)} with Helcim`
+              : `Pay ${formatCurrency(win.total)} with Helcim`
             : "Pay opens after Sunday invoice"}
         </button>
       ) : null}
@@ -251,9 +265,14 @@ export function InvoicePanel({
             : `Paid with Helcim${win.paidAt ? ` · ${new Date(win.paidAt).toLocaleString()}` : ""}. The $50 Sunday hold is released back to the card once this sale goes through.`}
         </p>
       ) : null}
+      {win.receiptUrl ? (
+        <a href={win.receiptUrl} className="comic-btn mt-3 inline-block">
+          Download receipt
+        </a>
+      ) : null}
       <Link
         href={`/auctions/${win.slug || win.lotId}`}
-        className="mt-3 inline-block font-display text-lg underline"
+        className="mt-3 ml-3 inline-block font-display text-lg underline"
       >
         View lot →
       </Link>

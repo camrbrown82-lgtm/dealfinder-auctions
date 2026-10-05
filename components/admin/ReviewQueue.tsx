@@ -92,6 +92,7 @@ function ReviewCard({
       <div className="min-w-0 flex-1 space-y-3">
         <p className="font-display text-sm tracking-widest text-brand-red">
           {item.saleChannel === "buy_now" ? "BUY NOW PENDING" : item.status.toUpperCase()}
+          {item.charity ? " · CHARITY" : ""}
         </p>
         <OwnerPicker
           value={draft.consignorName ?? ""}
@@ -120,6 +121,7 @@ function ReviewCard({
           <input
             type="number"
             min={0}
+            step="0.01"
             value={draft.startingBid}
             onChange={(e) => onDraft({ ...draft, startingBid: e.target.value })}
             className="mt-1 w-40 border-4 border-black bg-white px-3 py-2 font-normal"
@@ -137,7 +139,9 @@ function ReviewCard({
         </label>
         <div className="flex flex-wrap gap-2">
           <button type="button" className="comic-btn !text-base" onClick={onApprove}>
-            {item.saleChannel === "buy_now" ? "Approve to Buy Now" : "Approve into a sale"}
+            {Number(draft.buyNowPrice) > 0 || item.saleChannel === "buy_now"
+              ? "Approve into the sale and Buy Now"
+              : "Approve into a sale"}
           </button>
           <button type="button" className="comic-btn-invert !text-base" onClick={onHold}>
             Hold
