@@ -5,11 +5,26 @@ import { LotImage } from "@/components/LotImage";
 import { useAdminDesk } from "@/components/admin/AdminDesk";
 import { AdminShell } from "@/components/admin/AdminShell";
 import { isListedBuyNow } from "@/lib/saleChannel";
+import { SITE_ORIGIN } from "@/lib/seo";
 import { formatCurrency, lotImages, type AuctionLot } from "@/lib/utils";
+
+const FACEBOOK_FEED_PATH = "/feeds/facebook-catalog.csv";
+const FACEBOOK_FEED_URL = `${SITE_ORIGIN}${FACEBOOK_FEED_PATH}`;
 
 export default function AdminBuyNowPage() {
   const { data, setNotice, mutate } = useAdminDesk();
   const [drafts, setDrafts] = useState<Record<string, { title: string; description: string; price: string }>>({});
+  const [copied, setCopied] = useState(false);
+
+  async function copyFeedUrl() {
+    try {
+      await navigator.clipboard.writeText(FACEBOOK_FEED_URL);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 2000);
+    } catch {
+      setNotice(`Copy this feed URL: ${FACEBOOK_FEED_URL}`);
+    }
+  }
 
   const lots = useMemo(
     () => data.inventory.filter(isListedBuyNow),
@@ -60,20 +75,35 @@ export default function AdminBuyNowPage() {
       title="Buy Now"
       subtitle="Lots with a Buy Now price stay in the live auction and show here. Someone can bid, or pay the Buy Now price and take it off the floor."
     >
-      <div className="flex flex-wrap items-center gap-3">
-        <a href="/api/admin/buy-now/export" className="comic-btn inline-block">
-          Export .xlsx
-        </a>
-        <p className="max-w-xl font-comic text-sm">
-          Approved Buy Now lots export to Facebook from{" "}
-          <a className="font-bold underline" href="/feeds/facebook-catalog.csv">
-            the catalog feed
+      <section className="comic-panel space-y-3 p-4">
+        <h2 className="font-display text-2xl text-brand-red sm:text-3xl">
+          Export listings to Facebook
+        </h2>
+        <div className="flex flex-wrap items-center gap-2">
+          <a href={FACEBOOK_FEED_PATH} className="comic-btn inline-block" target="_blank" rel="noreferrer">
+            Open Facebook catalog feed
           </a>
-          . In Commerce Manager, schedule{" "}
-          <span className="font-bold">https://www.dealfinderauctions.com/feeds/facebook-catalog.csv</span>.
-          Sold lots are marked out of stock on the next fetch. Facebook can only pull that file once an hour. The sale itself is locked here the moment someone starts checkout, so a second buyer cannot take it.
+          <button type="button" className="comic-btn-invert" onClick={() => void copyFeedUrl()}>
+            {copied ? "Copied!" : "Copy feed URL"}
+          </button>
+          <a href="/api/admin/buy-now/export" className="comic-btn-invert inline-block">
+            Download .xlsx
+          </a>
+        </div>
+        <p className="border-4 border-black bg-white px-3 py-2 font-comic text-sm break-all">
+          {FACEBOOK_FEED_URL}
         </p>
-      </div>
+        <p className="font-comic text-sm">
+          Paste that URL into Commerce Manager as a scheduled data feed and every Buy Now lot below
+          goes up automatically. Facebook pulls it at most once an hour, and sold lots flip to out of
+          stock on the next pull. A lot is locked here the moment someone starts checkout, so two
+          buyers cannot take the same item.
+        </p>
+        <p className="font-comic text-sm">
+          Marketplace itself has no posting API — the feed publishes your catalog to the Facebook
+          Page shop, and Marketplace surfaces eligible catalog items from there.
+        </p>
+      </section>
       {lots.length === 0 ? (
         <p className="comic-panel p-4 font-comic">
           No Buy Now inventory yet. Save warehouse stock to Buy Now, or approve a consignor Buy Now request.

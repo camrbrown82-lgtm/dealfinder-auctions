@@ -24,7 +24,9 @@ export default function CheckoutPage() {
   const openedPay = useRef(false);
 
   async function load() {
-    const response = await fetch("/api/wins", { credentials: "include" });
+    // no-store so switching accounts in one browser cannot replay the previous
+    // paddle's invoices out of the browser cache.
+    const response = await fetch("/api/wins", { credentials: "include", cache: "no-store" });
     const json = await response.json();
     setWins(json.wins ?? []);
   }

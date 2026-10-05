@@ -83,7 +83,7 @@ export function LiveGrid({
       /* ignore */
     }
     setInterest(readInterest());
-    void fetch("/api/wins", { credentials: "include" })
+    void fetch("/api/wins", { credentials: "include", cache: "no-store" })
       .then((res) => res.json())
       .then((json) => {
         if (Array.isArray(json.wins) && json.wins.length) {
