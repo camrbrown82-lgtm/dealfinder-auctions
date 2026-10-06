@@ -1,4 +1,4 @@
-import { agreementCommission } from "@/lib/commission";
+import { settlementSplit } from "@/lib/commission";
 import { isHouseConsignor } from "@/lib/consignors";
 import { lotWasSold } from "@/lib/settlements";
 import type { AuctionLot, PayoutRow } from "@/lib/utils";
@@ -30,7 +30,7 @@ export function buildPayoutItems(lots: AuctionLot[]): PayoutItem[] {
           payout: 0,
         };
       }
-      const split = agreementCommission(lot.currentBid);
+      const split = settlementSplit(lot.currentBid, lot.consignorPayout);
       if (!split) {
         return {
           lotId: lot.id,

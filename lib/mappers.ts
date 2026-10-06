@@ -43,6 +43,7 @@ export type LotRow = {
   payout_amount?: number | string | null;
   payout_method?: string | null;
   payout_reference?: string | null;
+  consignor_payout?: number | string | null;
 };
 
 export type ConsignmentRow = {
@@ -66,6 +67,10 @@ export type ConsignmentRow = {
   owner_id?: string | null;
   sale_channel?: string | null;
   is_charity?: boolean | null;
+  consignor_offer?: number | string | null;
+  agreed_payout?: number | string | null;
+  counter_offer?: number | string | null;
+  counter_status?: string | null;
 };
 
 function asUrlList(value: unknown): string[] {
@@ -122,6 +127,7 @@ export function mapLot(row: LotRow): AuctionLot {
     payoutAmount: Number(row.payout_amount ?? 0) || 0,
     payoutMethod: row.payout_method ?? null,
     payoutReference: row.payout_reference ?? null,
+    consignorPayout: Number(row.consignor_payout ?? 0) || null,
   };
 }
 
@@ -139,6 +145,13 @@ export function mapConsignment(row: ConsignmentRow): Consignment {
     estimatedHigh: row.estimated_high === null ? null : Number(row.estimated_high),
     reservePrice: Number(row.buy_now_price ?? row.reserve_price ?? 0) || null,
     buyNowPrice: Number(row.buy_now_price ?? row.reserve_price ?? 0) || null,
+    consignorOffer: Number(row.consignor_offer ?? row.buy_now_price ?? row.reserve_price ?? 0) || null,
+    agreedPayout: Number(row.agreed_payout ?? 0) || null,
+    counterOffer: Number(row.counter_offer ?? 0) || null,
+    counterStatus:
+      row.counter_status === "offered" || row.counter_status === "accepted" || row.counter_status === "declined"
+        ? row.counter_status
+        : null,
     startingBid: row.starting_bid == null ? null : Number(row.starting_bid),
     commissionRate: row.commission_rate == null ? null : Number(row.commission_rate),
     imageUrls: withoutStockPlaceholder(row.image_urls ?? []),

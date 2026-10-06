@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import OpenAI from "openai";
-import { beginCompLookup, priceFromMarketComps } from "@/lib/marketComps";
+import { priceFromMarketComps } from "@/lib/marketComps";
 import { identifyLotProduct } from "@/lib/identifyProduct";
 import { catalogTitle, resolveModel } from "@/lib/lotIdentity";
-import { readItemLabels } from "@/lib/readItemLabels";
 import { parseListingGrade } from "@/lib/listingGrade";
+import { processListingPhotos } from "@/lib/processListingPhotos";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
@@ -12,8 +12,8 @@ export const maxDuration = 120;
 const SYSTEM = `You are an auction cataloger identifying ONE consigned lot from photos.
 
 Product identity must be repeatable: the same object photographed twice must get the same maker/model.
-- Transcribe logos and printed model text exactly. visible_text is the source of truth.
-- Do NOT guess a model, generation, SKU, or revision (e.g. DualShock 3 vs 4 vs 5) unless that exact string is readable on the item.
+- Transcribe logos and printed model text exactly into visible_text. Copy hyphens and letter/number mixes as printed (example: CUH-ZCT2U, CFI-ZCT1W). That list is the source of truth.
+- Do NOT guess a model, generation, SKU, or revision (e.g. DualShock 3 vs 4 vs 5) unless that exact string is readable on the item. Do not invent a marketing name unless those words are printed.
 - Title: specific auction catalog line: maker + product name + confirmed part/model code + color/finish if visible. Example: "Sony DualSense Wireless Controller CFI-ZCT1W White". Never a vague "game controller" or "item in photo".
 - Description: 4–6 auction sentences: what it is, color/finish, visible features (ports, analog sticks, cable), printed model/part numbers from labels, accessories included in the photos, size/specs from staff notes, and condition. Do not narrate the room or the snapshot.
 - Honor staff notes (size, extras, defects) and the listing grade (Used, New, or Issues). If Issues, name the problems. If New, say it appears unused/new in box only when the notes or photos support that.
@@ -159,27 +159,22 @@ export async function POST(request: NextRequest) {
   }
 
   const openai = new OpenAI({ apiKey });
-  const labels = await readItemLabels(apiKey, imageUrls).catch(() => ({
-    texts: [] as string[],
-    modelLines: [] as string[],
-    brandLines: [] as string[],
-    id: "",
-  }));
-  const labelDump = [...labels.brandLines, ...labels.modelLines, ...labels.texts]
-    .filter(Boolean)
-    .slice(0, 40);
-  const labelBlock = labelDump.length
-    ? `Label OCR (copy these into visible_text; use model_lines as the model if present):\n${labelDump.join("\n")}`
-    : "No separate OCR pass text. Read stickers and rear labels in the photos yourself.";
-
-  const compsLookup = beginCompLookup(
-    (labelDump.join(" ") || itemDetails || "collectible").slice(0, 140),
-  );
+  let heroIndex = 0;
+  let visionUrls = imageUrls.slice(0, 1);
+  try {
+    const plan = await processListingPhotos(apiKey, imageUrls);
+    if (plan.heroUrl) {
+      heroIndex = plan.heroIndex;
+      visionUrls = [plan.heroUrl];
+    }
+  } catch {
+    visionUrls = imageUrls.slice(0, 1);
+  }
 
   let completion;
   try {
     completion = await openai.chat.completions.create({
-      model: "gpt-4o",
+      model: "gpt-4.1",
       temperature: 0,
       store: true,
       metadata: { feature: "catalog", product: "dealfinder-auctions" },
@@ -190,9 +185,9 @@ export async function POST(request: NextRequest) {
           content: [
             {
               type: "text",
-              text: `Read every label. ${labelBlock}\nListing grade: ${listingGrade}.\nStaff/consignor notes: ${itemDetails || "none"}.\nName the lot from those markings plus the notes. Do not guess a generation that is not printed.`,
+              text: `Read every label, sticker, and rear marking in this photo and copy them into visible_text before you name the lot.\nListing grade: ${listingGrade}.\nStaff/consignor notes: ${itemDetails || "none"}.\nName the lot from those markings plus the notes. Do not guess a generation that is not printed.`,
             },
-            ...imageUrls.map((url) => ({
+            ...visionUrls.map((url) => ({
               type: "image_url" as const,
               image_url: { url, detail: "high" as const },
             })),
@@ -225,10 +220,8 @@ export async function POST(request: NextRequest) {
     parsed = { description: raw };
   }
 
-  const visibleText = Array.from(
-    new Set([...labelDump, ...asStringList(parsed.visible_text), ...labels.modelLines]),
-  );
-  let maker = String(parsed.maker ?? labels.brandLines[0] ?? "").trim();
+  const visibleText = asStringList(parsed.visible_text);
+  let maker = String(parsed.maker ?? "").trim();
   let model = resolveModel(String(parsed.model ?? ""), visibleText);
   let objectType = String(parsed.object_type ?? "").trim();
   let color = String(parsed.color ?? "").trim();
@@ -242,7 +235,7 @@ export async function POST(request: NextRequest) {
   const identifyIds: string[] = [];
 
   try {
-    const identified = await identifyLotProduct(apiKey, imageUrls, {
+    const identified = await identifyLotProduct(apiKey, {
       title,
       objectType,
       visibleText,
@@ -295,19 +288,15 @@ export async function POST(request: NextRequest) {
     openaiIds: [] as string[],
   };
   try {
-    pricing = await priceFromMarketComps(
-      apiKey,
-      {
-        title,
-        maker,
-        model,
-        objectType,
-        visibleText,
-        condition: [listingGrade, itemDetails, String(parsed.condition ?? "").trim()].filter(Boolean).join(". "),
-        uncertainties: asStringList(parsed.uncertainties),
-      },
-      compsLookup,
-    );
+    pricing = await priceFromMarketComps(apiKey, {
+      title,
+      maker,
+      model,
+      objectType,
+      visibleText,
+      condition: [listingGrade, itemDetails, String(parsed.condition ?? "").trim()].filter(Boolean).join(". "),
+      uncertainties: asStringList(parsed.uncertainties),
+    });
   } catch {
     /* keep conservative empty pricing */
   }
@@ -328,8 +317,9 @@ export async function POST(request: NextRequest) {
     estimated_market_value: pricing.estimated_market_value,
     suggested_reserve: 0,
     comps_note: pricing.comps_note,
+    hero_index: heroIndex,
     ai: {
-      ids: [labels.id, completion.id, ...identifyIds, ...(pricing.openaiIds ?? [])].filter(Boolean),
+      ids: [completion.id, ...identifyIds, ...(pricing.openaiIds ?? [])].filter(Boolean),
       features: ["catalog", "comps"],
     },
   });

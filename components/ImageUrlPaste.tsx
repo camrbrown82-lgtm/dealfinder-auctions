@@ -1,5 +1,6 @@
 "use client";
 
+import { GrowingTextarea } from "@/components/GrowingTextarea";
 import { parsePastedImageUrls } from "@/lib/imageUrls";
 
 export function ImageUrlPaste({
@@ -15,10 +16,11 @@ export function ImageUrlPaste({
     <div className="space-y-2">
       <label className="block font-comic font-bold">
         Or paste image URL
-        <textarea
+        <GrowingTextarea
           value={value}
           onChange={(event) => onChange(event.target.value)}
-          rows={2}
+          rows={1}
+          maxRows={4}
           className="mt-2 w-full border-4 border-black bg-white px-3 py-2 font-normal"
           placeholder="https://example.com/item.jpg"
         />

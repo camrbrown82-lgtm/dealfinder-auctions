@@ -35,6 +35,7 @@ export const CONSIGNMENT_AGREEMENT_SECTIONS: Array<{
     paragraphs: [
       "For lots sold at $50 or below: A commission rate of 50% will apply, to a maximum commission of $10.",
       "For lots sold after $50: A commission rate of 20% will apply.",
+      "Buy Now is $100 minimum and has no house commission. The consignor names the amount they want to receive and is paid that amount when the item sells. DealFinder sets the price buyers pay and keeps the difference. Leaving the Buy Now price blank consigns the item to the live auction under the commission above.",
     ],
   },
   {

@@ -219,6 +219,7 @@ export async function sendConsignmentApprovedEmail(input: {
   startingBid?: number;
   buyNowPrice?: number;
   commissionRate?: number;
+  commissionNote?: string;
 }) {
   const dashboard = `${publicAppUrl()}/consignor`;
   const link = input.lotId ? lotHref(input.slug || input.lotId) : dashboard;
@@ -229,7 +230,7 @@ export async function sendConsignmentApprovedEmail(input: {
     buyNowPrice: input.buyNowPrice ?? 0,
   });
   const rate = input.commissionRate ?? DEFAULT_COMMISSION_RATE;
-  const note = consignmentCommissionNote(rate);
+  const note = input.commissionNote || consignmentCommissionNote(rate);
   const first = items[0];
   return sendTransactionalEmail({
     templateId: "consignment_approved",
@@ -262,6 +263,7 @@ export async function sendConsignmentReceivedEmail(input: {
   name: string;
   items: ConsignmentMailLine[];
   commissionRate?: number;
+  commissionNote?: string;
 }) {
   const dashboard = `${publicAppUrl()}/consignor`;
   const displayName = input.name || "Consignor";
@@ -270,7 +272,7 @@ export async function sendConsignmentReceivedEmail(input: {
     return { ok: false, mode: "demo-outbox" as const, error: "No consignments to email" };
   }
   const rate = input.commissionRate ?? DEFAULT_COMMISSION_RATE;
-  const note = consignmentCommissionNote(rate);
+  const note = input.commissionNote || consignmentCommissionNote(rate);
   const first = items[0];
   return sendTransactionalEmail({
     templateId: "consignment_received",
@@ -363,6 +365,7 @@ export async function notifyConsignmentApproved(input: {
   startingBid?: number;
   buyNowPrice?: number;
   commissionRate?: number;
+  commissionNote?: string;
 }) {
   const recipient = await resolveConsignorEmail(input.supabase, input.row);
   if (!recipient) {
@@ -388,7 +391,153 @@ export async function notifyConsignmentApproved(input: {
     startingBid,
     buyNowPrice,
     commissionRate,
+    commissionNote: input.commissionNote,
   });
+}
+
+export type CounterMailLine = { title: string; asked: number; counter: number };
+
+export async function sendConsignmentRejectedEmail(input: {
+  to: string;
+  name: string;
+  title: string;
+  counters?: CounterMailLine[];
+}) {
+  const dashboard = `${publicAppUrl()}/consignor#counters`;
+  const displayName = input.name || "Consignor";
+  const title = input.title || "your item";
+  const counters = (input.counters ?? []).filter((row) => row.title.trim() && row.counter > 0);
+  if (!counters.length) {
+    return sendTransactionalEmail({
+      templateId: "consignment_rejected",
+      to: input.to,
+      forceDeliver: true,
+      simpleLayout: true,
+      subjectOverride: `DealFinder did not accept ${title}`,
+      vars: {
+        customer_name: displayName,
+        item_title: title,
+        winning_bid: "",
+        payment_link: dashboard,
+        lot_link: dashboard,
+      },
+      htmlOverride: `<p>Hi ${escapeHtml(displayName)},</p>
+<p>DealFinder is not taking <strong>${escapeHtml(title)}</strong> at this time.</p>
+<p>You can track your consignments after you log in: <a href="${escapeHtml(dashboard)}">${escapeHtml(dashboard)}</a></p>`,
+    });
+  }
+  const blocks = counters
+    .map(
+      (row) => `<tr>
+<td style="padding:8px;border:2px solid #000;">${escapeHtml(row.title)}</td>
+<td style="padding:8px;border:2px solid #000;">You asked ${escapeHtml(formatCurrency(row.asked))}</td>
+<td style="padding:8px;border:2px solid #000;font-weight:bold;">Counter ${escapeHtml(formatCurrency(row.counter))}</td>
+</tr>`,
+    )
+    .join("");
+  const subject =
+    counters.length === 1
+      ? `DealFinder's counter on ${counters[0].title}`
+      : `DealFinder sent counters on ${counters.length} consignments`;
+  return sendTransactionalEmail({
+    templateId: "consignment_rejected",
+    to: input.to,
+    forceDeliver: true,
+    simpleLayout: true,
+    subjectOverride: subject,
+    vars: {
+      customer_name: displayName,
+      item_title: counters.length === 1 ? counters[0].title : `${counters.length} consignments`,
+      winning_bid: formatCurrency(counters[0].counter),
+      payment_link: dashboard,
+      lot_link: dashboard,
+    },
+    htmlOverride: `<p>Hi ${escapeHtml(displayName)},</p>
+<p>DealFinder is not taking ${counters.length === 1 ? "this item" : "these items"} at the price you asked. Each counter below is what you are paid if that item sells. There is no house commission.</p>
+<table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="border-collapse:collapse;margin:16px 0;">${blocks}</table>
+<p>Open your consignments to accept or decline each counter.</p>
+<p><a href="${escapeHtml(dashboard)}" style="display:inline-block;background:#111111;color:#FFFFFF;padding:12px 18px;border:4px solid #000;font-weight:bold;text-decoration:none;">Accept or decline each counter</a></p>`,
+  });
+}
+
+function sameConsignor(
+  row: { owner_id?: string | null; contact_email?: string | null; consignor_name?: string | null },
+  target: { owner_id?: string | null; contact_email?: string | null; consignor_name?: string | null },
+) {
+  if (target.owner_id && row.owner_id === target.owner_id) return true;
+  const email = String(row.contact_email ?? "").trim().toLowerCase();
+  const targetEmail = String(target.contact_email ?? "").trim().toLowerCase();
+  if (email && targetEmail && email === targetEmail) return true;
+  const name = String(row.consignor_name ?? "").trim().toLowerCase();
+  const targetName = String(target.consignor_name ?? "").trim().toLowerCase();
+  return Boolean(name && targetName && name === targetName);
+}
+
+export async function notifyConsignmentRejected(input: {
+  supabase: ReturnType<typeof import("@/lib/supabaseClient").getSupabaseAdmin>;
+  row: {
+    id?: string | null;
+    consignor_name?: string | null;
+    contact_email?: string | null;
+    owner_id?: string | null;
+    title?: string | null;
+    consignor_offer?: number | string | null;
+    buy_now_price?: number | string | null;
+    reserve_price?: number | string | null;
+    counter_offer?: number | string | null;
+    counter_status?: string | null;
+  };
+  title?: string;
+}) {
+  const recipient = await resolveConsignorEmail(input.supabase, input.row);
+  if (!recipient) {
+    console.warn("consignment_rejected_no_email", { title: input.row.title });
+    return { ok: false, skipped: true as const };
+  }
+  const listed = input.supabase ? await openCounterOffers(input.supabase, input.row) : [];
+  const currentCounter = Number(input.row.counter_offer ?? 0) || 0;
+  const counters =
+    listed.length > 0
+      ? listed
+      : currentCounter > 0
+        ? [
+            {
+              title: input.title || String(input.row.title ?? "your item"),
+              asked: Number(input.row.consignor_offer ?? input.row.buy_now_price ?? input.row.reserve_price ?? 0) || 0,
+              counter: currentCounter,
+            },
+          ]
+        : [];
+  return sendConsignmentRejectedEmail({
+    to: recipient.email,
+    name: recipient.name,
+    title: input.title || String(input.row.title ?? "your item"),
+    counters,
+  });
+}
+
+async function openCounterOffers(
+  supabase: NonNullable<ReturnType<typeof import("@/lib/supabaseClient").getSupabaseAdmin>>,
+  target: {
+    owner_id?: string | null;
+    contact_email?: string | null;
+    consignor_name?: string | null;
+  },
+): Promise<CounterMailLine[]> {
+  const { data, error } = await supabase
+    .from("consignments")
+    .select("title, consignor_offer, buy_now_price, reserve_price, counter_offer, counter_status, status, owner_id, contact_email, consignor_name")
+    .eq("status", "rejected")
+    .eq("counter_status", "offered");
+  if (error || !data) return [];
+  return data
+    .filter((row) => sameConsignor(row, target))
+    .map((row) => ({
+      title: String(row.title ?? "Item"),
+      asked: Number(row.consignor_offer ?? row.buy_now_price ?? row.reserve_price ?? 0) || 0,
+      counter: Number(row.counter_offer ?? 0) || 0,
+    }))
+    .filter((row) => row.counter > 0);
 }
 
 export async function sendPasswordResetEmail(input: { to: string; name?: string; resetHref: string }) {
@@ -601,12 +750,19 @@ export async function sendConsignorSoldEmail(input: {
   const statement = `${publicAppUrl()}/consignor`;
   const lot = input.lotNumber?.trim() ? `Lot ${input.lotNumber.trim()} · ` : "";
   const buyNow = input.source === "buy_now";
-  const rows: Array<[string, string]> = [
-    ["Sold how", buyNow ? "Buy Now — sold immediately" : "Live auction"],
-    ["Sold for", formatCurrency(input.hammer)],
-    [`House commission (${input.commissionLabel})`, `− ${formatCurrency(input.houseCut)}`],
-    [input.charity ? "To the charity" : "Your payout", formatCurrency(input.payout)],
-  ];
+  const fixedOffer = input.commissionLabel === "Buy Now offer";
+  const rows: Array<[string, string]> = fixedOffer
+    ? [
+        ["Sold how", "Buy Now — sold immediately"],
+        ["Buyers paid", formatCurrency(input.hammer)],
+        [input.charity ? "To the charity" : "You receive", formatCurrency(input.payout)],
+      ]
+    : [
+        ["Sold how", buyNow ? "Buy Now — sold immediately" : "Live auction"],
+        ["Sold for", formatCurrency(input.hammer)],
+        [`House commission (${input.commissionLabel})`, `− ${formatCurrency(input.houseCut)}`],
+        [input.charity ? "To the charity" : "Your payout", formatCurrency(input.payout)],
+      ];
   const table = rows
     .map(
       ([label, value], index) =>
@@ -632,7 +788,11 @@ export async function sendConsignorSoldEmail(input: {
     htmlOverride: `${opener}
 <p>${escapeHtml(input.name)}, ${escapeHtml(lot)}<strong>${escapeHtml(input.title)}</strong></p>
 <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="border-collapse:collapse;margin:16px 0;">${table}</table>
-<p style="font-size:14px;">${escapeHtml(consignmentCommissionNote())}</p>
+<p style="font-size:14px;">${escapeHtml(
+    fixedOffer
+      ? "There is no house commission on this Buy Now sale. You are paid the amount you agreed to. DealFinder keeps the difference between the buyer price and your payout."
+      : consignmentCommissionNote(),
+  )}</p>
 <p style="font-size:14px;">The buyer pays their invoice separately (Buy Now is due immediately; auction wins wait for Sunday). Your payout goes out after they settle. The buyer's premium, GST, and any shipping they pay are charges on their side and are not taken out of your share.</p>
 <p><a href="${escapeHtml(statement)}" style="display:inline-block;background:#111111;color:#FFFFFF;padding:12px 18px;border:4px solid #000;font-weight:bold;text-decoration:none;">See your consignments</a></p>`,
   });
@@ -655,12 +815,19 @@ export async function sendConsignorPayoutSentEmail(input: {
   const statement = `${publicAppUrl()}/consignor`;
   const lot = input.lotNumber?.trim() ? `Lot ${input.lotNumber.trim()} · ` : "";
   const method = input.method?.trim() || "e-transfer";
-  const rows: Array<[string, string]> = [
-    ["Sold for", formatCurrency(input.hammer)],
-    [`House commission (${input.commissionLabel})`, `− ${formatCurrency(input.houseCut)}`],
-    [input.charity ? "Sent to the charity" : "Paid to you", formatCurrency(input.payout)],
-    ["How it was sent", method],
-  ];
+  const fixedOffer = input.commissionLabel === "Buy Now offer";
+  const rows: Array<[string, string]> = fixedOffer
+    ? [
+        ["Buyers paid", formatCurrency(input.hammer)],
+        [input.charity ? "Sent to the charity" : "Paid to you", formatCurrency(input.payout)],
+        ["How it was sent", method],
+      ]
+    : [
+        ["Sold for", formatCurrency(input.hammer)],
+        [`House commission (${input.commissionLabel})`, `− ${formatCurrency(input.houseCut)}`],
+        [input.charity ? "Sent to the charity" : "Paid to you", formatCurrency(input.payout)],
+        ["How it was sent", method],
+      ];
   if (input.reference?.trim()) rows.push(["Reference", input.reference.trim()]);
   const table = rows
     .map(
@@ -684,7 +851,11 @@ export async function sendConsignorPayoutSentEmail(input: {
     htmlOverride: `<p>${escapeHtml(input.name)}, your payout for this item is on the way.</p>
 <p>${escapeHtml(lot)}<strong>${escapeHtml(input.title)}</strong></p>
 <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="border-collapse:collapse;margin:16px 0;">${table}</table>
-<p style="font-size:14px;">${escapeHtml(consignmentCommissionNote())}</p>
+<p style="font-size:14px;">${escapeHtml(
+    fixedOffer
+      ? "There is no house commission on this Buy Now sale. This payment is the amount you agreed to."
+      : consignmentCommissionNote(),
+  )}</p>
 <p style="font-size:14px;">The buyer's premium, GST, and any shipping the buyer pays are charges on their side and are not taken out of your share.</p>
 <p><a href="${escapeHtml(statement)}" style="display:inline-block;background:#111111;color:#FFFFFF;padding:12px 18px;border:4px solid #000;font-weight:bold;text-decoration:none;">See your consignments</a></p>`,
   });
@@ -714,6 +885,38 @@ export async function sendAdminConsignmentAlertEmail(input: {
     htmlOverride: `<p><strong>${escapeHtml(input.consignor || "A consignor")}</strong> submitted <strong>${escapeHtml(input.title)}</strong> for approval.</p>
 <p>Opening bid: ${escapeHtml(formatCurrency(input.startingBid))}<br/>Buy Now: ${escapeHtml(buyNow)}</p>
 <p><a href="${escapeHtml(desk)}" style="color:#111111;font-weight:bold;">Open desk notifications</a></p>`,
+  });
+}
+
+export async function sendCounterDecisionDeskEmail(input: {
+  consignor: string;
+  title: string;
+  counter: number;
+  accepted: boolean;
+}) {
+  const desk = `${publicAppUrl()}/admin/consignments`;
+  const amount = formatCurrency(input.counter);
+  const subject = input.accepted
+    ? `${input.consignor || "A consignor"} accepted the counter on ${input.title}`
+    : `${input.consignor || "A consignor"} declined the counter on ${input.title}`;
+  const line = input.accepted
+    ? `accepted the counter of ${amount}. It is back in the approval queue. Approve it to file the lot. They are paid ${amount}. You set the price buyers pay.`
+    : `declined the counter of ${amount}. The item stays turned down.`;
+  return sendTransactionalEmail({
+    templateId: "admin_consignment_alert",
+    to: adminNotifyEmail(),
+    forceDeliver: true,
+    simpleLayout: true,
+    subjectOverride: subject,
+    vars: {
+      customer_name: input.consignor || "A consignor",
+      item_title: input.title,
+      winning_bid: amount,
+      payment_link: desk,
+      lot_link: desk,
+    },
+    htmlOverride: `<p><strong>${escapeHtml(input.consignor || "A consignor")}</strong> ${escapeHtml(line)}</p>
+<p><a href="${escapeHtml(desk)}" style="color:#111111;font-weight:bold;">Open the consignment desk</a></p>`,
   });
 }
 

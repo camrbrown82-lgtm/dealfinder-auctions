@@ -1,4 +1,4 @@
-import { agreementCommission } from "@/lib/commission";
+import { settlementSplit } from "@/lib/commission";
 import { isHouseConsignor } from "@/lib/consignors";
 import {
   type ConsignorItem,
@@ -24,11 +24,11 @@ export function lotWasSoldRow(lot: {
   return false;
 }
 
-export function consignorShare(consignor: string, hammer: number) {
+export function consignorShare(consignor: string, hammer: number, fixedPayout?: number | null) {
   if (isHouseConsignor(consignor) || !(hammer > 0)) {
     return { label: "—", houseCut: 0, payout: 0, rate: 0 };
   }
-  const split = agreementCommission(hammer);
+  const split = settlementSplit(hammer, fixedPayout);
   if (!split) return { label: "—", houseCut: 0, payout: 0, rate: 0 };
   return {
     label: split.label,
@@ -63,6 +63,7 @@ export function withLotMoney(
     payout_amount?: number | string | null;
     payout_method?: string | null;
     consignor_cleared_at?: string | null;
+    consignor_payout?: number | string | null;
     lot_number?: string | null;
     slug?: string | null;
   } | null,
@@ -71,7 +72,7 @@ export function withLotMoney(
   const hammer = lot && (item.pipelineStatus === "sold" || item.pipelineStatus === "paid_out")
     ? money(lot.current_bid)
     : null;
-  const share = consignorShare(item.consignor, hammer ?? 0);
+  const share = consignorShare(item.consignor, hammer ?? 0, Number(lot?.consignor_payout ?? 0) || null);
   return {
     ...item,
     lotId: lot?.id ? String(lot.id) : item.lotId ?? null,

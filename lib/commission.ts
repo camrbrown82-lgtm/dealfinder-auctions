@@ -51,3 +51,17 @@ export function agreementCommission(soldFor: number): {
   const split = moneySplit(amount, 0.2);
   return { ...split, label: "20%", rate: 0.2 };
 }
+
+/** Buy Now consignments pay the agreed offer. The house keeps list price minus that offer. */
+export function fixedOfferSplit(hammer: number, payout: number) {
+  const owed = Math.round(payout * 100) / 100;
+  const sold = Math.round(hammer * 100) / 100;
+  const house = Math.max(0, Math.round((sold - owed) * 100) / 100);
+  return { house, consignor: owed, label: "Buy Now offer", rate: 0 };
+}
+
+export function settlementSplit(hammer: number, fixedPayout?: number | null) {
+  const fixed = Number(fixedPayout ?? 0);
+  if (fixed > 0) return fixedOfferSplit(hammer, fixed);
+  return agreementCommission(hammer);
+}

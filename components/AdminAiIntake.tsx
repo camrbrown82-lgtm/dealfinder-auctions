@@ -6,9 +6,10 @@ import { PhotoDropzone } from "@/components/PhotoDropzone";
 import { HOUSE_CONSIGNOR } from "@/lib/consignors";
 import { collectItemImageUrls } from "@/lib/files";
 import { requestStudioImage } from "@/lib/studioClient";
-import { requestCatalog } from "@/lib/aiIntakeClient";
+import { requestCatalog, heroPhotoForStudio } from "@/lib/aiIntakeClient";
 import { mergeAiRuns, type AiRun } from "@/lib/aiRuns";
 import { AiFeedback } from "@/components/AiFeedback";
+import { GrowingTextarea } from "@/components/GrowingTextarea";
 import { ItemDetailsField, ListingConditionField } from "@/components/ListingGradeFields";
 import { type ListingGrade } from "@/lib/listingGrade";
 import { listingImages, parsePastedImageUrls } from "@/lib/imageUrls";
@@ -96,6 +97,7 @@ export function AdminAiIntake({
         listingGrade,
       });
       setResolvedImageUrls(catalog.imageUrls);
+      setHeroIndex(catalog.hero_index ?? 0);
       setTitle(String(catalog.title ?? ""));
       setDescription(String(catalog.description ?? ""));
       if (catalog.estimated_market_value) {
@@ -107,10 +109,11 @@ export function AdminAiIntake({
       setCompsNote(catalog.comps_note ? String(catalog.comps_note) : null);
       let run = catalog.ai ?? null;
       try {
+        const hero = heroPhotoForStudio(catalog, photos);
         const studio = await requestStudioImage(
           {
-            imageUrls: catalog.imageUrls,
-            files: photos,
+            imageUrls: hero.imageUrls,
+            files: hero.files,
             title: String(catalog.title ?? ""),
             objectType: String(catalog.object_type ?? ""),
             materials: Array.isArray(catalog.materials) ? catalog.materials.map(String) : [],
@@ -122,12 +125,10 @@ export function AdminAiIntake({
           },
           setPhotoPhase,
         );
-        setHeroIndex(studio.heroIndex);
         setStudioImageUrl(studio.url);
         run = mergeAiRuns(run, studio.ai);
       } catch (studioErr) {
         setStudioImageUrl(null);
-        setHeroIndex(0);
         setError(studioErr instanceof Error ? studioErr.message : "Listing photo failed.");
       }
       setAiRun(run);
@@ -250,9 +251,7 @@ export function AdminAiIntake({
           {/* Photos wait here. Cataloging only starts on Auto-Generate Details. */}
           <PhotoDropzone files={files} onChange={setFiles} maxFiles={4} />
           <ImageUrlPaste value={imageUrlText} onChange={setImageUrlText} />
-          <div className="flex-1">
-            <ItemDetailsField details={itemDetails} onDetails={setItemDetails} />
-          </div>
+          <ItemDetailsField details={itemDetails} onDetails={setItemDetails} />
         </div>
         <div className="comic-panel flex h-full flex-col space-y-4 p-5">
           <label className="block font-comic font-bold">
@@ -266,11 +265,12 @@ export function AdminAiIntake({
           </label>
           <label className="block font-comic font-bold">
             Description
-            <textarea
+            <GrowingTextarea
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               required
-              rows={4}
+              rows={2}
+              maxRows={8}
               className="mt-2 w-full border-4 border-black bg-white px-3 py-2 font-normal"
             />
           </label>
@@ -335,11 +335,12 @@ export function AdminAiIntake({
           </label>
           <label className="block font-comic font-bold">
             Price comp
-            <textarea
+            <GrowingTextarea
               value={compsNote ?? ""}
               onChange={(e) => setCompsNote(e.target.value)}
-              rows={3}
-              placeholder="Auto-Generate fills this from public listings."
+              rows={2}
+              maxRows={8}
+              placeholder="Auto-Generate lists matching sold prices, then current asking prices."
               className="mt-2 w-full border-4 border-black bg-white px-3 py-2 font-normal"
             />
           </label>

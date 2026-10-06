@@ -20,20 +20,8 @@ function parseJsonObject(raw: string): Record<string, unknown> {
   }
 }
 
-function outputText(data: Record<string, unknown>) {
-  const chunks: string[] = [];
-  if (typeof data.output_text === "string") chunks.push(data.output_text);
-  for (const item of (data.output as Array<Record<string, unknown>> | undefined) ?? []) {
-    for (const content of (item.content as Array<Record<string, unknown>> | undefined) ?? []) {
-      if (typeof content.text === "string") chunks.push(content.text);
-    }
-  }
-  return chunks.join("\n");
-}
-
 export async function identifyLotProduct(
   apiKey: string,
-  imageUrls: string[],
   clues: {
     title: string;
     objectType: string;
@@ -45,9 +33,9 @@ export async function identifyLotProduct(
     uncertainties: string[];
   },
 ): Promise<ProductIdentity | null> {
-  const prompt = `Name this ONE consigned lot from the photos. Be identical every time the same object is photographed.
+  const prompt = `Check this consigned lot against the markings already read from the photos. Be identical every time the same object is cataloged.
 
-Vision clues:
+Vision clues already transcribed:
 - First-pass title: ${clues.title}
 - Object type: ${clues.objectType || "unknown"}
 - Readable markings (use these for model): ${clues.visibleText.join("; ") || "none"}
@@ -58,8 +46,8 @@ Vision clues:
 - Uncertain: ${clues.uncertainties.join("; ") || "none"}
 
 Rules:
-- maker: brand from a visible logo/wordmark only.
-- model: copy printed model text only. Empty string if the model/generation is not readable. Do not choose DualShock 3/4/5, Slim vs Pro, etc. from memory or similar listings.
+- maker: brand only if it appears in the readable markings or the first-pass title.
+- model: copy printed model text only. Empty string if the model/generation is not in the readable markings. Do not choose DualShock 3/4/5, Slim vs Pro, etc. from memory.
 - title: specific catalog line with maker, product, confirmed part/model code, and color if visible. Not vague ("controller", "electronic item").
 - description: 4–6 auction sentences covering identity, color/finish, visible features, printed markings, what is included, size from notes, and condition. Use the listing grade. Not a snapshot walkthrough.
 - display_setting: a lived-in catalog scene that fits the object (lamp on a wooden side table, not a blank sweep).
@@ -77,12 +65,7 @@ Return JSON only:
   "photo_brief": string
 }`;
 
-  const content: Array<Record<string, unknown>> = [{ type: "input_text", text: prompt }];
-  for (const url of imageUrls.slice(0, 4)) {
-    content.push({ type: "input_image", image_url: url, detail: "high" });
-  }
-
-  const response = await fetch("https://api.openai.com/v1/responses", {
+  const response = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
     signal: AbortSignal.timeout(40000),
     headers: {
@@ -90,17 +73,28 @@ Return JSON only:
       "content-type": "application/json",
     },
     body: JSON.stringify({
-      model: "gpt-4o",
+      model: "gpt-4.1",
+      temperature: 0,
       store: true,
       metadata: { feature: "identify", product: "dealfinder-auctions" },
-      temperature: 0,
-      text: { format: { type: "json_object" } },
-      input: [{ role: "user", content }],
+      max_tokens: 900,
+      response_format: { type: "json_object" },
+      messages: [
+        {
+          role: "system",
+          content:
+            "You check auction catalog identity against transcribed labels. Do not invent a model that is not in the readable markings. Return JSON only.",
+        },
+        { role: "user", content: prompt },
+      ],
     }),
   });
-  const json = (await response.json()) as Record<string, unknown>;
+  const json = (await response.json()) as {
+    id?: string;
+    choices?: Array<{ message?: { content?: string } }>;
+  };
   if (!response.ok) return null;
-  const parsed = parseJsonObject(outputText(json));
+  const parsed = parseJsonObject(json.choices?.[0]?.message?.content ?? "");
   const title = String(parsed.title ?? "").trim();
   const description = String(parsed.description ?? "").trim();
   if (!title && !description) return null;
@@ -113,6 +107,6 @@ Return JSON only:
     color: String(parsed.color ?? "").trim(),
     displaySetting: String(parsed.display_setting ?? "").trim(),
     photoBrief: String(parsed.photo_brief ?? "").trim(),
-    openaiId: typeof json.id === "string" ? json.id : "",
+    openaiId: json.id ?? "",
   };
 }

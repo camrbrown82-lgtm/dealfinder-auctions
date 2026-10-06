@@ -1,26 +1,16 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import {
+  focusPointFromTap,
+  refocusCamera,
+  requestCamera,
+  stopTracks,
+  videoTrack,
+  watchAutofocus,
+} from "@/lib/cameraStream";
 
-export async function requestCamera(facing: "environment" | "user") {
-  if (!navigator.mediaDevices?.getUserMedia) return null;
-  const attempts: MediaStreamConstraints[] = [
-    { audio: false, video: { facingMode: { ideal: facing } } },
-    { audio: false, video: true },
-  ];
-  for (const constraints of attempts) {
-    try {
-      return await navigator.mediaDevices.getUserMedia(constraints);
-    } catch {
-      /* try the next, looser constraint */
-    }
-  }
-  return null;
-}
-
-function stopTracks(stream: MediaStream | null) {
-  stream?.getTracks().forEach((track) => track.stop());
-}
+export { requestCamera, stopTracks };
 
 function toJpegFile(blob: Blob) {
   const type = blob.type.startsWith("image/") ? blob.type : "image/jpeg";
@@ -29,13 +19,13 @@ function toJpegFile(blob: Blob) {
 
 async function blobFromCanvas(canvas: HTMLCanvasElement) {
   try {
-    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.92));
+    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.95));
     if (blob) return blob;
   } catch {
     /* tainted canvas */
   }
   try {
-    const dataUrl = canvas.toDataURL("image/jpeg", 0.92);
+    const dataUrl = canvas.toDataURL("image/jpeg", 0.95);
     const res = await fetch(dataUrl);
     return await res.blob();
   } catch {
@@ -49,11 +39,28 @@ async function captureStill(video: HTMLVideoElement, stream: MediaStream | null,
     ImageCapture?: new (track: MediaStreamTrack) => {
       takePhoto: () => Promise<Blob>;
       grabFrame: () => Promise<ImageBitmap>;
+      getPhotoCapabilities?: () => Promise<{
+        imageWidth?: { max?: number };
+        imageHeight?: { max?: number };
+      }>;
+      setOptions?: (options: { imageWidth?: number; imageHeight?: number; focusMode?: string }) => Promise<void>;
     };
   }).ImageCapture;
 
   if (track && ImageCaptureCtor) {
     const capture = new ImageCaptureCtor(track);
+    try {
+      const caps = await capture.getPhotoCapabilities?.();
+      const imageWidth = caps?.imageWidth?.max;
+      const imageHeight = caps?.imageHeight?.max;
+      if (imageWidth && imageHeight) {
+        await capture.setOptions?.({ imageWidth, imageHeight, focusMode: "continuous" });
+      } else {
+        await capture.setOptions?.({ focusMode: "continuous" });
+      }
+    } catch {
+      /* this camera takes the photo at its own size */
+    }
     try {
       return await capture.takePhoto();
     } catch {
@@ -111,6 +118,14 @@ export function CameraCapture({
   const [ready, setReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [snapping, setSnapping] = useState(false);
+  const [focusRing, setFocusRing] = useState<{ x: number; y: number } | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const track = videoTrack(stream);
+    if (!track) return;
+    return watchAutofocus(track);
+  }, [open, stream]);
 
   useEffect(() => {
     if (!open) return;
@@ -134,12 +149,32 @@ export function CameraCapture({
     };
   }, [open, stream]);
 
+  async function aim(clientX: number, clientY: number) {
+    const video = videoRef.current;
+    const track = videoTrack(stream);
+    if (!video || !track) return;
+    const point = focusPointFromTap(video, clientX, clientY, facing === "user");
+    if (!point) return;
+    const rect = video.getBoundingClientRect();
+    setFocusRing({
+      x: ((clientX - rect.left) / rect.width) * 100,
+      y: ((clientY - rect.top) / rect.height) * 100,
+    });
+    window.setTimeout(() => setFocusRing(null), 800);
+    await refocusCamera(track, point);
+  }
+
   async function snap() {
     const video = videoRef.current;
     if (!video || remaining <= 0 || snapping) return;
     setSnapping(true);
     setError(null);
     try {
+      const track = videoTrack(stream);
+      if (track) {
+        await refocusCamera(track);
+        await new Promise((resolve) => window.setTimeout(resolve, 400));
+      }
       const blob = await captureStill(video, stream, facing === "user");
       if (!blob || blob.size < 50) {
         setError("Could not grab that frame. Tap the red shutter again, or use Upload files.");
@@ -172,7 +207,7 @@ export function CameraCapture({
             Live camera
           </h2>
           <p className="mt-1 font-comic text-sm">
-            Tap the red shutter on the picture to capture. {remaining} left.
+            Tap the writing or the item to refocus. The camera keeps focusing while you move. {remaining} left.
           </p>
         </div>
         <div className="relative min-h-[16rem] flex-1 overflow-hidden border-y-4 border-black bg-black">
@@ -181,8 +216,18 @@ export function CameraCapture({
             playsInline
             muted
             autoPlay
+            onPointerDown={(event) => {
+              if (event.target !== event.currentTarget) return;
+              void aim(event.clientX, event.clientY);
+            }}
             className={`h-full max-h-[55vh] w-full bg-black object-contain ${facing === "user" ? "scale-x-[-1]" : ""}`}
           />
+          {focusRing ? (
+            <span
+              className="pointer-events-none absolute z-10 h-16 w-16 -translate-x-1/2 -translate-y-1/2 border-4 border-white"
+              style={{ left: `${focusRing.x}%`, top: `${focusRing.y}%` }}
+            />
+          ) : null}
           {!ready && !error && (
             <p className="pointer-events-none absolute inset-0 flex items-center justify-center font-display text-2xl text-white">
               Starting camera…
@@ -206,6 +251,19 @@ export function CameraCapture({
           >
             {snapping ? "Saving…" : "Snap photo"}
           </button>
+          <button
+            type="button"
+            className="comic-btn-invert"
+            onClick={() => {
+              const video = videoRef.current;
+              const track = videoTrack(stream);
+              if (!video || !track) return;
+              const rect = video.getBoundingClientRect();
+              void aim(rect.left + rect.width / 2, rect.top + rect.height / 2);
+            }}
+          >
+            Refocus
+          </button>
           <button type="button" className="comic-btn-invert" onClick={onFlip}>
             Flip camera
           </button>
@@ -217,5 +275,3 @@ export function CameraCapture({
     </div>
   );
 }
-
-export { stopTracks };

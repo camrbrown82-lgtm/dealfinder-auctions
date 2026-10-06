@@ -15,6 +15,7 @@ export type CatalogResult = {
   estimated_market_value?: number;
   suggested_reserve?: number;
   comps_note?: string;
+  hero_index?: number;
   ai?: AiRun;
   imageUrls: string[];
 };
@@ -64,4 +65,14 @@ export async function requestCatalog(
   if (!response.ok) throw new Error(json.error || "AI intake failed");
 
   return { ...json, imageUrls: imageUrls.length ? imageUrls : fromPaste };
+}
+
+export function heroPhotoForStudio(catalog: CatalogResult, photos: File[]) {
+  const heroAt = catalog.imageUrls.length
+    ? Math.min(Math.max(catalog.hero_index ?? 0, 0), catalog.imageUrls.length - 1)
+    : Math.min(Math.max(catalog.hero_index ?? 0, 0), Math.max(photos.length - 1, 0));
+  const heroUrl = catalog.imageUrls[heroAt];
+  if (heroUrl && isHttpUrl(heroUrl)) return { imageUrls: [heroUrl], files: [] as File[] };
+  const file = photos[heroAt] ?? photos[0];
+  return { imageUrls: heroUrl ? [heroUrl] : [], files: file ? [file] : [] };
 }

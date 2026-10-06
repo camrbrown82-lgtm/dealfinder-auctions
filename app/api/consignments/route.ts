@@ -3,11 +3,12 @@ import { parseListingGrade, withListedGrade } from "@/lib/listingGrade";
 import { addDemoConsignment } from "@/lib/demoAdminStore";
 import { openingBid } from "@/lib/buyNow";
 import { agreementCommission } from "@/lib/commission";
+import { buyNowDisclaimer, buyNowOfferError, BUY_NOW_MINIMUM } from "@/lib/buyNowOffer";
 import { getSupabaseAdmin, isSupabaseConfigured } from "@/lib/supabaseClient";
 import { persistPublicImageUrls } from "@/lib/consignmentStorage";
 import { getBidderSession } from "@/lib/bidderAuth";
 import type { SaleChannel } from "@/lib/saleChannel";
-import { sendAdminConsignmentAlertEmail, sendConsignmentReceivedEmail } from "@/lib/notify";
+import { sendAdminConsignmentAlertEmail, sendConsignmentReceivedEmail, sendCounterDecisionDeskEmail } from "@/lib/notify";
 import { pipelineFromLot, withLotMoney } from "@/lib/consignorPortal";
 import {
   DEFAULT_COMMISSION_RATE,
@@ -146,7 +147,13 @@ export async function GET() {
         consignor: String(row.consignor_name ?? ""),
         pipelineStatus,
         startingBid: Number(row.starting_bid ?? lot?.starting_bid ?? 0),
-        buyNowPrice: Number(row.buy_now_price ?? row.reserve_price ?? 0),
+        buyNowPrice: Number(row.agreed_payout ?? row.consignor_offer ?? row.buy_now_price ?? row.reserve_price ?? 0),
+        askedOffer: Number(row.consignor_offer ?? row.buy_now_price ?? row.reserve_price ?? 0) || 0,
+        counterOffer: Number(row.counter_offer ?? 0) || null,
+        counterStatus:
+          row.counter_status === "offered" || row.counter_status === "accepted" || row.counter_status === "declined"
+            ? row.counter_status
+            : null,
         commissionRate: Number(row.commission_rate ?? DEFAULT_COMMISSION_RATE),
         saleChannel,
         charity: row.is_charity === true,
@@ -172,8 +179,8 @@ export async function GET() {
           consignor: String(lot.consignor_name ?? ""),
           pipelineStatus: pipelineFromLot(lot),
           startingBid: Number(lot.starting_bid ?? lot.current_bid ?? 0),
-          buyNowPrice: Number(lot.buy_now_price ?? lot.reserve_price ?? 0),
-          commissionRate: DEFAULT_COMMISSION_RATE,
+          buyNowPrice: Number(lot.consignor_payout ?? lot.buy_now_price ?? lot.reserve_price ?? 0),
+          commissionRate: Number(lot.consignor_payout) > 0 ? 0 : DEFAULT_COMMISSION_RATE,
         },
         lot,
         lot.consignor_cleared_at ? String(lot.consignor_cleared_at) : null,
@@ -184,12 +191,62 @@ export async function GET() {
   return NextResponse.json({ source: "supabase", items: preferFiledItems(items) });
 }
 
+async function respondToCounter(
+  session: { id: string; email: string; fullName: string },
+  action: "accept-counter" | "decline-counter",
+  id: string,
+) {
+  const consignmentId = id.trim();
+  if (!consignmentId) {
+    return NextResponse.json({ error: "Missing consignment." }, { status: 400 });
+  }
+  const supabase = getSupabaseAdmin();
+  if (!isSupabaseConfigured || !supabase) {
+    return NextResponse.json({ error: "Counters are saved on the live desk." }, { status: 400 });
+  }
+  const { data: row, error } = await supabase.from("consignments").select("*").eq("id", consignmentId).single();
+  if (error || !row) {
+    return NextResponse.json({ error: "Could not find that consignment." }, { status: 404 });
+  }
+  if (
+    !ownsRow(session, {
+      owner_id: row.owner_id as string | null,
+      contact_email: row.contact_email as string | null,
+      consignor_name: row.consignor_name as string | null,
+    })
+  ) {
+    return NextResponse.json({ error: "That consignment is not yours." }, { status: 403 });
+  }
+  const counter = Number(row.counter_offer ?? 0) || 0;
+  if (row.status !== "rejected" || row.counter_status !== "offered" || !(counter > 0)) {
+    return NextResponse.json({ error: "This counter is no longer open." }, { status: 400 });
+  }
+  const accepted = action === "accept-counter";
+  const updates = accepted
+    ? { status: "pending" as const, agreed_payout: counter, counter_status: "accepted" }
+    : { counter_status: "declined" };
+  const saved = await supabase.from("consignments").update(updates).eq("id", consignmentId);
+  if (saved.error) {
+    return NextResponse.json({ error: saved.error.message }, { status: 400 });
+  }
+  void sendCounterDecisionDeskEmail({
+    consignor: String(row.consignor_name ?? session.fullName ?? ""),
+    title: String(row.title ?? "Item"),
+    counter,
+    accepted,
+  });
+  return NextResponse.json({ ok: true, accepted });
+}
+
 export async function PATCH(request: NextRequest) {
   const session = await getBidderSession();
   if (!session) {
     return NextResponse.json({ error: "Log in to update your consignments." }, { status: 401 });
   }
-  const body = (await request.json()) as { action?: string; ids?: string[] };
+  const body = (await request.json()) as { action?: string; ids?: string[]; id?: string };
+  if (body.action === "accept-counter" || body.action === "decline-counter") {
+    return respondToCounter(session, body.action, String(body.id ?? ""));
+  }
   if (body.action !== "clear") {
     return NextResponse.json({ error: "Unknown action." }, { status: 400 });
   }
@@ -321,14 +378,16 @@ export async function POST(request: NextRequest) {
   }
 
   const buyNow = Number(body.buyNowPrice ?? body.reservePrice) || 0;
-  if ((body.requestBuyNow || body.saleChannel === "buy_now") && buyNow <= 0) {
-    return NextResponse.json({ error: "Enter a Buy Now price to list this item there." }, { status: 400 });
+  const offerError = buyNowOfferError(buyNow);
+  if (offerError) {
+    return NextResponse.json({ error: offerError }, { status: 400 });
   }
+  const buyNowOffer = buyNow >= BUY_NOW_MINIMUM;
   const starting = openingBid(body.startingBid, buyNow, 5);
 
   const listingGrade = parseListingGrade(body.listingGrade);
   const itemDetails = String(body.itemDetails ?? body.notes ?? "").trim();
-  const saleChannel: SaleChannel = "auction";
+  const saleChannel: SaleChannel = buyNowOffer ? "buy_now" : "auction";
   const charity = body.charity === true;
 
   const payload = {
@@ -346,7 +405,8 @@ export async function POST(request: NextRequest) {
     starting_bid: starting,
     reserve_price: buyNow || null,
     buy_now_price: buyNow || null,
-    commission_rate: DEFAULT_COMMISSION_RATE,
+    consignor_offer: buyNowOffer ? buyNow : null,
+    commission_rate: buyNowOffer ? 0 : DEFAULT_COMMISSION_RATE,
     image_urls: imageUrls,
     status: "pending" as const,
     sale_channel: saleChannel,
@@ -360,7 +420,7 @@ export async function POST(request: NextRequest) {
     pipelineStatus: "pending_approval",
     startingBid: starting,
     buyNowPrice: buyNow,
-    commissionRate: agreementCommission(buyNow)?.rate ?? 0,
+    commissionRate: buyNowOffer ? 0 : agreementCommission(buyNow)?.rate ?? 0,
     saleChannel,
     charity,
   };
@@ -376,6 +436,7 @@ export async function POST(request: NextRequest) {
       estimatedHigh: payload.estimated_high,
       reservePrice: buyNow,
       buyNowPrice: buyNow,
+      consignorOffer: buyNowOffer ? buyNow : null,
       startingBid: starting,
       commissionRate: item.commissionRate,
       imageUrls,
@@ -392,6 +453,10 @@ export async function POST(request: NextRequest) {
   }
 
   let { data, error } = await supabase.from("consignments").insert(payload).select("id").single();
+  if (error && /consignor_offer/i.test(error.message)) {
+    delete (payload as { consignor_offer?: number | null }).consignor_offer;
+    ({ data, error } = await supabase.from("consignments").insert(payload).select("id").single());
+  }
   if (error && /listing_grade/i.test(error.message)) {
     const { listing_grade: _g, ...rest } = payload;
     ({ data, error } = await supabase.from("consignments").insert(rest).select("id").single());
@@ -449,7 +514,8 @@ async function maybeSendReceivedEmail(email: string, name: string, item: Consign
         buyNowPrice: item.buyNowPrice,
       },
     ],
-    commissionRate: DEFAULT_COMMISSION_RATE,
+    commissionRate: item.commissionRate,
+    commissionNote: item.buyNowPrice >= BUY_NOW_MINIMUM ? buyNowDisclaimer(item.buyNowPrice) : undefined,
   });
   return { sent: true as const, ...result };
 }

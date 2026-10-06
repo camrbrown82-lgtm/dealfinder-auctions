@@ -94,7 +94,7 @@ Logged-in consignors only. Other people’s names never appear on the form.
 2. Drop up to 4 warehouse photos (or paste image URLs). Photos do not start cataloging.
 3. Add condition, and item details only if you have them. That box can stay empty.
 4. Press **Auto-Generate Details** when you are ready. That is the only step that writes the title, description, and studio listing photo.
-5. Set starting bid (default $5) and market value. A Buy Now price also lists the item on Buy Now after approval. Leave Buy Now blank for the live auction only. There is no Buy Now checkbox. Charity is still a checkbox.
+5. Set starting bid (default $5) and market value. Buy Now is $100 minimum from this point on. The number they enter is what they are paid if it sells. There is no commission. DealFinder sets the buyer price and can counter the offer when approving. Leave Buy Now blank for the live auction and the agreement commission. There is no Buy Now checkbox. Charity is still a checkbox.
 6. Accept the consignment agreement.
 7. Submit. The item goes to **Waiting on DealFinder**.
 
@@ -103,6 +103,7 @@ Logged-in consignors only. Other people’s names never appear on the form.
 - **Accepted lots** — scheduled or live.
 - **Payouts** — sold lots, split into **still owed** vs **paid out**, with hammer and their share.
 - **Not accepted** — rejected items.
+- **Counter offers** — turned-down Buy Now items where DealFinder named another amount. Accept or decline each one. Accept sends it back for approval at that amount.
 - **Export to Excel** — three sheets: Still owed / Paid out / Cleared.
 - **Export paid-out and clear them** — downloads the spreadsheet, then takes paid-out rows off the main page so it does not clutter. Cleared rows stay under **Cleared from this page**.
 
@@ -198,9 +199,9 @@ Two layers on one page:
 
 **Waiting for approval**
 1. A consignor submits. Desk gets a notification badge and an email.
-2. Open the card. Edit title, description, bids, owner if needed.
-3. **Approve** (pick a sale) → consignor gets an approval email; the lot is filed.
-4. **Hold** or **Reject**.
+2. Open the card. Edit title, description, bids, and owner if needed. On a Buy Now request, approving pays them the amount they asked (or a counter they already accepted). Set the price buyers pay. That difference is DealFinder's profit. There is no commission. Both the payout and the buyer price are $100 minimum.
+3. **Approve** (pick a sale) → consignor gets an approval email for that item. The lot is filed into the sale and Buy Now.
+4. **Hold** or **Reject**. Reject emails the consignor. On a Buy Now item, type a counter before Reject and that amount is in the email. If several items are turned down, each counter is listed. They open the consignments page and accept or decline each one. Accept puts that item back in this queue at the counter price.
 
 **Consignor tracking** (tables under the queue)
 - One panel per person.

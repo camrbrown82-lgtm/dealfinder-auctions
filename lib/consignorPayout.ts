@@ -1,4 +1,4 @@
-import { agreementCommission } from "@/lib/commission";
+import { settlementSplit } from "@/lib/commission";
 import { isHouseConsignor } from "@/lib/consignors";
 import { consignorContact } from "@/lib/consignorSold";
 import { sendConsignorPayoutSentEmail } from "@/lib/notify";
@@ -35,7 +35,7 @@ export async function markConsignorPayoutSent(
   const supabase = getSupabaseAdmin();
   if (!isSupabaseConfigured || !supabase) return { sent: false, reason: "no-db" as const };
 
-  const split = agreementCommission(hammer);
+  const split = settlementSplit(hammer, lot.consignorPayout);
   const payout = lot.payoutAmount && lot.payoutAmount > 0 ? lot.payoutAmount : (split?.consignor ?? hammer);
   const method = (input.method || lot.payoutMethod || "e-transfer").trim();
   const reference = (input.reference || lot.payoutReference || "").trim();

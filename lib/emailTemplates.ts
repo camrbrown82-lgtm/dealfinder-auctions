@@ -126,6 +126,23 @@ DealFinder Auctions
 529 Gateway Rd NE, Airdrie, AB T4B 0J6`,
   },
   {
+    id: "consignment_rejected",
+    name: "Consignment Not Accepted",
+    subject: "DealFinder did not accept {{item_title}}",
+    body: `Hi {{customer_name}},
+
+DealFinder is not taking {{item_title}} at the price you asked.
+
+{{item_list}}
+
+Each counter is what you are paid if that item sells. There is no house commission.
+
+Accept or decline each counter after you log in: {{payment_link}}
+
+DealFinder Auctions
+529 Gateway Rd NE, Airdrie, AB T4B 0J6`,
+  },
+  {
     id: "consignment_received",
     name: "Consignment Received",
     subject: "We received your consignment — {{item_title}}",

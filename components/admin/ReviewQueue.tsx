@@ -2,13 +2,16 @@
 
 import { LotImage } from "@/components/LotImage";
 import { OwnerPicker } from "@/components/OwnerPicker";
-import type { Consignment } from "@/lib/utils";
+import { BUY_NOW_MINIMUM, consignorPayAmount, counterOfferError } from "@/lib/buyNowOffer";
+import { formatCurrency, type Consignment } from "@/lib/utils";
 
 export type ReviewDraft = {
   title: string;
   description: string;
   startingBid: string;
   buyNowPrice: string;
+  listPrice: string;
+  counterOffer: string;
   consignorName: string;
 };
 
@@ -40,11 +43,14 @@ export function ReviewQueue({
   return (
     <div className="space-y-4">
       {queue.map((item) => {
+        const pay = consignorPayAmount(item);
         const draft = drafts[item.id] ?? {
           title: item.title,
           description: item.description ?? "",
           startingBid: String(item.startingBid ?? 0),
-          buyNowPrice: String(item.buyNowPrice ?? item.reservePrice ?? 0),
+          buyNowPrice: String(pay || 0),
+          listPrice: String(pay || 0),
+          counterOffer: "",
           consignorName: item.consignor ?? "",
         };
         return (
@@ -81,6 +87,12 @@ function ReviewCard({
   onHold: () => void;
   onReject: () => void;
 }) {
+  const asked = Number(item.consignorOffer ?? item.buyNowPrice ?? item.reservePrice ?? 0) || 0;
+  const paying = consignorPayAmount(item);
+  const listing = Number(draft.listPrice) || 0;
+  const counter = Number(draft.counterOffer) || 0;
+  const counterError = counterOfferError(counter);
+  const profit = Math.max(0, Math.round((listing - paying) * 100) / 100);
   const photo = item.imageUrls[0];
   return (
     <article className="comic-panel flex flex-col gap-3 p-4 sm:flex-row">
@@ -127,27 +139,69 @@ function ReviewCard({
             className="mt-1 w-40 border-4 border-black bg-white px-3 py-2 font-normal"
           />
         </label>
-        <label className="block font-comic text-sm font-bold">
-          Buy now ($)
-          <input
-            type="number"
-            min={0}
-            value={draft.buyNowPrice}
-            onChange={(e) => onDraft({ ...draft, buyNowPrice: e.target.value })}
-            className="mt-1 w-40 border-4 border-black bg-white px-3 py-2 font-normal"
-          />
-        </label>
+        {paying > 0 ? (
+          <div className="space-y-3 border-4 border-black bg-brand-cream p-3">
+            <p className="font-comic text-sm">
+              {item.counterStatus === "accepted" ? (
+                <>
+                  They asked <strong>{formatCurrency(asked)}</strong> and accepted the counter. Approving
+                  pays them <strong>{formatCurrency(paying)}</strong>.
+                </>
+              ) : (
+                <>
+                  They asked to receive <strong>{formatCurrency(paying)}</strong>. Approving pays them
+                  that amount.
+                </>
+              )}{" "}
+              Buy Now is {formatCurrency(BUY_NOW_MINIMUM)} minimum. There is no commission. Set the price
+              buyers pay. The difference is DealFinder&apos;s profit.
+            </p>
+            <label className="block font-comic text-sm font-bold">
+              Price buyers pay ($)
+              <span className="block font-normal">
+                At least {formatCurrency(paying)}. The difference ({formatCurrency(profit)}) is
+                DealFinder&apos;s profit.
+              </span>
+              <input
+                type="number"
+                min={0}
+                step="0.01"
+                value={draft.listPrice}
+                onChange={(e) =>
+                  onDraft({ ...draft, listPrice: e.target.value, buyNowPrice: e.target.value })
+                }
+                className="mt-1 w-40 border-4 border-black bg-white px-3 py-2 font-normal"
+              />
+            </label>
+          </div>
+        ) : null}
+        {paying > 0 ? (
+          <label className="block font-comic text-sm font-bold">
+            Counter if you turn this down ($)
+            <span className="block font-normal">
+              Optional. Type this before Reject. It goes in the rejection email for this item. They
+              accept or decline it on their consignments page. Leave it blank for a plain rejection.
+            </span>
+            <input
+              type="number"
+              min={0}
+              step="0.01"
+              value={draft.counterOffer}
+              onChange={(e) => onDraft({ ...draft, counterOffer: e.target.value })}
+              className="mt-1 w-40 border-4 border-black bg-white px-3 py-2 font-normal"
+            />
+            {counterError ? <span className="mt-1 block font-normal text-brand-red">{counterError}</span> : null}
+          </label>
+        ) : null}
         <div className="flex flex-wrap gap-2">
           <button type="button" className="comic-btn !text-base" onClick={onApprove}>
-            {Number(draft.buyNowPrice) > 0 || item.saleChannel === "buy_now"
-              ? "Approve into the sale and Buy Now"
-              : "Approve into a sale"}
+            {paying > 0 ? "Approve into the sale and Buy Now" : "Approve into a sale"}
           </button>
           <button type="button" className="comic-btn-invert !text-base" onClick={onHold}>
             Hold
           </button>
-          <button type="button" className="comic-btn !text-base" onClick={onReject}>
-            Reject
+          <button type="button" className="comic-btn !text-base" onClick={onReject} disabled={Boolean(counterError)}>
+            {counter > 0 ? "Reject and send counter" : "Reject"}
           </button>
         </div>
       </div>

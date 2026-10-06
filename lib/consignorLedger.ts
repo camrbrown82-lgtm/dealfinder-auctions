@@ -1,4 +1,4 @@
-import { agreementCommission } from "@/lib/commission";
+import { settlementSplit } from "@/lib/commission";
 import { isHouseConsignor } from "@/lib/consignors";
 import { lotWasSold } from "@/lib/settlements";
 import {
@@ -131,11 +131,11 @@ function queueStage(status: Consignment["status"]): LedgerStage {
 }
 
 /** What the consignor keeps once the agreement split is applied to a sale. */
-function split(consignor: string, hammer: number) {
+function split(consignor: string, hammer: number, fixedPayout?: number | null) {
   if (isHouseConsignor(consignor)) {
     return { label: "House stock", houseCut: hammer, payout: 0 };
   }
-  const agreement = agreementCommission(hammer);
+  const agreement = settlementSplit(hammer, fixedPayout);
   if (!agreement) return { label: "—", houseCut: 0, payout: 0 };
   return { label: agreement.label, houseCut: agreement.house, payout: agreement.consignor };
 }
@@ -185,7 +185,7 @@ function itemFromLot(
   const sold = stage === "sold" || stage === "paid" || stage === "settled";
   const hammer = sold ? money(lot.currentBid) : null;
   const owner = (lot.consignor || consignment?.consignor || "").trim() || "Unnamed consignor";
-  const share = split(owner, hammer ?? 0);
+  const share = split(owner, hammer ?? 0, lot.consignorPayout);
   const buyNow = money(lot.buyNowPrice ?? lot.reservePrice);
   // The submitted photos ride along on the lot once it is posted.
   const photos = lotImages(lot);

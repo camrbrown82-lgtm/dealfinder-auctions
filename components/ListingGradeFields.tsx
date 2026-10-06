@@ -1,5 +1,6 @@
 "use client";
 
+import { GrowingTextarea } from "@/components/GrowingTextarea";
 import { LISTING_GRADES, type ListingGrade } from "@/lib/listingGrade";
 
 export function ItemDetailsField({
@@ -12,12 +13,13 @@ export function ItemDetailsField({
   return (
     <label className="block font-comic font-bold">
       Item details for AI
-      <textarea
+      <GrowingTextarea
         value={details}
         onChange={(event) => onDetails(event.target.value)}
-        rows={10}
+        rows={2}
+        maxRows={6}
         placeholder="Size, extras, wear, missing parts, what’s included…"
-        className="mt-2 min-h-[14rem] w-full resize-y border-4 border-black bg-white px-3 py-2 font-normal"
+        className="mt-2 w-full border-4 border-black bg-white px-3 py-2 font-normal"
       />
     </label>
   );

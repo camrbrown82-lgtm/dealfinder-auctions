@@ -10,13 +10,15 @@ import { ConsignorNameField } from "@/components/ConsignorNameField";
 import { useBidder } from "@/components/BidderProvider";
 import { collectItemImageUrls } from "@/lib/files";
 import { listingImages, parsePastedImageUrls } from "@/lib/imageUrls";
-import { requestCatalog } from "@/lib/aiIntakeClient";
+import { requestCatalog, heroPhotoForStudio } from "@/lib/aiIntakeClient";
 import { parseApiJson } from "@/lib/apiJson";
 import { requestStudioImage } from "@/lib/studioClient";
 import { mergeAiRuns, type AiRun } from "@/lib/aiRuns";
+import { GrowingTextarea } from "@/components/GrowingTextarea";
 import { ItemDetailsField, ListingConditionField } from "@/components/ListingGradeFields";
 import { type ListingGrade } from "@/lib/listingGrade";
 import type { SlothPhotoPhase } from "@/lib/turboSloth";
+import { buyNowDisclaimer, buyNowOfferError } from "@/lib/buyNowOffer";
 import { canClearItem, isActiveAccepted, isPayoutRow } from "@/lib/consignorPortal";
 import {
   formatCurrency,
@@ -58,8 +60,42 @@ export default function ConsignorPage() {
   const [charity, setCharity] = useState(false);
   const [showCleared, setShowCleared] = useState(false);
   const [clearing, setClearing] = useState(false);
+  const [counterBusy, setCounterBusy] = useState<string | null>(null);
 
   const buyNow = Number(buyNowPrice) || 0;
+  const openCounters = items.filter(
+    (item) =>
+      !item.clearedAt &&
+      item.pipelineStatus === "rejected" &&
+      item.counterStatus === "offered" &&
+      (item.counterOffer ?? 0) > 0,
+  );
+
+  async function respondToCounter(id: string, action: "accept-counter" | "decline-counter") {
+    setCounterBusy(id);
+    setError(null);
+    setNotice(null);
+    try {
+      const response = await fetch("/api/consignments", {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action, id }),
+      });
+      const json = await parseApiJson<{ error?: string }>(response);
+      if (!response.ok) throw new Error(json.error || "Could not update that counter.");
+      setNotice(
+        action === "accept-counter"
+          ? "Counter accepted. It is back with DealFinder for approval. You are paid that amount if it sells."
+          : "Counter declined. That item stays turned down.",
+      );
+      await loadItems();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not update that counter.");
+    } finally {
+      setCounterBusy(null);
+    }
+  }
 
   async function loadItems() {
     const response = await fetch("/api/consignments", { credentials: "include", cache: "no-store" });
@@ -133,6 +169,7 @@ export default function ConsignorPage() {
         listingGrade,
       });
       setResolvedImageUrls(catalog.imageUrls);
+      setHeroIndex(catalog.hero_index ?? 0);
       setTitle(String(catalog.title ?? ""));
       setDescription(String(catalog.description ?? ""));
       if (catalog.estimated_market_value) {
@@ -141,10 +178,11 @@ export default function ConsignorPage() {
       setCompsNote(catalog.comps_note ? String(catalog.comps_note) : null);
       let run = catalog.ai ?? null;
       try {
+        const hero = heroPhotoForStudio(catalog, photos);
         const studio = await requestStudioImage(
           {
-            imageUrls: catalog.imageUrls,
-            files: photos,
+            imageUrls: hero.imageUrls,
+            files: hero.files,
             title: String(catalog.title ?? ""),
             objectType: String(catalog.object_type ?? ""),
             materials: Array.isArray(catalog.materials) ? catalog.materials.map(String) : [],
@@ -156,13 +194,11 @@ export default function ConsignorPage() {
           },
           setPhotoPhase,
         );
-        setHeroIndex(studio.heroIndex);
         setStudioImageUrl(studio.url);
         run = mergeAiRuns(run, studio.ai);
         setNotice("Listing photo ready. Review, then submit.");
       } catch (studioErr) {
         setStudioImageUrl(null);
-        setHeroIndex(0);
         setNotice(null);
         setError(studioErr instanceof Error ? studioErr.message : "Listing photo failed.");
       }
@@ -178,6 +214,12 @@ export default function ConsignorPage() {
 
   function onSubmit(event: FormEvent) {
     event.preventDefault();
+    const offerError = buyNowOfferError(buyNow);
+    if (offerError) {
+      setNotice(null);
+      setError(offerError);
+      return;
+    }
     setError(null);
     setNotice(null);
     setTermsOpen(true);
@@ -278,6 +320,46 @@ export default function ConsignorPage() {
         </p>
       </div>
 
+      {openCounters.length > 0 ? (
+        <section id="counters" className="space-y-3">
+          <h2 className="font-display text-3xl text-brand-red">Counter offers</h2>
+          <p className="font-comic text-sm">
+            DealFinder turned these down at your price. Each counter is what you are paid if that
+            item sells. There is no commission. Accept sends it back for approval. Decline leaves it
+            turned down.
+          </p>
+          <div className="space-y-3">
+            {openCounters.map((item) => (
+              <article key={item.id} className="comic-panel space-y-2 p-4 font-comic">
+                <p className="font-display text-2xl leading-6">{item.title}</p>
+                <p>You asked {formatCurrency(item.askedOffer || item.buyNowPrice || 0)}</p>
+                <p>
+                  DealFinder&apos;s counter <strong>{formatCurrency(item.counterOffer || 0)}</strong>
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    className="comic-btn !text-base"
+                    disabled={counterBusy === item.id}
+                    onClick={() => void respondToCounter(item.id, "accept-counter")}
+                  >
+                    Accept counter
+                  </button>
+                  <button
+                    type="button"
+                    className="comic-btn-invert !text-base"
+                    disabled={counterBusy === item.id}
+                    onClick={() => void respondToCounter(item.id, "decline-counter")}
+                  >
+                    Decline
+                  </button>
+                </div>
+              </article>
+            ))}
+          </div>
+        </section>
+      ) : null}
+
       <form onSubmit={onSubmit} className="space-y-6">
         <div className="grid items-stretch gap-6 lg:grid-cols-2">
         <div className="comic-panel flex h-full flex-col space-y-4 p-6">
@@ -303,9 +385,7 @@ export default function ConsignorPage() {
           </div>
           <PhotoDropzone files={files} onChange={setFiles} maxFiles={4} />
           <ImageUrlPaste value={imageUrlText} onChange={setImageUrlText} />
-          <div className="flex-1">
-            <ItemDetailsField details={itemDetails} onDetails={setItemDetails} />
-          </div>
+          <ItemDetailsField details={itemDetails} onDetails={setItemDetails} />
         </div>
 
         <div className="comic-panel flex h-full flex-col space-y-4 p-6">
@@ -320,11 +400,12 @@ export default function ConsignorPage() {
           </label>
           <label className="block font-comic font-bold">
             Description
-            <textarea
+            <GrowingTextarea
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               required
-              rows={5}
+              rows={2}
+              maxRows={8}
               className="mt-2 w-full border-4 border-black bg-white px-3 py-2 font-normal"
             />
           </label>
@@ -343,19 +424,31 @@ export default function ConsignorPage() {
             />
           </label>
           <label className="block font-comic font-bold">
-            Buy now ($)
+            Buy now — what you want to receive ($)
             <span className="block font-normal">
-              Optional. Leave this blank to consign for the live auction only. Enter a price and it
-              also lists on Buy Now after DealFinder approves it.
+              Optional, and $100 minimum from this point on. This is the amount you are paid if it
+              sells. There is no commission. DealFinder sets the price buyers pay. Leave it blank to
+              consign for the live auction, where the agreement commission applies.
             </span>
             <input
               type="number"
               min={0}
+              step="0.01"
               value={buyNowPrice}
               onChange={(e) => setBuyNowPrice(e.target.value)}
               className="mt-2 w-full border-4 border-black bg-white px-3 py-2 font-normal"
             />
           </label>
+          {buyNow > 0 && buyNow < 100 ? (
+            <p className="border-4 border-black bg-brand-cream p-3 font-comic text-sm text-brand-red">
+              {buyNowOfferError(buyNow)}
+            </p>
+          ) : null}
+          {buyNow >= 100 ? (
+            <p className="border-4 border-black bg-brand-cream p-3 font-comic text-sm">
+              {buyNowDisclaimer(buyNow)}
+            </p>
+          ) : null}
           <label className="block font-comic font-bold">
             Estimated market value ($)
             <input
@@ -367,7 +460,7 @@ export default function ConsignorPage() {
             />
           </label>
           {compsNote && (
-            <p className="border-4 border-black bg-brand-cream p-3 font-comic text-sm">{compsNote}</p>
+            <p className="whitespace-pre-line border-4 border-black bg-brand-cream p-3 font-comic text-sm">{compsNote}</p>
           )}
           <div className="border-4 border-black bg-brand-cream p-3 font-comic text-sm">
             <p className="font-display text-lg">House commission</p>
@@ -524,7 +617,12 @@ export default function ConsignorPage() {
       <section className="space-y-3">
         <h2 className="font-display text-3xl text-brand-red">Not accepted</h2>
         <StatusTable
-          items={items.filter((item) => !item.clearedAt && item.pipelineStatus === "rejected")}
+          items={items.filter(
+            (item) =>
+              !item.clearedAt &&
+              item.pipelineStatus === "rejected" &&
+              !(item.counterStatus === "offered" && (item.counterOffer ?? 0) > 0),
+          )}
           empty="Nothing was turned down."
         />
       </section>
@@ -600,6 +698,12 @@ function PayoutSection({
   );
 }
 
+function offerLine(item: ConsignorItem) {
+  if (!(item.buyNowPrice > 0)) return "Auction only";
+  if (item.commissionRate === 0) return `You receive ${formatCurrency(item.buyNowPrice)}`;
+  return `Buy now ${formatCurrency(item.buyNowPrice)}`;
+}
+
 function StatusTable({
   items,
   empty,
@@ -630,7 +734,7 @@ function StatusTable({
                 </a>
               ) : null}
               <p>Opens at {formatCurrency(item.startingBid || 0)}</p>
-              <p>Buy now {formatCurrency(item.buyNowPrice || 0)}</p>
+              <p>{offerLine(item)}</p>
               {mode === "payout" ? (
                 <>
                   <p>Hammer {item.hammer == null ? "—" : formatCurrency(item.hammer)}</p>
@@ -650,7 +754,7 @@ function StatusTable({
               <th className="border-b-4 border-black p-3">Consignor</th>
               <th className="border-b-4 border-black p-3">Status</th>
               <th className="border-b-4 border-black p-3">Opens at</th>
-              <th className="border-b-4 border-black p-3">Buy now</th>
+              <th className="border-b-4 border-black p-3">You receive</th>
               {mode === "payout" ? (
                 <>
                   <th className="border-b-4 border-black p-3">Hammer</th>
@@ -685,9 +789,7 @@ function StatusTable({
                   <td className="border-b-2 border-black p-3">
                     {formatCurrency(item.startingBid || 0)}
                   </td>
-                  <td className="border-b-2 border-black p-3">
-                    {formatCurrency(item.buyNowPrice || 0)}
-                  </td>
+                  <td className="border-b-2 border-black p-3">{offerLine(item)}</td>
                   {mode === "payout" ? (
                     <>
                       <td className="border-b-2 border-black p-3">

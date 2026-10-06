@@ -29,7 +29,8 @@ import { resetAuctionData } from "@/lib/resetTestData";
 import { attachLotToSale, ensureWeeklySales } from "@/lib/weeklySales";
 import { settleEndedAuctions } from "@/lib/closeEndedLots";
 import { canPostIntoSale, salesOpenForPosting } from "@/lib/liveSales";
-import { notifyConsignmentApproved } from "@/lib/notify";
+import { notifyConsignmentApproved, notifyConsignmentRejected, sendConsignmentRejectedEmail } from "@/lib/notify";
+import { buyNowApprovalNote, BUY_NOW_MINIMUM } from "@/lib/buyNowOffer";
 import {
   allocateLotNumber,
   normalizeHouseSettings,
@@ -67,6 +68,29 @@ function isUniqueConflict(error: { message?: string } | null) {
   return Boolean(
     error?.message && /duplicate|unique|already exists/i.test(error.message),
   );
+}
+
+function approvalMail(input: {
+  offer?: number | null;
+  payout?: number | null;
+  listPrice?: number | null;
+  commissionRate?: number | null;
+}) {
+  const payout = Number(input.payout ?? 0) || 0;
+  const listPrice = Number(input.listPrice ?? 0) || 0;
+  const offer = Number(input.offer ?? payout) || payout || listPrice;
+  if (payout > 0 && listPrice > 0) {
+    return {
+      commissionNote: buyNowApprovalNote(offer, payout, listPrice),
+      commissionRate: 0,
+      buyNowPrice: payout,
+    };
+  }
+  return {
+    commissionNote: undefined as string | undefined,
+    commissionRate: Number(input.commissionRate ?? 0) || undefined,
+    buyNowPrice: listPrice,
+  };
 }
 
 async function listLotNumbers(
@@ -168,6 +192,10 @@ async function insertLotRow(
   }
   if (isMissingColumn(error, "buy_now_status")) {
     const { buy_now_status: _s, ...rest } = insertRow;
+    ({ data, error } = await supabase.from("lots").insert(rest).select("*").single());
+  }
+  if (isMissingColumn(error, "consignor_payout")) {
+    const { consignor_payout: _payout, ...rest } = insertRow;
     ({ data, error } = await supabase.from("lots").insert(rest).select("*").single());
   }
   if (isUniqueConflict(error)) {
@@ -338,6 +366,9 @@ type AdminBody = {
   startingBid?: number;
   reservePrice?: number;
   buyNowPrice?: number;
+  consignorOffer?: number;
+  consignorPayout?: number;
+  counterOffer?: number;
   estimatedMarketValue?: number;
   currentBid?: number;
   commissionRate?: number;
@@ -1049,6 +1080,35 @@ export async function PATCH(request: NextRequest) {
   }
 
   if (body.entity === "consignment") {
+    if (body.status === "approved") {
+      const listPrice = Number(body.buyNowPrice ?? 0) || 0;
+      const payout = Number(body.consignorPayout ?? 0) || 0;
+      if (listPrice > 0 || payout > 0) {
+        if (listPrice < BUY_NOW_MINIMUM || payout < BUY_NOW_MINIMUM) {
+          return NextResponse.json(
+            { error: `Buy Now is $${BUY_NOW_MINIMUM} minimum from this point on.` },
+            { status: 400 },
+          );
+        }
+        if (listPrice < payout) {
+          return NextResponse.json(
+            { error: "The buyer price has to be at least what the consignor is paid." },
+            { status: 400 },
+          );
+        }
+      }
+    }
+
+    if (body.status === "rejected") {
+      const counter = Number(body.counterOffer) || 0;
+      if (counter > 0 && counter < BUY_NOW_MINIMUM) {
+        return NextResponse.json(
+          { error: `A Buy Now counter is $${BUY_NOW_MINIMUM} minimum. Leave it blank to reject with no offer.` },
+          { status: 400 },
+        );
+      }
+    }
+
     const item = demo.queue.find((row) => row.id === body.id);
     if (item) {
       if (body.title != null) item.title = body.title;
@@ -1062,8 +1122,23 @@ export async function PATCH(request: NextRequest) {
       item.startingBid = openingBid(item.startingBid, item.buyNowPrice ?? item.reservePrice, 5);
       if (body.consignorName != null) item.consignor = body.consignorName.trim();
       if (body.status) item.status = body.status as ConsignmentStatus;
+      if (body.status === "rejected" && item.contactEmail && (!isSupabaseConfigured || !supabase)) {
+        const counter = Number(body.counterOffer) || 0;
+        const asked = Number(item.consignorOffer ?? item.buyNowPrice ?? item.reservePrice) || 0;
+        void sendConsignmentRejectedEmail({
+          to: item.contactEmail,
+          name: item.consignor,
+          title: body.title || item.title,
+          counters:
+            counter > 0
+              ? [{ title: body.title || item.title, asked, counter }]
+              : [],
+        });
+      }
       if (body.status === "approved") {
-        const listBuyNow = body.saleChannel === "buy_now" || item.saleChannel === "buy_now" || Number(item.buyNowPrice ?? item.reservePrice) > 0;
+        const payout = Number(body.consignorPayout) || 0;
+        const listPrice = Number(item.buyNowPrice ?? item.reservePrice) || 0;
+        const listBuyNow = listPrice > 0;
         const claimed = await allocateFromHouse(null, demo);
         const lotNumber = claimed.lotNumber;
         const event = await resolveSaleEvent(null, demo, body.eventId);
@@ -1083,8 +1158,9 @@ export async function PATCH(request: NextRequest) {
           status: "live",
           lotNumber,
           startingBid: item.startingBid ?? 0,
-          reservePrice: item.buyNowPrice ?? item.reservePrice ?? null,
-          buyNowPrice: item.buyNowPrice ?? item.reservePrice ?? null,
+          reservePrice: listPrice || null,
+          buyNowPrice: listPrice || null,
+          consignorPayout: payout || null,
           listingGrade: item.listingGrade,
           itemDetails: item.notes ?? null,
           saleChannel: "auction",
@@ -1093,6 +1169,12 @@ export async function PATCH(request: NextRequest) {
         if (event) applyEventToLot(lot, event);
         addDemoLot(lot);
         await commitHouseLot(null, demo, claimed.settings, lotNumber, claimed.existing);
+        const mail = approvalMail({
+          offer: body.consignorOffer ?? payout,
+          payout,
+          listPrice,
+          commissionRate: item.commissionRate,
+        });
         void notifyConsignmentApproved({
           supabase,
           row: {
@@ -1100,16 +1182,17 @@ export async function PATCH(request: NextRequest) {
             contact_email: item.contactEmail,
             title: item.title,
             starting_bid: item.startingBid,
-            buy_now_price: item.buyNowPrice,
-            reserve_price: item.reservePrice,
-            commission_rate: item.commissionRate,
+            buy_now_price: listPrice,
+            reserve_price: listPrice,
+            commission_rate: mail.commissionRate,
           },
           lotId: lot.id,
           slug: lot.slug,
           lotTitle: lot.title,
           startingBid: lot.startingBid ?? item.startingBid ?? 0,
-          buyNowPrice: Number(lot.buyNowPrice ?? item.buyNowPrice ?? 0),
-          commissionRate: item.commissionRate ?? undefined,
+          buyNowPrice: mail.buyNowPrice,
+          commissionRate: mail.commissionRate,
+          commissionNote: mail.commissionNote,
         });
         if (!isSupabaseConfigured || !supabase) {
           return NextResponse.json({
@@ -1133,6 +1216,14 @@ export async function PATCH(request: NextRequest) {
         const buyNow = Number(body.buyNowPrice ?? body.reservePrice) || 0;
         updates.reserve_price = buyNow || null;
         updates.buy_now_price = buyNow || null;
+      }
+      if (Number(body.consignorPayout) > 0) {
+        updates.agreed_payout = Number(body.consignorPayout);
+      }
+      if (body.status === "rejected") {
+        const counter = Number(body.counterOffer) || 0;
+        updates.counter_offer = counter || null;
+        updates.counter_status = counter > 0 ? "offered" : null;
       }
       if (body.consignorName != null) updates.consignor_name = body.consignorName.trim();
       if (body.saleChannel) updates.sale_channel = body.saleChannel;
@@ -1161,13 +1252,39 @@ export async function PATCH(request: NextRequest) {
           .select("*")
           .single());
       }
+      if (isMissingColumn(error, "agreed_payout")) {
+        delete updates.agreed_payout;
+        ({ data: consignment, error } = await supabase
+          .from("consignments")
+          .update(updates)
+          .eq("id", body.id)
+          .select("*")
+          .single());
+      }
+      if (isMissingColumn(error, "counter_offer") || isMissingColumn(error, "counter_status")) {
+        delete updates.counter_offer;
+        delete updates.counter_status;
+        ({ data: consignment, error } = await supabase
+          .from("consignments")
+          .update(updates)
+          .eq("id", body.id)
+          .select("*")
+          .single());
+      }
       if (error) {
         return NextResponse.json({ error: error.message }, { status: 400 });
       }
       if (body.status === "approved" && consignment) {
         const row = consignment as ConsignmentRow;
+        const payout = Number(body.consignorPayout ?? row.agreed_payout ?? 0) || 0;
         const reserve = Number(row.buy_now_price ?? row.reserve_price ?? 0);
-        const listBuyNow = reserve > 0 || body.saleChannel === "buy_now" || row.sale_channel === "buy_now";
+        const listBuyNow = reserve > 0;
+        const mail = approvalMail({
+          offer: Number(body.consignorOffer ?? row.consignor_offer ?? payout) || payout,
+          payout,
+          listPrice: reserve,
+          commissionRate: Number(row.commission_rate ?? 0),
+        });
         const starting = openingBid(
           body.startingBid ?? row.starting_bid ?? row.estimated_low,
           reserve,
@@ -1204,11 +1321,18 @@ export async function PATCH(request: NextRequest) {
             starting_bid: starting || Number(existing.starting_bid),
             sale_channel: "auction",
             buy_now_status: listBuyNow ? "listed" : null,
+            buy_now_price: reserve || null,
+            reserve_price: reserve || null,
+            consignor_payout: payout || null,
           };
           if (eventId) reopen.event_id = eventId;
           reopen.image_url = image;
           reopen.image_urls = images;
-          const patched = await patchLotRow(String(existing.id), reopen);
+          let patched = await patchLotRow(String(existing.id), reopen);
+          if (!patched.ok && /consignor_payout/i.test(patched.body)) {
+            const { consignor_payout: _payout, ...rest } = reopen;
+            patched = await patchLotRow(String(existing.id), rest);
+          }
           if (!patched.ok || !patched.data?.length) {
             await supabase.from("consignments").update({ status: "pending" }).eq("id", row.id);
             return NextResponse.json(
@@ -1227,8 +1351,9 @@ export async function PATCH(request: NextRequest) {
             slug: lot.slug,
             lotTitle: lot.title,
             startingBid: lot.startingBid ?? starting,
-            buyNowPrice: Number(lot.buyNowPrice ?? reserve),
-            commissionRate: Number(row.commission_rate ?? 0) || undefined,
+            buyNowPrice: mail.buyNowPrice,
+            commissionRate: mail.commissionRate,
+            commissionNote: mail.commissionNote,
           });
           return NextResponse.json({
             ok: true,
@@ -1254,6 +1379,7 @@ export async function PATCH(request: NextRequest) {
             current_bid: starting,
             reserve_price: reserve || null,
             buy_now_price: reserve || null,
+            consignor_payout: payout || null,
             min_increment: structuredIncrement(starting),
             ends_at: eventEnds,
             status: houseStatus,
@@ -1289,8 +1415,9 @@ export async function PATCH(request: NextRequest) {
             slug: lot.slug,
             lotTitle: lot.title,
             startingBid: lot.startingBid ?? starting,
-            buyNowPrice: Number(lot.buyNowPrice ?? reserve),
-            commissionRate: Number(row.commission_rate ?? 0) || undefined,
+            buyNowPrice: mail.buyNowPrice,
+            commissionRate: mail.commissionRate,
+            commissionNote: mail.commissionNote,
           });
           return NextResponse.json({
             ok: true,
@@ -1300,6 +1427,13 @@ export async function PATCH(request: NextRequest) {
             saleStartsAt: event?.startsAt ?? null,
             postedLive: houseStatus === "live",
           });
+      }
+      if (body.status === "rejected" && consignment) {
+        void notifyConsignmentRejected({
+          supabase,
+          row: consignment as ConsignmentRow,
+          title: String(body.title ?? (consignment as ConsignmentRow).title ?? ""),
+        });
       }
     }
 

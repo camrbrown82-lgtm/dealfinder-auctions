@@ -44,6 +44,7 @@ export async function sendTransactionalEmail(input: {
     input.simpleLayout ||
       input.templateId === "welcome" ||
       input.templateId === "consignment_approved" ||
+      input.templateId === "consignment_rejected" ||
       input.templateId === "consignment_received" ||
       input.templateId === "cash_bid_auth" ||
       input.templateId === "cash_bid_received" ||

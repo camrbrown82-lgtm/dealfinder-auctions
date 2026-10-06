@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { PosterInstallNote } from "@/components/admin/PosterInstallNote";
 import { queuePoster, type PosterResult } from "@/components/admin/posterClient";
 import { FLOOR_CLIPS_BUCKET, floorClipCaption, type FloorClip } from "@/lib/floorClips";
+import { focusPointFromTap, openCamera, refocusCamera, videoTrack, watchAutofocus } from "@/lib/cameraStream";
 import { clipJob, type PosterPlatform } from "@/lib/socialPost";
 
 const POST_NETWORKS: { platform: Exclude<PosterPlatform, "marketplace">; label: string }[] = [
@@ -102,6 +103,7 @@ export function FloorStudio() {
   const recorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const streamRef = useRef<MediaStream | null>(null);
+  const focusStopRef = useRef<(() => void) | null>(null);
   const [preview, setPreview] = useState<MediaStream | null>(null);
   const [title, setTitle] = useState("");
   const [phase, setPhase] = useState<"idle" | "starting" | "live" | "recording" | "saving">("idle");
@@ -113,6 +115,7 @@ export function FloorStudio() {
   const [deletingId, setDeletingId] = useState("");
   const [posterMissing, setPosterMissing] = useState(false);
   const [postNotice, setPostNotice] = useState("");
+  const [focusRing, setFocusRing] = useState<{ x: number; y: number } | null>(null);
 
   useEffect(() => {
     void fetch("/api/admin/stream")
@@ -120,6 +123,7 @@ export function FloorStudio() {
       .then((body: { clips?: FloorClip[] }) => setClips(body.clips ?? []))
       .catch(() => undefined);
     return () => {
+      focusStopRef.current?.();
       streamRef.current?.getTracks().forEach((track) => track.stop());
     };
   }, []);
@@ -146,20 +150,12 @@ export function FloorStudio() {
       setPhase("idle");
       return;
     }
-    const attempts: MediaStreamConstraints[] = [
-      { audio: true, video: { facingMode: { ideal: "environment" } } },
-      { audio: true, video: true },
-      { audio: false, video: true },
-    ];
     let stream: MediaStream | null = null;
     let reason = "Allow the camera when the browser asks, then press Start camera again.";
-    for (const constraints of attempts) {
-      try {
-        stream = await navigator.mediaDevices.getUserMedia(constraints);
-        break;
-      } catch (err) {
-        reason = cameraDenied(err);
-      }
+    try {
+      stream = await openCamera({ facing: "environment", audio: true, shape: "video" });
+    } catch (err) {
+      reason = cameraDenied(err);
     }
     if (!stream) {
       setError(reason);
@@ -167,16 +163,38 @@ export function FloorStudio() {
       return;
     }
     streamRef.current?.getTracks().forEach((track) => track.stop());
+    focusStopRef.current?.();
     streamRef.current = stream;
+    const track = videoTrack(stream);
+    focusStopRef.current = track ? watchAutofocus(track) : null;
     setPreview(stream);
     setPhase("live");
+  }
+
+  async function refocus(clientX?: number, clientY?: number) {
+    const video = videoRef.current;
+    const track = videoTrack(streamRef.current);
+    if (!video || !track) return;
+    const point =
+      clientX != null && clientY != null ? focusPointFromTap(video, clientX, clientY, false) ?? undefined : undefined;
+    if (clientX != null && clientY != null && point) {
+      const rect = video.getBoundingClientRect();
+      setFocusRing({
+        x: ((clientX - rect.left) / rect.width) * 100,
+        y: ((clientY - rect.top) / rect.height) * 100,
+      });
+      window.setTimeout(() => setFocusRing(null), 800);
+    }
+    await refocusCamera(track, point);
   }
 
   function startRecording() {
     const stream = streamRef.current;
     if (!stream) return;
     const mimeType = recorderMime();
-    const recorder = new MediaRecorder(stream, mimeType ? { mimeType, videoBitsPerSecond: 1_200_000 } : undefined);
+    const width = stream.getVideoTracks()[0]?.getSettings?.().width ?? 0;
+    const videoBitsPerSecond = width >= 1600 ? 4_500_000 : width >= 1000 ? 2_800_000 : 1_600_000;
+    const recorder = new MediaRecorder(stream, mimeType ? { mimeType, videoBitsPerSecond } : undefined);
     chunksRef.current = [];
     recorder.ondataavailable = (event) => {
       if (event.data.size) chunksRef.current.push(event.data);
@@ -297,17 +315,37 @@ export function FloorStudio() {
           />
         </label>
         <div className="relative overflow-hidden border-4 border-black bg-black">
-          <video ref={videoRef} muted playsInline autoPlay className="aspect-video w-full bg-black object-contain" />
+          <video
+            ref={videoRef}
+            muted
+            playsInline
+            autoPlay
+            onPointerDown={(event) => {
+              if (phase !== "live" && phase !== "recording") return;
+              void refocus(event.clientX, event.clientY);
+            }}
+            className="aspect-video w-full bg-black object-contain"
+          />
+          {focusRing ? (
+            <span
+              className="pointer-events-none absolute z-10 h-16 w-16 -translate-x-1/2 -translate-y-1/2 border-4 border-white"
+              style={{ left: `${focusRing.x}%`, top: `${focusRing.y}%` }}
+            />
+          ) : null}
           {phase === "idle" || phase === "starting" ? (
             <p className="absolute inset-0 flex items-center justify-center px-4 text-center font-display text-3xl text-white">
               {phase === "starting" ? "Starting camera…" : "Press Start camera to see the picture"}
             </p>
           ) : null}
           {phase === "live" ? (
-            <p className="absolute left-3 top-3 bg-black px-2 py-1 font-display text-xl text-white">Camera on</p>
+            <p className="pointer-events-none absolute left-3 top-3 bg-black px-2 py-1 font-display text-xl text-white">
+              Camera on
+            </p>
           ) : null}
           {phase === "recording" ? (
-            <p className="absolute left-3 top-3 bg-brand-red px-2 py-1 font-display text-xl text-white">Live {clock}</p>
+            <p className="pointer-events-none absolute left-3 top-3 bg-brand-red px-2 py-1 font-display text-xl text-white">
+              Live {clock}
+            </p>
           ) : null}
         </div>
         <div className="flex flex-wrap gap-2">
@@ -319,6 +357,11 @@ export function FloorStudio() {
               onClick={() => void startCamera()}
             >
               {phase === "starting" ? "Starting camera…" : "Start camera"}
+            </button>
+          ) : null}
+          {phase === "live" || phase === "recording" ? (
+            <button type="button" className="comic-btn-invert" onClick={() => void refocus()}>
+              Refocus
             </button>
           ) : null}
           {phase === "live" ? (
@@ -333,6 +376,9 @@ export function FloorStudio() {
           ) : null}
           {phase === "saving" ? <p className="font-display text-2xl text-brand-red">Saving…</p> : null}
         </div>
+        <p className="font-comic text-sm">
+          Tap a label or the item to refocus. The camera keeps focusing while you move between items.
+        </p>
         {error ? <p className="border-4 border-black bg-brand-red p-3 font-comic text-white">{error}</p> : null}
         {postNotice ? <p className="font-comic text-sm">{postNotice}</p> : null}
         {posterMissing ? <PosterInstallNote /> : null}

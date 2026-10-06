@@ -1,4 +1,4 @@
-import { agreementCommission } from "@/lib/commission";
+import { settlementSplit } from "@/lib/commission";
 import { isHouseConsignor } from "@/lib/consignors";
 import { sendConsignorSoldEmail } from "@/lib/notify";
 import { getSupabaseAdmin, isSupabaseConfigured } from "@/lib/supabaseClient";
@@ -110,7 +110,7 @@ export async function notifyConsignorSold(lot: AuctionLot) {
   const claim = await claimSend(supabase, lot.id);
   if (!claim) return { sent: false, reason: "already-sent" as const };
 
-  const split = agreementCommission(hammer);
+  const split = settlementSplit(hammer, lot.consignorPayout);
   const result = await sendConsignorSoldEmail({
     to: contact.email,
     name: contact.name || "Consignor",

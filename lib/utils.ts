@@ -52,6 +52,8 @@ export type AuctionLot = {
   payoutAmount?: number | null;
   payoutMethod?: string | null;
   payoutReference?: string | null;
+  /** Agreed Buy Now amount the consignor is paid. Auction lots leave this empty and use commission. */
+  consignorPayout?: number | null;
   /** False when the lot's sale has already ended. */
   biddingOpen?: boolean;
 };
@@ -89,6 +91,10 @@ export type Consignment = {
   estimatedHigh?: number | null;
   reservePrice?: number | null;
   buyNowPrice?: number | null;
+  consignorOffer?: number | null;
+  agreedPayout?: number | null;
+  counterOffer?: number | null;
+  counterStatus?: "offered" | "accepted" | "declined" | null;
   startingBid?: number | null;
   commissionRate?: number | null;
   imageUrls: string[];
@@ -115,6 +121,9 @@ export type ConsignorItem = {
   pipelineStatus: PipelineStatus;
   startingBid: number;
   buyNowPrice: number;
+  askedOffer?: number;
+  counterOffer?: number | null;
+  counterStatus?: "offered" | "accepted" | "declined" | null;
   commissionRate: number;
   saleChannel?: SaleChannel;
   charity?: boolean;

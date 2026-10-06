@@ -7,7 +7,8 @@ import { AuctionCalendarModal } from "@/components/admin/AuctionCalendar";
 import { ConsignorLedger } from "@/components/admin/ConsignorLedger";
 import { ReviewQueue, type ReviewDraft } from "@/components/admin/ReviewQueue";
 import { openAuctionEvents } from "@/lib/auctionCalendar";
-import type { Consignment } from "@/lib/utils";
+import { BUY_NOW_MINIMUM, consignorPayAmount, counterOfferError } from "@/lib/buyNowOffer";
+import { formatCurrency, type Consignment } from "@/lib/utils";
 
 export default function AdminConsignmentsPage() {
   const { data, setNotice, mutate } = useAdminDesk();
@@ -21,19 +22,38 @@ export default function AdminConsignmentsPage() {
     setDrafts((current) => {
       const next: Record<string, ReviewDraft> = {};
       for (const item of data.queue) {
-        next[item.id] = current[item.id] ?? {
-          title: item.title,
-          description: item.description ?? "",
-          startingBid: String(item.startingBid ?? 5),
-          buyNowPrice: String(item.buyNowPrice ?? item.reservePrice ?? 0),
-          consignorName: item.consignor ?? "",
-        };
+        const pay = consignorPayAmount(item);
+        const previous = current[item.id];
+        next[item.id] = previous
+          ? { ...previous, counterOffer: previous.counterOffer ?? "" }
+          : {
+              title: item.title,
+              description: item.description ?? "",
+              startingBid: String(item.startingBid ?? 5),
+              buyNowPrice: String(pay || 0),
+              listPrice: String(pay || 0),
+              counterOffer: "",
+              consignorName: item.consignor ?? "",
+            };
       }
       return next;
     });
   }, [data.queue]);
 
   async function approveItem(item: Consignment, draft: ReviewDraft, eventId?: string) {
+    const asked = Number(item.consignorOffer ?? item.buyNowPrice ?? item.reservePrice) || 0;
+    const payout = consignorPayAmount(item);
+    const list = payout > 0 ? Number(draft.listPrice || draft.buyNowPrice) || 0 : 0;
+    if (payout > 0) {
+      if (list < BUY_NOW_MINIMUM || payout < BUY_NOW_MINIMUM) {
+        setNotice(`Buy Now is $${BUY_NOW_MINIMUM} minimum. Set a buyer price of at least $${BUY_NOW_MINIMUM}, and at least what the consignor is paid.`);
+        return;
+      }
+      if (list < payout) {
+        setNotice("The buyer price has to be at least what the consignor is paid.");
+        return;
+      }
+    }
     if (!eventId) {
       setPicking({ item, draft });
       return;
@@ -48,9 +68,11 @@ export default function AdminConsignmentsPage() {
         title: draft.title,
         description: draft.description,
         startingBid: Number(draft.startingBid) || 0,
-        buyNowPrice: Number(draft.buyNowPrice) || 0,
+        buyNowPrice: list,
+        consignorOffer: asked,
+        consignorPayout: payout,
         consignorName: draft.consignorName,
-        saleChannel: Number(draft.buyNowPrice) > 0 || item.saleChannel === "buy_now" ? "buy_now" : "auction",
+        saleChannel: list > 0 ? "buy_now" : "auction",
         eventId,
       }),
     });
@@ -58,15 +80,20 @@ export default function AdminConsignmentsPage() {
     setPicking(null);
     setLedgerKey((key) => key + 1);
     const lotNo = json.lot?.lotNumber ? `Lot ${json.lot.lotNumber}` : draft.title;
-    const onBuyNow = Number(draft.buyNowPrice) > 0 || item.saleChannel === "buy_now";
     setNotice(
-      onBuyNow
-        ? `Approved ${lotNo} into ${json.auctionLabel ?? "the sale"} and Buy Now.`
+      list > 0
+        ? `Approved ${lotNo} into ${json.auctionLabel ?? "the sale"} and Buy Now. Consignor is paid ${formatCurrency(payout)}. Buyers pay ${formatCurrency(list)}.`
         : `Approved ${lotNo} into ${json.auctionLabel ?? "the selected sale"}.`,
     );
   }
 
   async function setStatus(item: Consignment, draft: ReviewDraft, status: "held" | "rejected") {
+    const counter = status === "rejected" ? Number(draft.counterOffer) || 0 : 0;
+    const counterError = counterOfferError(counter);
+    if (counterError) {
+      setNotice(counterError);
+      return;
+    }
     const json = await mutate("/api/admin", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -76,14 +103,19 @@ export default function AdminConsignmentsPage() {
         status,
         title: draft.title,
         description: draft.description,
-        startingBid: Number(draft.startingBid) || 0,
-        buyNowPrice: Number(draft.buyNowPrice) || 0,
         consignorName: draft.consignorName,
+        counterOffer: counter,
       }),
     });
     if (!json) return;
     setLedgerKey((key) => key + 1);
-    setNotice(status === "held" ? `On hold: ${draft.title}` : `Rejected: ${draft.title}`);
+    setNotice(
+      status === "held"
+        ? `On hold: ${draft.title}`
+        : counter > 0
+          ? `Rejected ${draft.title}. Counter of ${formatCurrency(counter)} is in the email. They accept or decline it on their consignments page.`
+          : `Rejected: ${draft.title}`,
+    );
   }
 
   async function approveIntoSale(eventId: string) {
