@@ -17,6 +17,7 @@ import { mergeAiRuns, type AiRun } from "@/lib/aiRuns";
 import { ItemDetailsField, ListingConditionField } from "@/components/ListingGradeFields";
 import { type ListingGrade } from "@/lib/listingGrade";
 import type { SlothPhotoPhase } from "@/lib/turboSloth";
+import { canClearItem, isActiveAccepted, isPayoutRow } from "@/lib/consignorPortal";
 import {
   formatCurrency,
   pipelineLabel,
@@ -54,8 +55,9 @@ export default function ConsignorPage() {
   const [termsOpen, setTermsOpen] = useState(false);
   const [itemDetails, setItemDetails] = useState("");
   const [listingGrade, setListingGrade] = useState<ListingGrade>("Used");
-  const [requestBuyNow, setRequestBuyNow] = useState(false);
   const [charity, setCharity] = useState(false);
+  const [showCleared, setShowCleared] = useState(false);
+  const [clearing, setClearing] = useState(false);
 
   const buyNow = Number(buyNowPrice) || 0;
 
@@ -178,10 +180,6 @@ export default function ConsignorPage() {
     event.preventDefault();
     setError(null);
     setNotice(null);
-    if (requestBuyNow && buyNow <= 0) {
-      setError("Enter a Buy Now price to list this item there.");
-      return;
-    }
     setTermsOpen(true);
   }
 
@@ -206,8 +204,8 @@ export default function ConsignorPage() {
           itemDetails,
           imageUrls,
           termsAccepted: true,
-          saleChannel: requestBuyNow ? "buy_now" : "auction",
-          requestBuyNow,
+          saleChannel: buyNow > 0 ? "buy_now" : "auction",
+          requestBuyNow: buyNow > 0,
           charity,
         }),
       });
@@ -219,11 +217,10 @@ export default function ConsignorPage() {
       setItems((current) => [item, ...current.filter((row) => row.id !== item.id)]);
       setTermsOpen(false);
       setNotice(
-        requestBuyNow
+        buyNow > 0
           ? "Submitted as Buy Now, pending admin approval. A confirmation email is on the way."
           : "Submitted for pending approval. A confirmation email is on the way. DealFinder will assign lot # and sale date.",
       );
-      setRequestBuyNow(false);
       setCharity(false);
       setTitle("");
       setDescription("");
@@ -275,9 +272,9 @@ export default function ConsignorPage() {
       <div>
         <h1 className="font-display text-5xl text-brand-red">Consignor dashboard</h1>
         <p className="mt-2 max-w-2xl font-comic text-lg">
-          Drop up to 4 warehouse photos, auto-generate catalog copy, and we build a studio
-          listing photo for the live sale. After we approve the item, DealFinder assigns the
-          lot number and sale date.
+          Drop up to 4 warehouse photos, add any details, then press Auto-Generate Details.
+          That writes the title, description, and studio listing photo. After we approve the
+          item, DealFinder assigns the lot number and sale date.
         </p>
       </div>
 
@@ -295,7 +292,7 @@ export default function ConsignorPage() {
               />
             ) : (
               <p className="flex h-full min-h-[16rem] items-center justify-center p-6 text-center font-display text-2xl">
-                Drop photos, then generate
+                Photos wait here until you press Auto-Generate Details
               </p>
             )}
             {(studioImageUrl || resolvedImageUrls[0] || filePreview) && (
@@ -304,14 +301,7 @@ export default function ConsignorPage() {
               </p>
             )}
           </div>
-          <PhotoDropzone
-            files={files}
-            onChange={setFiles}
-            maxFiles={4}
-            onCameraFinished={(photos) => {
-              if (photos.length > 0) void autoGenerate(photos);
-            }}
-          />
+          <PhotoDropzone files={files} onChange={setFiles} maxFiles={4} />
           <ImageUrlPaste value={imageUrlText} onChange={setImageUrlText} />
           <div className="flex-1">
             <ItemDetailsField details={itemDetails} onDetails={setItemDetails} />
@@ -355,8 +345,8 @@ export default function ConsignorPage() {
           <label className="block font-comic font-bold">
             Buy now ($)
             <span className="block font-normal">
-              Optional. Leave this blank to consign for the live auction only. A price also lists the
-              item on Buy Now after DealFinder approves it.
+              Optional. Leave this blank to consign for the live auction only. Enter a price and it
+              also lists on Buy Now after DealFinder approves it.
             </span>
             <input
               type="number"
@@ -408,22 +398,6 @@ export default function ConsignorPage() {
             </span>
           </label>
 
-          <label className="flex items-start gap-2 font-comic text-sm font-bold">
-            <input
-              type="checkbox"
-              className="mt-1 h-4 w-4"
-              checked={requestBuyNow}
-              onChange={(e) => setRequestBuyNow(e.target.checked)}
-            />
-            <span>
-              Also list on Buy Now
-              <span className="block font-normal">
-                Needs a Buy Now price. After approval it stays in the live auction and appears on Buy
-                Now.
-              </span>
-            </span>
-          </label>
-
           {aiRun && !generating ? (
             <AiFeedback
               run={aiRun}
@@ -435,10 +409,13 @@ export default function ConsignorPage() {
 
         <div className="comic-panel space-y-4 p-6">
           <ListingConditionField grade={listingGrade} onGrade={setListingGrade} />
+          <p className="font-comic text-sm">
+            Item details are optional. Cataloging starts only when you press Auto-Generate Details.
+          </p>
           <div className="flex flex-row items-end gap-3">
             <button
               type="button"
-              className="comic-btn w-full sm:flex-1"
+              className="comic-btn w-full disabled:cursor-not-allowed disabled:opacity-60 sm:flex-1"
               onClick={() => void autoGenerate()}
               disabled={generating}
             >
@@ -485,7 +462,9 @@ export default function ConsignorPage() {
         </p>
         <StatusTable
           items={items.filter(
-            (item) => item.pipelineStatus === "pending_approval" || item.pipelineStatus === "buy_now_pending",
+            (item) =>
+              !item.clearedAt &&
+              (item.pipelineStatus === "pending_approval" || item.pipelineStatus === "buy_now_pending"),
           )}
           empty="Nothing waiting on approval."
         />
@@ -494,31 +473,142 @@ export default function ConsignorPage() {
       <section className="space-y-3">
         <h2 className="font-display text-3xl text-brand-red">Accepted lots</h2>
         <p className="font-comic text-sm">
-          Filed into a sale by DealFinder. Check here for scheduled, live, or sold status.
+          Filed into a sale and still on the floor. Sold lots move to payouts below.
         </p>
         <StatusTable
-          items={items.filter(
-            (item) =>
-              item.pipelineStatus !== "pending_approval" &&
-              item.pipelineStatus !== "buy_now_pending" &&
-              item.pipelineStatus !== "rejected",
-          )}
-          empty="No accepted lots yet."
+          items={items.filter((item) => !item.clearedAt && isActiveAccepted(item))}
+          empty="No accepted lots on the floor right now."
         />
       </section>
+
+      <PayoutSection
+        items={items.filter((item) => isPayoutRow(item))}
+        clearing={clearing}
+        onExport={() => {
+          window.location.href = "/api/consignments/export";
+        }}
+        onClearPaid={async () => {
+          const ids = items.filter((item) => canClearItem(item)).map((item) => item.id);
+          if (ids.length === 0) {
+            setNotice("Nothing paid out yet to clear. After DealFinder sends your payout, export it and clear it here.");
+            return;
+          }
+          setClearing(true);
+          setError(null);
+          try {
+            window.location.href = "/api/consignments/export";
+            const response = await fetch("/api/consignments", {
+              method: "PATCH",
+              credentials: "include",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ action: "clear", ids }),
+            });
+            const json = await parseApiJson<{ error?: string; cleared?: number }>(response);
+            if (!response.ok) throw new Error(json.error || "Could not clear paid-out items.");
+            setItems((current) =>
+              current.map((item) =>
+                ids.includes(item.id) ? { ...item, clearedAt: new Date().toISOString() } : item,
+              ),
+            );
+            setNotice(
+              `Exported your spreadsheet and cleared ${json.cleared ?? ids.length} paid-out item${(json.cleared ?? ids.length) === 1 ? "" : "s"} off this page.`,
+            );
+          } catch (err) {
+            setError(err instanceof Error ? err.message : "Could not clear paid-out items.");
+          } finally {
+            setClearing(false);
+          }
+        }}
+      />
 
       <section className="space-y-3">
         <h2 className="font-display text-3xl text-brand-red">Not accepted</h2>
         <StatusTable
-          items={items.filter((item) => item.pipelineStatus === "rejected")}
+          items={items.filter((item) => !item.clearedAt && item.pipelineStatus === "rejected")}
           empty="Nothing was turned down."
         />
       </section>
+
+      {items.some((item) => item.clearedAt) ? (
+        <section className="space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h2 className="font-display text-3xl text-brand-red">Cleared from this page</h2>
+            <button type="button" className="comic-btn-invert !text-sm" onClick={() => setShowCleared((on) => !on)}>
+              {showCleared ? "Hide cleared" : "Show cleared"}
+            </button>
+          </div>
+          {showCleared ? (
+            <StatusTable
+              mode="payout"
+              items={items.filter((item) => Boolean(item.clearedAt))}
+              empty="Nothing cleared yet."
+            />
+          ) : (
+            <p className="font-comic text-sm">
+              {items.filter((item) => item.clearedAt).length} finished item
+              {items.filter((item) => item.clearedAt).length === 1 ? "" : "s"} exported and taken off the main list.
+            </p>
+          )}
+        </section>
+      ) : null}
     </div>
   );
 }
 
-function StatusTable({ items, empty }: { items: ConsignorItem[]; empty: string }) {
+function PayoutSection({
+  items,
+  clearing,
+  onExport,
+  onClearPaid,
+}: {
+  items: ConsignorItem[];
+  clearing: boolean;
+  onExport: () => void;
+  onClearPaid: () => Promise<void>;
+}) {
+  const owed = items.filter((item) => item.pipelineStatus === "sold");
+  const paid = items.filter((item) => item.pipelineStatus === "paid_out");
+  const owedTotal = owed.reduce((sum, item) => sum + (item.payout ?? 0), 0);
+  const paidTotal = paid.reduce((sum, item) => sum + (item.payout ?? 0), 0);
+
+  return (
+    <section className="space-y-3">
+      <h2 className="font-display text-3xl text-brand-red">Payouts</h2>
+      <p className="font-comic text-sm">
+        Sold lots stay here so you can see what DealFinder still owes you and what has already
+        been paid out. Export the spreadsheet any time. After a payout is sent, export and clear
+        those rows so this page does not fill up.
+      </p>
+      <div className="flex flex-wrap gap-3 font-comic text-sm">
+        <span className="border-4 border-black bg-white px-3 py-2">
+          Still owed <strong>{formatCurrency(owedTotal)}</strong> · {owed.length} lot{owed.length === 1 ? "" : "s"}
+        </span>
+        <span className="border-4 border-black bg-white px-3 py-2">
+          Paid out <strong>{formatCurrency(paidTotal)}</strong> · {paid.length} lot{paid.length === 1 ? "" : "s"}
+        </span>
+      </div>
+      <div className="flex flex-wrap gap-2">
+        <button type="button" className="comic-btn" onClick={onExport}>
+          Export to Excel
+        </button>
+        <button type="button" className="comic-btn-invert" disabled={clearing || paid.length === 0} onClick={() => void onClearPaid()}>
+          {clearing ? "Clearing…" : "Export paid-out and clear them"}
+        </button>
+      </div>
+      <StatusTable mode="payout" items={items} empty="No sold lots waiting on a payout yet." />
+    </section>
+  );
+}
+
+function StatusTable({
+  items,
+  empty,
+  mode = "simple",
+}: {
+  items: ConsignorItem[];
+  empty: string;
+  mode?: "simple" | "payout";
+}) {
   return (
     <>
       <div className="space-y-3 md:hidden">
@@ -541,6 +631,13 @@ function StatusTable({ items, empty }: { items: ConsignorItem[]; empty: string }
               ) : null}
               <p>Opens at {formatCurrency(item.startingBid || 0)}</p>
               <p>Buy now {formatCurrency(item.buyNowPrice || 0)}</p>
+              {mode === "payout" ? (
+                <>
+                  <p>Hammer {item.hammer == null ? "—" : formatCurrency(item.hammer)}</p>
+                  <p>Your payout {item.hammer == null ? "—" : formatCurrency(item.payout || 0)}</p>
+                  <p>Buyer {item.buyerPaidAt ? "paid" : "still owes"}</p>
+                </>
+              ) : null}
             </article>
           ))
         )}
@@ -554,12 +651,19 @@ function StatusTable({ items, empty }: { items: ConsignorItem[]; empty: string }
               <th className="border-b-4 border-black p-3">Status</th>
               <th className="border-b-4 border-black p-3">Opens at</th>
               <th className="border-b-4 border-black p-3">Buy now</th>
+              {mode === "payout" ? (
+                <>
+                  <th className="border-b-4 border-black p-3">Hammer</th>
+                  <th className="border-b-4 border-black p-3">Your payout</th>
+                  <th className="border-b-4 border-black p-3">Buyer</th>
+                </>
+              ) : null}
             </tr>
           </thead>
           <tbody>
             {items.length === 0 ? (
               <tr className="bg-brand-cream">
-                <td className="p-3" colSpan={5}>
+                <td className="p-3" colSpan={mode === "payout" ? 8 : 5}>
                   {empty}
                 </td>
               </tr>
@@ -584,6 +688,19 @@ function StatusTable({ items, empty }: { items: ConsignorItem[]; empty: string }
                   <td className="border-b-2 border-black p-3">
                     {formatCurrency(item.buyNowPrice || 0)}
                   </td>
+                  {mode === "payout" ? (
+                    <>
+                      <td className="border-b-2 border-black p-3">
+                        {item.hammer == null ? "—" : formatCurrency(item.hammer)}
+                      </td>
+                      <td className="border-b-2 border-black p-3 font-bold">
+                        {item.hammer == null ? "—" : formatCurrency(item.payout || 0)}
+                      </td>
+                      <td className="border-b-2 border-black p-3">
+                        {item.buyerPaidAt ? "Paid" : "Still owes"}
+                      </td>
+                    </>
+                  ) : null}
                 </tr>
               ))
             )}

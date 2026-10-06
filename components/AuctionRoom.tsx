@@ -487,11 +487,12 @@ export function AuctionRoom({ lot }: { lot: AuctionLot }) {
 
         {youWon ? (
           <div className="comic-panel space-y-3 p-5">
-            <p className="font-display text-sm tracking-[0.25em] text-brand-red">YOU WON THIS LOT</p>
+            <p className="font-display text-sm tracking-[0.25em] text-brand-red">YOU BOUGHT THIS LOT</p>
             <p className="font-display text-3xl">Hammer {formatCurrency(currentBid)}</p>
             <p className="font-comic text-sm">
-              This lot is reserved in your name. No payment is taken now. Choose ship or pick up
-              here. All winning bids and Buy-Now items from this auction go on one Sunday invoice.
+              {lot.saleSource === "buy_now" || lot.buyNowStatus === "sold"
+                ? "Buy Now is due now. This lot is off the live floor and off Buy Now. Choose pickup or shipping, then pay today. Auction wins still wait for Sunday."
+                : "This lot is reserved in your name. No payment is taken now. Choose ship or pick up here. Auction wins from this sale go on one Sunday invoice. Buy Now purchases are billed separately, right away."}
             </p>
             <div className="grid gap-2 sm:grid-cols-2">
               <button
@@ -515,7 +516,9 @@ export function AuctionRoom({ lot }: { lot: AuctionLot }) {
               {fulfillmentInstructions(fulfillment, user ? profileAddress(user) : "")}
             </p>
             <Link href="/checkout" className="comic-btn inline-block">
-              View reserved lots
+              {lot.saleSource === "buy_now" || lot.buyNowStatus === "sold"
+                ? "Pay this invoice"
+                : "View reserved lots"}
             </Link>
             {message ? <p className="font-display text-xl">{message}</p> : null}
           </div>

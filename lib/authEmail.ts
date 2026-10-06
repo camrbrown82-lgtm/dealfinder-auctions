@@ -1,12 +1,31 @@
 import type { EmailOtpType, User } from "@supabase/supabase-js";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { isStaffEmail } from "@/lib/adminAuth";
 import { publicAppUrl } from "@/lib/appUrl";
-import { getSupabaseAuthClient } from "@/lib/supabaseClient";
+import { getSupabaseAdmin, getSupabaseAuthClient } from "@/lib/supabaseClient";
 
 export function isAuthEmailConfirmed(user: User | null | undefined) {
   if (!user) return false;
   const record = user as User & { confirmed_at?: string | null; email_confirmed_at?: string | null };
   return Boolean(record.email_confirmed_at || record.confirmed_at);
+}
+
+/** House staff emails do not wait on a confirm-link. */
+export async function confirmStaffAuthEmail(email: string) {
+  if (!isStaffEmail(email)) return false;
+  const supabase = getSupabaseAdmin();
+  if (!supabase) return false;
+  const lowered = email.trim().toLowerCase();
+  const profile = await supabase.from("profiles").select("id").eq("email", lowered).maybeSingle();
+  let userId = String(profile.data?.id ?? "");
+  if (!userId) {
+    const listed = await supabase.auth.admin.listUsers({ page: 1, perPage: 200 });
+    const match = (listed.data?.users ?? []).find((user) => String(user.email ?? "").toLowerCase() === lowered);
+    userId = match?.id ?? "";
+  }
+  if (!userId) return false;
+  const { error } = await supabase.auth.admin.updateUserById(userId, { email_confirm: true });
+  return !error;
 }
 
 export async function loadConfirmedAuthUser(supabase: SupabaseClient, userId: string) {

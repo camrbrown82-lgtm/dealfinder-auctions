@@ -1,0 +1,49 @@
+{
+  "manifest_version": 3,
+  "name": "DealFinder Poster",
+  "version": "1.0.0",
+  "description": "Fills Facebook Marketplace and social upload forms from DealFinder Supabase listings, using the account signed in on this Chrome profile.",
+  "permissions": ["storage"],
+  "host_permissions": [
+    "https://www.dealfinderauctions.com/*",
+    "http://localhost/*",
+    "http://127.0.0.1/*",
+    "https://*.supabase.co/*",
+    "https://www.facebook.com/*",
+    "https://www.instagram.com/*",
+    "https://www.youtube.com/*",
+    "https://studio.youtube.com/*",
+    "https://www.tiktok.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "action": {
+    "default_title": "DealFinder Poster",
+    "default_popup": "popup.html"
+  },
+  "options_page": "options.html",
+  "content_scripts": [
+    {
+      "matches": [
+        "https://www.dealfinderauctions.com/admin/*",
+        "http://localhost/*",
+        "http://127.0.0.1/*"
+      ],
+      "js": ["bridge.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://www.facebook.com/*",
+        "https://www.instagram.com/*",
+        "https://www.youtube.com/*",
+        "https://studio.youtube.com/*",
+        "https://www.tiktok.com/*"
+      ],
+      "js": ["fill.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}

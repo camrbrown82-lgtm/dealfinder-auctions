@@ -13,7 +13,9 @@ import {
 import { normalizePaymentMethod, type PaymentMethod } from "@/lib/profileTypes";
 import { persistTermsAgreement } from "@/lib/helcim";
 import { sendWelcomeEmail } from "@/lib/notify";
+import { isStaffEmail } from "@/lib/adminAuth";
 import {
+  confirmStaffAuthEmail,
   fallbackSupabaseConfirmEmail,
   generateSignupConfirmation,
   generateVerifyLink,
@@ -131,8 +133,19 @@ export async function POST(request: NextRequest) {
     const authClient = getSupabaseAuthClient();
     if (authClient) {
       const admin = getSupabaseAdmin();
+      if (isStaffEmail(email)) {
+        await confirmStaffAuthEmail(email);
+      }
+
       let { data, error } = await authClient.auth.signInWithPassword({ email, password });
       let pending = /email not confirmed|confirm your email|not verified/i.test(error?.message ?? "");
+      if (pending && isStaffEmail(email)) {
+        await confirmStaffAuthEmail(email);
+        const retryStaff = await authClient.auth.signInWithPassword({ email, password });
+        data = retryStaff.data;
+        error = retryStaff.error;
+        pending = /email not confirmed|confirm your email|not verified/i.test(error?.message ?? "");
+      }
 
       if ((error || !data.user || pending) && admin) {
         const profileRow = await admin.from("profiles").select("id").eq("email", email).maybeSingle();
@@ -159,7 +172,10 @@ export async function POST(request: NextRequest) {
       const confirmed = admin
         ? (await admin.auth.admin.getUserById(authUser.id)).data.user ?? authUser
         : authUser;
-      if (!isAuthEmailConfirmed(confirmed)) return verificationResponse();
+      if (!isAuthEmailConfirmed(confirmed) && !isStaffEmail(email)) return verificationResponse();
+      if (isStaffEmail(email) && admin) {
+        await admin.auth.admin.updateUserById(authUser.id, { email_confirm: true });
+      }
       if (admin) {
         const profile = await admin.from("profiles").select("full_name").eq("id", confirmed.id).maybeSingle();
         await sendWelcomeOnce(
@@ -228,6 +244,13 @@ export async function PUT(request: NextRequest) {
         return NextResponse.json({ error: error.message }, { status: 400 });
       }
       await persistTermsAgreement(userId, fields.preauthTermsAgreed);
+
+      if (isStaffEmail(email)) {
+        await supabase.auth.admin.updateUserById(userId, { email_confirm: true });
+        await sendWelcomeOnce(supabase, userId, email, fields.fullName);
+        const response = NextResponse.json({ ok: true, verified: true });
+        return setBidderCookie(response, userId);
+      }
 
       if (isAuthEmailConfirmed(created.user)) {
         await sendWelcomeOnce(supabase, userId, email, fields.fullName);

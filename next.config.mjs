@@ -11,6 +11,9 @@ const nextConfig = {
     serverActions: {
       bodySizeLimit: "12mb",
     },
+    outputFileTracingIncludes: {
+      "/operations-guide/poster": ["./extension/**/*"],
+    },
   },
   async redirects() {
     return [

@@ -33,7 +33,7 @@ async function profileEmail(supabase: Admin, ownerId: string) {
  * account answers to it — a shared name must never route someone else's money
  * statement to the wrong inbox.
  */
-async function consignorContact(supabase: Admin, lot: AuctionLot): Promise<Contact | null> {
+export async function consignorContact(supabase: Admin, lot: AuctionLot): Promise<Contact | null> {
   if (lot.consignmentId) {
     const { data } = await supabase
       .from("consignments")
@@ -121,6 +121,7 @@ export async function notifyConsignorSold(lot: AuctionLot) {
     houseCut: split?.house ?? 0,
     payout: split?.consignor ?? hammer,
     charity: contact.charity,
+    source: lot.saleSource === "buy_now" || lot.buyNowStatus === "sold" ? "buy_now" : "bid",
   });
   if (!result.ok) {
     // Let a later close retry instead of swallowing the notice.

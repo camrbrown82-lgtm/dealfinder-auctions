@@ -40,7 +40,11 @@ async function hammerForLot(lotId: string, bidderId: string, bidderName: string)
           return { error: "Choose local pickup or shipping before paying this invoice." };
         }
         const { invoiceReadyForSale } = await import("@/lib/saleChannel");
-        if (!invoiceReadyForSale({ sale_channel: data.sale_channel, sale_source: data.sale_source })) {
+        if (!invoiceReadyForSale({
+          sale_channel: data.sale_channel,
+          sale_source: data.sale_source,
+          buy_now_status: data.buy_now_status,
+        })) {
           const { invoiceReadyForEvent } = await import("@/lib/auctionCloseInvoices");
           if (!(await invoiceReadyForEvent(data.event_id ? String(data.event_id) : null))) {
             return { error: "Helcim checkout opens after Sunday's consolidated invoice is emailed." };

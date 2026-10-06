@@ -29,7 +29,10 @@ async function main() {
   const login = await fetch(`${base}/api/admin/login`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ password }),
+    body: JSON.stringify({
+      email: process.env.ADMIN_EMAIL || "dealfinderauctions@gmail.com",
+      password,
+    }),
   });
   const cookie = login.headers.get("set-cookie") || "";
   if (!login.ok) {

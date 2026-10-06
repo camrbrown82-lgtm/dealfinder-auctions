@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>DealFinder Poster options</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body class="page">
+    <header>
+      <h1>Connect</h1>
+    </header>
+    <form id="form">
+      <label>
+        Personal profile
+        <input id="profile" name="profile" placeholder="Cameron — personal Facebook" required />
+      </label>
+      <p class="hint">
+        This is the account already signed in on this Chrome profile. The extension fills the form. It does not store
+        the social password, and you still press Post yourself.
+      </p>
+      <div class="row">
+        <a class="button" href="https://www.facebook.com/" target="_blank" rel="noreferrer">Open Facebook</a>
+        <a class="button" href="https://www.instagram.com/" target="_blank" rel="noreferrer">Open Instagram</a>
+        <a class="button" href="https://www.tiktok.com/" target="_blank" rel="noreferrer">Open TikTok</a>
+        <a class="button" href="https://www.youtube.com/" target="_blank" rel="noreferrer">Open YouTube</a>
+      </div>
+      <label>
+        Supabase URL
+        <input id="url" name="url" placeholder="https://your-project.supabase.co" required />
+      </label>
+      <label>
+        Supabase anon key
+        <input id="key" name="key" placeholder="Public anon key, not the service role" required />
+      </label>
+      <div class="row">
+        <button type="submit" class="primary">Save connection</button>
+        <button type="button" id="test">Test Supabase</button>
+      </div>
+      <p id="status"></p>
+    </form>
+    <script type="module" src="options.js"></script>
+  </body>
+</html>

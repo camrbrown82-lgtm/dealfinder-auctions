@@ -64,6 +64,19 @@ export function invoiceReadyForSale(lot: {
   sale_channel?: string | null;
   saleSource?: string | null;
   sale_source?: string | null;
+  buyNowStatus?: string | null;
+  buy_now_status?: string | null;
 }) {
+  if (asBuyNowStatus(lot.buyNowStatus ?? lot.buy_now_status) === "sold") return true;
   return isBuyNowChannel(lot) || lot.saleSource === "buy_now" || lot.sale_source === "buy_now";
+}
+
+/** Buy Now is a separate sale: pay now, leave the live floor. Auction wins wait for Sunday. */
+export function isImmediateBuyNow(lot: {
+  saleSource?: string | null;
+  sale_source?: string | null;
+  buyNowStatus?: string | null;
+  buy_now_status?: string | null;
+}) {
+  return invoiceReadyForSale(lot);
 }

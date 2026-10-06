@@ -48,6 +48,10 @@ export type AuctionLot = {
   saleSource?: "bid" | "buy_now" | null;
   saleChannel?: SaleChannel;
   buyNowStatus?: BuyNowStatus | null;
+  payoutSentAt?: string | null;
+  payoutAmount?: number | null;
+  payoutMethod?: string | null;
+  payoutReference?: string | null;
   /** False when the lot's sale has already ended. */
   biddingOpen?: boolean;
 };
@@ -95,7 +99,14 @@ export type Consignment = {
   charity?: boolean;
 };
 
-export type PipelineStatus = "pending_approval" | "buy_now_pending" | "scheduled" | "live" | "sold" | "rejected";
+export type PipelineStatus =
+  | "pending_approval"
+  | "buy_now_pending"
+  | "scheduled"
+  | "live"
+  | "sold"
+  | "paid_out"
+  | "rejected";
 
 export type ConsignorItem = {
   id: string;
@@ -109,6 +120,15 @@ export type ConsignorItem = {
   charity?: boolean;
   lotNumber?: string | null;
   lotHref?: string | null;
+  lotId?: string | null;
+  hammer?: number | null;
+  houseCut?: number;
+  payout?: number;
+  commissionLabel?: string;
+  buyerPaidAt?: string | null;
+  payoutSentAt?: string | null;
+  payoutMethod?: string | null;
+  clearedAt?: string | null;
 };
 
 export function uniqueImageUrls(urls: Array<string | null | undefined>): string[] {
@@ -419,7 +439,8 @@ export function pipelineLabel(status: PipelineStatus) {
   if (status === "buy_now_pending") return "Buy now pending approval";
   if (status === "scheduled") return "Scheduled by DealFinder";
   if (status === "live") return "Live auction";
-  return "Sold";
+  if (status === "paid_out") return "Paid out";
+  return "Sold — payout pending";
 }
 
 export function consignmentToPipeline(status: ConsignmentStatus): PipelineStatus {

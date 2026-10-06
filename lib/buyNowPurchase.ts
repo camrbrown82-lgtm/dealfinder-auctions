@@ -1,4 +1,5 @@
 import { notifyConsignorSold } from "@/lib/consignorSold";
+import { sendWinInvoiceEmail } from "@/lib/notify";
 import { getAdminDemo } from "@/lib/demoAdminStore";
 import { getDemoLot, registerDemoLot } from "@/lib/demoAuctionStore";
 import { invoiceFees } from "@/lib/invoiceFees";
@@ -101,11 +102,9 @@ export async function claimBuyNowLot(lotId: string, session: BidderProfile) {
       saleSource: "buy_now",
       buyNowStatus: "sold",
     };
-    await writeBuyNowInvoice(claimed, session);
-    // A Buy Now sale is a sale: the consignor gets the same sold notice.
-    await notifyConsignorSold(claimed).catch((error) => {
-      console.error("notifyConsignorSold", error instanceof Error ? error.message : error);
-    });
+    const invoice = await writeBuyNowInvoice(claimed, session);
+    await emailBuyNowInvoice(claimed, session, invoice);
+    await notifyConsignorOfBuyNow(claimed);
     return claimed;
   }
 
@@ -132,6 +131,43 @@ export async function claimBuyNowLot(lotId: string, session: BidderProfile) {
     clock.endsAt = lot.endsAt;
   }
   registerDemoLot(lot);
-  await writeBuyNowInvoice(lot, session);
+  const invoice = await writeBuyNowInvoice(lot, session);
+  await emailBuyNowInvoice(lot, session, invoice);
+  await notifyConsignorOfBuyNow(lot);
   return lot;
+}
+
+async function notifyConsignorOfBuyNow(lot: AuctionLot) {
+  const result = await notifyConsignorSold(lot);
+  if (!result.sent && result.reason !== "house" && result.reason !== "already-sent") {
+    console.error("notifyConsignorSold", result.reason ?? "unknown");
+  }
+}
+
+async function emailBuyNowInvoice(
+  lot: AuctionLot,
+  session: BidderProfile,
+  record: SettlementInvoiceRecord,
+) {
+  if (!session.email) return;
+  const fees = invoiceFees({
+    hammer: buyNowHammer(lot),
+    fulfillment: record.fulfillment ?? "unset",
+    shippingCost: record.shippingCost,
+  });
+  await sendWinInvoiceEmail({
+    to: session.email,
+    name: session.fullName || session.email,
+    title: lot.title,
+    invoice: record.invoice,
+    lotId: lot.id,
+    slug: lot.slug,
+    fees,
+    fulfillment: record.fulfillment ?? "unset",
+    address: record.address,
+    lots: [{ title: lot.title, lotNumber: lot.lotNumber, hammer: buyNowHammer(lot) }],
+    subjectOverride: `Pay now — ${lot.title}`,
+  }).catch((error) => {
+    console.error("emailBuyNowInvoice", error instanceof Error ? error.message : error);
+  });
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { useEffect, type ReactNode } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { AdminDarkToggle } from "@/components/admin/AdminDarkToggle";
@@ -19,6 +19,19 @@ export function AdminShell({
   const pathname = usePathname();
   const { data, error, notice, logout } = useAdminDesk();
   const onDesk = pathname === "/admin" || pathname === "/admin/live";
+
+  useEffect(() => {
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
+    const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
+    function publish() {
+      window.dispatchEvent(
+        new CustomEvent("dealfinder-poster-config", { detail: { supabaseUrl, supabaseAnonKey } }),
+      );
+    }
+    window.addEventListener("dealfinder-poster-ping", publish);
+    publish();
+    return () => window.removeEventListener("dealfinder-poster-ping", publish);
+  }, []);
 
   const alerts = (
     <>

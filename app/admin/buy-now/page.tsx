@@ -4,26 +4,34 @@ import { useMemo, useState } from "react";
 import { LotImage } from "@/components/LotImage";
 import { useAdminDesk } from "@/components/admin/AdminDesk";
 import { AdminShell } from "@/components/admin/AdminShell";
+import { PosterInstallNote } from "@/components/admin/PosterInstallNote";
+import { queuePoster } from "@/components/admin/posterClient";
 import { isListedBuyNow } from "@/lib/saleChannel";
-import { SITE_ORIGIN } from "@/lib/seo";
+import { marketplaceJob } from "@/lib/socialPost";
 import { formatCurrency, lotImages, type AuctionLot } from "@/lib/utils";
-
-const FACEBOOK_FEED_PATH = "/feeds/facebook-catalog.csv";
-const FACEBOOK_FEED_URL = `${SITE_ORIGIN}${FACEBOOK_FEED_PATH}`;
 
 export default function AdminBuyNowPage() {
   const { data, setNotice, mutate } = useAdminDesk();
   const [drafts, setDrafts] = useState<Record<string, { title: string; description: string; price: string }>>({});
-  const [copied, setCopied] = useState(false);
+  const [posterMissing, setPosterMissing] = useState(false);
 
-  async function copyFeedUrl() {
-    try {
-      await navigator.clipboard.writeText(FACEBOOK_FEED_URL);
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 2000);
-    } catch {
-      setNotice(`Copy this feed URL: ${FACEBOOK_FEED_URL}`);
+  async function postMarketplace(lot: AuctionLot) {
+    const draft = draftFor(lot);
+    const result = await queuePoster(marketplaceJob(lot, draft));
+    if (result === "missing") {
+      setPosterMissing(true);
+      return;
     }
+    setPosterMissing(false);
+    if (result === "profile") {
+      setNotice("Open DealFinder Poster options and connect the personal profile you post from, then try again.");
+      return;
+    }
+    if (result === "supabase") {
+      setNotice("Open DealFinder Poster options and connect Supabase, then try again.");
+      return;
+    }
+    setNotice(`Marketplace form opened for ${draft.title}. Check it, then press Publish on Facebook.`);
   }
 
   const lots = useMemo(
@@ -75,41 +83,22 @@ export default function AdminBuyNowPage() {
       title="Buy Now"
       subtitle="Lots with a Buy Now price stay in the live auction and show here. Someone can bid, or pay the Buy Now price and take it off the floor."
     >
-      <section className="comic-panel space-y-3 p-4">
-        <h2 className="font-display text-2xl text-brand-red sm:text-3xl">
-          Export listings to Facebook
-        </h2>
-        <div className="flex flex-wrap items-center gap-2">
-          <a href={FACEBOOK_FEED_PATH} className="comic-btn inline-block" target="_blank" rel="noreferrer">
-            Open Facebook catalog feed
-          </a>
-          <button type="button" className="comic-btn-invert" onClick={() => void copyFeedUrl()}>
-            {copied ? "Copied!" : "Copy feed URL"}
-          </button>
-          <a href="/api/admin/buy-now/export" className="comic-btn-invert inline-block">
-            Download .xlsx
-          </a>
-        </div>
-        <p className="border-4 border-black bg-white px-3 py-2 font-comic text-sm break-all">
-          {FACEBOOK_FEED_URL}
-        </p>
-        <p className="font-comic text-sm">
-          Paste that URL into Commerce Manager as a scheduled data feed and every Buy Now lot below
-          goes up automatically. Facebook pulls it at most once an hour, and sold lots flip to out of
-          stock on the next pull. A lot is locked here the moment someone starts checkout, so two
-          buyers cannot take the same item.
-        </p>
-        <p className="font-comic text-sm">
-          Marketplace itself has no posting API — the feed publishes your catalog to the Facebook
-          Page shop, and Marketplace surfaces eligible catalog items from there.
-        </p>
-      </section>
       {lots.length === 0 ? (
         <p className="comic-panel p-4 font-comic">
           No Buy Now inventory yet. Save warehouse stock to Buy Now, or approve a consignor Buy Now request.
         </p>
       ) : (
         <div className="space-y-4">
+          <p className="font-comic text-sm">
+            Marketplace posts use the DealFinder Poster extension. It reads the lot from Supabase and fills the Facebook
+            form on the personal profile signed in to this Chrome window. You press Publish.
+          </p>
+          {posterMissing ? <PosterInstallNote /> : null}
+          <div className="flex flex-wrap items-center gap-2">
+            <a href="/api/admin/buy-now/export" className="comic-btn-invert inline-block">
+              Download spreadsheet
+            </a>
+          </div>
           {lots.map((lot) => {
             const draft = draftFor(lot);
             const photo = lotImages(lot)[0];
@@ -168,6 +157,9 @@ export default function AdminBuyNowPage() {
                   <div className="flex flex-wrap gap-2">
                     <button type="button" className="comic-btn !text-base" onClick={() => void save(lot)}>
                       Save
+                    </button>
+                    <button type="button" className="comic-btn-invert !text-base" onClick={() => void postMarketplace(lot)}>
+                      Fill Marketplace form
                     </button>
                     <button type="button" className="comic-btn-invert !text-base" onClick={() => void remove(lot)}>
                       Delete

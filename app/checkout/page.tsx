@@ -177,10 +177,9 @@ export default function CheckoutPage() {
       <div className="comic-panel p-4">
         <h1 className="font-display text-5xl text-brand-red">Your bought items</h1>
         <p className="font-comic text-sm">
-          Each card is an item you bought: the photo, lot number, and the price it sold for. Lots
-          you are still bidding on stay on the live page until they close. The receipt in your email
-          has the same lines and a download. Payment stays on this page after you choose pickup or
-          shipping.
+          Each card is an item you bought: the photo, lot number, and the price it sold for. Buy Now
+          is due now — choose pickup or shipping, then pay. Auction wins stay reserved until Sunday,
+          when one invoice covers that sale. Lots you are still bidding on stay on the live page.
         </p>
         {notice && <p className="mt-3 font-display text-xl">{notice}</p>}
       </div>

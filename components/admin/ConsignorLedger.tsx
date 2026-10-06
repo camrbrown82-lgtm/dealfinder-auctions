@@ -24,6 +24,7 @@ const STAGE_TINT: Record<LedgerStage, string> = {
   scheduled: "bg-[#FFE066] text-black",
   sold: "bg-black text-white",
   paid: "bg-[#19692C] text-white",
+  settled: "bg-[#19692C] text-white",
   unsold: "bg-white text-black",
   rejected: "bg-white text-black",
 };
@@ -33,7 +34,7 @@ function inFilter(stage: LedgerStage, filter: StageFilter) {
   if (filter === "waiting") return stage === "waiting" || stage === "held";
   if (filter === "scheduled") return stage === "scheduled";
   if (filter === "live") return stage === "live";
-  if (filter === "sold") return stage === "sold" || stage === "paid";
+  if (filter === "sold") return stage === "sold" || stage === "paid" || stage === "settled";
   return stage === "unsold" || stage === "rejected";
 }
 
@@ -70,7 +71,13 @@ function StageBadge({ item }: { item: ConsignorLedgerItem }) {
   );
 }
 
-function ItemDetail({ item }: { item: ConsignorLedgerItem }) {
+function ItemDetail({
+  item,
+  onMarkPayout,
+}: {
+  item: ConsignorLedgerItem;
+  onMarkPayout: (lotId: string) => void;
+}) {
   return (
     <div className="space-y-3 border-t-4 border-black bg-white p-3 font-comic text-sm">
       {item.images.length > 0 ? (
@@ -99,6 +106,7 @@ function ItemDetail({ item }: { item: ConsignorLedgerItem }) {
         <Field label="Closes" value={shortDate(item.endsAt)} />
         <Field label="High bidder" value={item.highBidder || "—"} />
         <Field label="Buyer paid" value={item.paidAt ? shortDate(item.paidAt) : "Not yet"} />
+        <Field label="Payout sent" value={item.payoutSentAt ? shortDate(item.payoutSentAt) : "Not yet"} />
         <Field
           label="Delivery"
           value={
@@ -118,11 +126,18 @@ function ItemDetail({ item }: { item: ConsignorLedgerItem }) {
           <p className="whitespace-pre-wrap">{item.notes}</p>
         </div>
       ) : null}
-      {item.lotHref ? (
-        <Link href={item.lotHref} target="_blank" className="comic-btn-invert !text-sm">
-          Open the public lot page
-        </Link>
-      ) : null}
+      <div className="flex flex-wrap gap-2">
+        {item.lotHref ? (
+          <Link href={item.lotHref} target="_blank" className="comic-btn-invert !text-sm">
+            Open the public lot page
+          </Link>
+        ) : null}
+        {item.lotId && item.stage === "paid" ? (
+          <button type="button" className="comic-btn !text-sm" onClick={() => onMarkPayout(item.lotId!)}>
+            Mark payout sent
+          </button>
+        ) : null}
+      </div>
     </div>
   );
 }
@@ -140,10 +155,12 @@ function GroupPanel({
   group,
   open,
   onToggle,
+  onMarkPayout,
 }: {
   group: ConsignorLedgerGroup;
   open: boolean;
   onToggle: () => void;
+  onMarkPayout: (lotId: string) => void;
 }) {
   const [expanded, setExpanded] = useState<string | null>(null);
   const { totals } = group;
@@ -183,6 +200,7 @@ function GroupPanel({
             <Money label="House commission" value={totals.houseCut} />
             <Money label="Payout ready" value={totals.payoutReady} />
             <Money label="Payout pending buyer" value={totals.payoutPending} />
+            <Money label="Payout sent" value={totals.payoutSent} />
           </div>
           <div className="comic-table-wrap">
             <table className="w-full min-w-[920px] border-collapse font-comic text-sm">
@@ -257,7 +275,7 @@ function GroupPanel({
                       {showing ? (
                         <tr className="bg-white">
                           <td colSpan={10} className="border-b-2 border-black p-0">
-                            <ItemDetail item={item} />
+                            <ItemDetail item={item} onMarkPayout={onMarkPayout} />
                           </td>
                         </tr>
                       ) : null}
@@ -354,6 +372,34 @@ export function ConsignorLedger({ refreshKey = 0 }: { refreshKey?: number }) {
     }
   }
 
+  async function markPayout(lotId: string) {
+    setSending(true);
+    setNotice(null);
+    try {
+      const response = await fetch("/api/admin", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "markConsignorPayouts", lotIds: [lotId], method: "e-transfer" }),
+      });
+      const json = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        setNotice(json.error || "Could not mark that payout.");
+        return;
+      }
+      setNotice(
+        json.mailed
+          ? "Payout marked sent and the consignor receipt went out."
+          : `Payout marked sent.${json.skipped?.["no-email"] ? " No consignor email on file." : ""}`,
+      );
+      await load();
+    } catch {
+      setNotice("Could not reach the desk.");
+    } finally {
+      setSending(false);
+    }
+  }
+
   const visible = useMemo(() => {
     const q = query.trim().toLowerCase();
     const matches = (item: ConsignorLedgerItem) => {
@@ -441,6 +487,7 @@ export function ConsignorLedger({ refreshKey = 0 }: { refreshKey?: number }) {
         <GroupPanel
           key={group.consignor}
           group={group}
+          onMarkPayout={(lotId) => void markPayout(lotId)}
           open={open[group.consignor] ?? (searching || group.totals.waiting > 0 || visible.length <= 3)}
           onToggle={() =>
             setOpen((current) => ({

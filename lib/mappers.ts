@@ -39,6 +39,10 @@ export type LotRow = {
   sale_source?: string | null;
   sale_channel?: string | null;
   buy_now_status?: string | null;
+  payout_sent_at?: string | null;
+  payout_amount?: number | string | null;
+  payout_method?: string | null;
+  payout_reference?: string | null;
 };
 
 export type ConsignmentRow = {
@@ -77,8 +81,12 @@ function asUrlList(value: unknown): string[] {
   return [];
 }
 
+function withoutStockPlaceholder(urls: string[]) {
+  return urls.filter((url) => !url.includes("photo-1513885535751"));
+}
+
 export function mapLot(row: LotRow): AuctionLot {
-  const images = uniqueImageUrls([...asUrlList(row.image_urls), row.image_url]);
+  const images = withoutStockPlaceholder(uniqueImageUrls([...asUrlList(row.image_urls), row.image_url]));
   return {
     id: row.id,
     slug: row.slug,
@@ -110,6 +118,10 @@ export function mapLot(row: LotRow): AuctionLot {
     saleSource: row.sale_source === "buy_now" ? "buy_now" : "bid",
     saleChannel: asSaleChannel(row.sale_channel),
     buyNowStatus: asBuyNowStatus(row.buy_now_status),
+    payoutSentAt: row.payout_sent_at ?? null,
+    payoutAmount: Number(row.payout_amount ?? 0) || 0,
+    payoutMethod: row.payout_method ?? null,
+    payoutReference: row.payout_reference ?? null,
   };
 }
 
@@ -129,7 +141,7 @@ export function mapConsignment(row: ConsignmentRow): Consignment {
     buyNowPrice: Number(row.buy_now_price ?? row.reserve_price ?? 0) || null,
     startingBid: row.starting_bid == null ? null : Number(row.starting_bid),
     commissionRate: row.commission_rate == null ? null : Number(row.commission_rate),
-    imageUrls: row.image_urls ?? [],
+    imageUrls: withoutStockPlaceholder(row.image_urls ?? []),
     status: row.status,
     saleChannel: asSaleChannel(row.sale_channel),
     contactEmail: row.contact_email ?? null,

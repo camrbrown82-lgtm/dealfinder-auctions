@@ -24,6 +24,7 @@ import { openingBid } from "@/lib/buyNow";
 import { patchLotRow } from "@/lib/openFloor";
 import { recordSoldLotSettlement } from "@/lib/recordSale";
 import { notifyConsignorSold } from "@/lib/consignorSold";
+import { markConsignorPayoutSent } from "@/lib/consignorPayout";
 import { resetAuctionData } from "@/lib/resetTestData";
 import { attachLotToSale, ensureWeeklySales } from "@/lib/weeklySales";
 import { settleEndedAuctions } from "@/lib/closeEndedLots";
@@ -41,12 +42,12 @@ import {
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
 
-const FALLBACK_IMAGE =
-  "https://images.unsplash.com/photo-1513885535751-8b9238bd345a?auto=format&fit=crop&w=800&q=80";
+/** Old stock photo that used to be stuffed onto every lot that had real pictures. */
+const PLACEHOLDER_IMAGE = "photo-1513885535751";
 
 function lotPhotos(urls?: string[]) {
-  const images = uniqueImageUrls([...(urls ?? []), FALLBACK_IMAGE]);
-  return { image: images[0], images };
+  const images = uniqueImageUrls(urls ?? []).filter((url) => !url.includes(PLACEHOLDER_IMAGE));
+  return { image: images[0] ?? "", images };
 }
 
 function asEventUuid(value?: string) {
@@ -356,6 +357,8 @@ type AdminBody = {
   lotIds?: string[];
   lotStart?: string | number;
   purgeTestData?: boolean;
+  method?: string;
+  reference?: string;
 };
 
 function collectLotIds(body: AdminBody) {
@@ -429,6 +432,34 @@ export async function POST(request: NextRequest) {
       skipped[reason] = (skipped[reason] ?? 0) + 1;
     }
     return NextResponse.json({ ok: true, sent, skipped });
+  }
+
+  if (body.action === "markConsignorPayouts") {
+    if (!isSupabaseConfigured || !supabase) {
+      return NextResponse.json({ error: "Supabase is not configured." }, { status: 400 });
+    }
+    const lotIds = collectLotIds(body);
+    if (lotIds.length === 0) {
+      return NextResponse.json({ error: "Pick at least one lot to mark paid out." }, { status: 400 });
+    }
+    const { data } = await supabase.from("lots").select("*").in("id", lotIds);
+    let sent = 0;
+    let mailed = 0;
+    const skipped: Record<string, number> = {};
+    for (const row of (data ?? []) as LotRow[]) {
+      const result = await markConsignorPayoutSent(mapLot(row), {
+        method: typeof body.method === "string" ? body.method : undefined,
+        reference: typeof body.reference === "string" ? body.reference : undefined,
+      });
+      if (result.sent) {
+        sent += 1;
+        if (result.mailed) mailed += 1;
+        continue;
+      }
+      const reason = result.reason ?? "unknown";
+      skipped[reason] = (skipped[reason] ?? 0) + 1;
+    }
+    return NextResponse.json({ ok: true, sent, mailed, skipped });
   }
 
   if (body.action === "purge-test-data") {

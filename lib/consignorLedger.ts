@@ -17,6 +17,7 @@ export type LedgerStage =
   | "live"
   | "sold"
   | "paid"
+  | "settled"
   | "unsold";
 
 const STAGE_LABEL: Record<LedgerStage, string> = {
@@ -26,7 +27,8 @@ const STAGE_LABEL: Record<LedgerStage, string> = {
   scheduled: "Filed into a sale",
   live: "Live and taking bids",
   sold: "Sold — buyer owes",
-  paid: "Sold and paid",
+  paid: "Buyer paid — payout owed",
+  settled: "Payout sent",
   unsold: "Closed with no bids",
 };
 
@@ -38,8 +40,9 @@ const STAGE_ORDER: Record<LedgerStage, number> = {
   scheduled: 3,
   sold: 4,
   paid: 5,
-  unsold: 6,
-  rejected: 7,
+  settled: 6,
+  unsold: 7,
+  rejected: 8,
 };
 
 export type ConsignorLedgerItem = {
@@ -66,6 +69,7 @@ export type ConsignorLedgerItem = {
   houseCut: number;
   payout: number;
   paidAt: string | null;
+  payoutSentAt: string | null;
   highBidder: string | null;
   fulfillment: "unset" | "ship" | "pickup";
   listingGrade: string | null;
@@ -89,6 +93,8 @@ export type ConsignorLedgerTotals = {
   payoutReady: number;
   /** Their share of sold lots the buyer still owes on. */
   payoutPending: number;
+  /** Their share already sent out. */
+  payoutSent: number;
 };
 
 export type ConsignorLedgerGroup = {
@@ -105,6 +111,7 @@ function money(value: unknown) {
 }
 
 function lotStage(lot: AuctionLot): LedgerStage {
+  if (lot.payoutSentAt) return "settled";
   if (lot.paidAt) return "paid";
   if (lot.buyNowStatus === "sold" || lotWasSold(lot)) return "sold";
   if (lot.status === "draft" || lot.status === "paused") return "scheduled";
@@ -146,6 +153,7 @@ function emptyTotals(): ConsignorLedgerTotals {
     houseCut: 0,
     payoutReady: 0,
     payoutPending: 0,
+    payoutSent: 0,
   };
 }
 
@@ -156,11 +164,12 @@ function tally(totals: ConsignorLedgerTotals, item: ConsignorLedgerItem) {
   if (item.stage === "live") totals.live += 1;
   if (item.stage === "unsold") totals.unsold += 1;
   if (item.stage === "rejected") totals.rejected += 1;
-  if (item.stage === "sold" || item.stage === "paid") {
+  if (item.stage === "sold" || item.stage === "paid" || item.stage === "settled") {
     totals.sold += 1;
     totals.hammer += item.hammer ?? 0;
     totals.houseCut += item.houseCut;
-    if (item.stage === "paid") totals.payoutReady += item.payout;
+    if (item.stage === "settled") totals.payoutSent += item.payout;
+    else if (item.stage === "paid") totals.payoutReady += item.payout;
     else totals.payoutPending += item.payout;
   }
 }
@@ -173,7 +182,7 @@ function itemFromLot(
 ): ConsignorLedgerItem {
   const event = lot.eventId ? events.get(lot.eventId) : undefined;
   const stage = lotStage(lot);
-  const sold = stage === "sold" || stage === "paid";
+  const sold = stage === "sold" || stage === "paid" || stage === "settled";
   const hammer = sold ? money(lot.currentBid) : null;
   const owner = (lot.consignor || consignment?.consignor || "").trim() || "Unnamed consignor";
   const share = split(owner, hammer ?? 0);
@@ -204,6 +213,7 @@ function itemFromLot(
     houseCut: sold ? share.houseCut : 0,
     payout: sold ? share.payout : 0,
     paidAt: lot.paidAt ?? null,
+    payoutSentAt: lot.payoutSentAt ?? null,
     highBidder: lot.highBidder ?? null,
     fulfillment: lot.fulfillment ?? "unset",
     listingGrade: lot.listingGrade ?? consignment?.listingGrade ?? null,
@@ -241,6 +251,7 @@ function itemFromQueue(row: Consignment, submittedAt: string | null): ConsignorL
     houseCut: 0,
     payout: 0,
     paidAt: null,
+    payoutSentAt: null,
     highBidder: null,
     fulfillment: "unset",
     listingGrade: row.listingGrade ?? row.condition ?? null,

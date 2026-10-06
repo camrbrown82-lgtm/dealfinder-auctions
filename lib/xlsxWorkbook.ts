@@ -23,7 +23,7 @@ function u32(value: number) {
   return buf;
 }
 
-function zipStore(files: Array<{ name: string; body: string }>) {
+export function zipStoredTextFiles(files: Array<{ name: string; body: string }>) {
   const locals: Buffer[] = [];
   const centrals: Buffer[] = [];
   let offset = 0;
@@ -232,5 +232,5 @@ ${rels}
     })),
   ];
 
-  return zipStore(files);
+  return zipStoredTextFiles(files);
 }

@@ -13,7 +13,7 @@ import { SITE, adminNotifyEmail } from "@/lib/site";
 import { sendTransactionalEmail } from "@/lib/transactionalEmail";
 
 export const WIN_RESERVATION_DISCLOSURE =
-  "Your winning item has been reserved! To save you on processing fees, no payment is required right now. All your winning bids and Buy-Now items from this auction will be consolidated into a single invoice sent automatically when the auction closes on Sunday.";
+  "Your winning item has been reserved! To save you on processing fees, no payment is required right now. All your winning auction bids from this sale will be consolidated into a single invoice sent automatically when the auction closes on Sunday. Buy Now purchases are separate and are due as soon as you claim them.";
 
 export function winReservationEmailHtml(input: {
   name: string;
@@ -527,6 +527,7 @@ export async function sendWinInvoiceEmail(input: {
   address: string;
   batch?: boolean;
   lots?: WonLotLine[];
+  subjectOverride?: string;
 }) {
   const multi = (input.lots?.length ?? 0) > 1;
   const receiptHref = receiptPageUrl(input.invoice, true);
@@ -550,7 +551,7 @@ export async function sendWinInvoiceEmail(input: {
     templateId: "winning_invoice",
     to: input.to,
     forceDeliver: true,
-    subjectOverride: `Your DealFinder receipt — ${subjectTitle}`,
+    subjectOverride: input.subjectOverride ?? `Your DealFinder receipt — ${subjectTitle}`,
     vars: {
       customer_name: input.name,
       item_title: subjectTitle,
@@ -595,14 +596,72 @@ export async function sendConsignorSoldEmail(input: {
   houseCut: number;
   payout: number;
   charity?: boolean;
+  source?: "bid" | "buy_now";
 }) {
   const statement = `${publicAppUrl()}/consignor`;
   const lot = input.lotNumber?.trim() ? `Lot ${input.lotNumber.trim()} · ` : "";
+  const buyNow = input.source === "buy_now";
   const rows: Array<[string, string]> = [
+    ["Sold how", buyNow ? "Buy Now — sold immediately" : "Live auction"],
     ["Sold for", formatCurrency(input.hammer)],
     [`House commission (${input.commissionLabel})`, `− ${formatCurrency(input.houseCut)}`],
     [input.charity ? "To the charity" : "Your payout", formatCurrency(input.payout)],
   ];
+  const table = rows
+    .map(
+      ([label, value], index) =>
+        `<tr style="background:${index % 2 ? "#FFF7D1" : "#FFFFFF"};"><td style="padding:8px;border:2px solid #000;">${escapeHtml(label)}</td><td style="padding:8px;border:2px solid #000;text-align:right;font-weight:bold;">${escapeHtml(value)}</td></tr>`,
+    )
+    .join("");
+  const opener = buyNow
+    ? `<p>Your consignment sold just now on Buy Now. This is your lot sale invoice.</p>`
+    : `<p>Good news, ${escapeHtml(input.name)} — your item sold.</p>`;
+  return sendTransactionalEmail({
+    templateId: "consignor_payout",
+    to: input.to,
+    forceDeliver: true,
+    simpleLayout: true,
+    subjectOverride: buyNow ? `Sale invoice — ${input.title}` : `Sold — ${input.title}`,
+    vars: {
+      customer_name: input.name,
+      item_title: input.title,
+      winning_bid: formatCurrency(input.hammer),
+      payment_link: statement,
+      lot_link: statement,
+    },
+    htmlOverride: `${opener}
+<p>${escapeHtml(input.name)}, ${escapeHtml(lot)}<strong>${escapeHtml(input.title)}</strong></p>
+<table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="border-collapse:collapse;margin:16px 0;">${table}</table>
+<p style="font-size:14px;">${escapeHtml(consignmentCommissionNote())}</p>
+<p style="font-size:14px;">The buyer pays their invoice separately (Buy Now is due immediately; auction wins wait for Sunday). Your payout goes out after they settle. The buyer's premium, GST, and any shipping they pay are charges on their side and are not taken out of your share.</p>
+<p><a href="${escapeHtml(statement)}" style="display:inline-block;background:#111111;color:#FFFFFF;padding:12px 18px;border:4px solid #000;font-weight:bold;text-decoration:none;">See your consignments</a></p>`,
+  });
+}
+
+/** Receipt after the desk actually sends the consignor their share. */
+export async function sendConsignorPayoutSentEmail(input: {
+  to: string;
+  name: string;
+  title: string;
+  lotNumber?: string | null;
+  hammer: number;
+  commissionLabel: string;
+  houseCut: number;
+  payout: number;
+  method?: string;
+  reference?: string;
+  charity?: boolean;
+}) {
+  const statement = `${publicAppUrl()}/consignor`;
+  const lot = input.lotNumber?.trim() ? `Lot ${input.lotNumber.trim()} · ` : "";
+  const method = input.method?.trim() || "e-transfer";
+  const rows: Array<[string, string]> = [
+    ["Sold for", formatCurrency(input.hammer)],
+    [`House commission (${input.commissionLabel})`, `− ${formatCurrency(input.houseCut)}`],
+    [input.charity ? "Sent to the charity" : "Paid to you", formatCurrency(input.payout)],
+    ["How it was sent", method],
+  ];
+  if (input.reference?.trim()) rows.push(["Reference", input.reference.trim()]);
   const table = rows
     .map(
       ([label, value], index) =>
@@ -614,19 +673,19 @@ export async function sendConsignorSoldEmail(input: {
     to: input.to,
     forceDeliver: true,
     simpleLayout: true,
-    subjectOverride: `Sold — ${input.title}`,
+    subjectOverride: `Payout sent — ${input.title}`,
     vars: {
       customer_name: input.name,
       item_title: input.title,
-      winning_bid: formatCurrency(input.hammer),
+      winning_bid: formatCurrency(input.payout),
       payment_link: statement,
       lot_link: statement,
     },
-    htmlOverride: `<p>Good news, ${escapeHtml(input.name)} — your item sold.</p>
+    htmlOverride: `<p>${escapeHtml(input.name)}, your payout for this item is on the way.</p>
 <p>${escapeHtml(lot)}<strong>${escapeHtml(input.title)}</strong></p>
 <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="border-collapse:collapse;margin:16px 0;">${table}</table>
 <p style="font-size:14px;">${escapeHtml(consignmentCommissionNote())}</p>
-<p style="font-size:14px;">Payouts go out once the buyer has settled their invoice. The buyer's premium, GST, and any shipping the buyer pays are charges on their side and are not taken out of your share.</p>
+<p style="font-size:14px;">The buyer's premium, GST, and any shipping the buyer pays are charges on their side and are not taken out of your share.</p>
 <p><a href="${escapeHtml(statement)}" style="display:inline-block;background:#111111;color:#FFFFFF;padding:12px 18px;border:4px solid #000;font-weight:bold;text-decoration:none;">See your consignments</a></p>`,
   });
 }

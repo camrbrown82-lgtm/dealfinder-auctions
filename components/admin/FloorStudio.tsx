@@ -2,14 +2,17 @@
 
 import { createClient } from "@supabase/supabase-js";
 import { useEffect, useRef, useState } from "react";
+import { PosterInstallNote } from "@/components/admin/PosterInstallNote";
+import { queuePoster, type PosterResult } from "@/components/admin/posterClient";
 import { FLOOR_CLIPS_BUCKET, floorClipCaption, type FloorClip } from "@/lib/floorClips";
+import { clipJob, type PosterPlatform } from "@/lib/socialPost";
 
-const SOCIALS = [
-  { label: "YouTube", href: "https://www.youtube.com/upload" },
-  { label: "Facebook", href: "https://www.facebook.com/reels/create" },
-  { label: "TikTok", href: "https://www.tiktok.com/tiktokstudio/upload" },
-  { label: "Instagram", href: "https://www.instagram.com/" },
-] as const;
+const POST_NETWORKS: { platform: Exclude<PosterPlatform, "marketplace">; label: string }[] = [
+  { platform: "youtube", label: "YouTube" },
+  { platform: "facebook", label: "Facebook" },
+  { platform: "tiktok", label: "TikTok" },
+  { platform: "instagram", label: "Instagram" },
+];
 
 function cameraDenied(err: unknown) {
   const name = err instanceof DOMException ? err.name : "";
@@ -38,11 +41,13 @@ function ClipExport({
   localBlob,
   deleting,
   onDelete,
+  onPost,
 }: {
   clip: FloorClip;
   localBlob?: Blob | null;
   deleting: boolean;
   onDelete: (clip: FloorClip) => void;
+  onPost: (clip: FloorClip, platform: Exclude<PosterPlatform, "marketplace">) => void;
 }) {
   const [notice, setNotice] = useState("");
 
@@ -54,14 +59,6 @@ function ClipExport({
     link.download = file.name;
     link.click();
     URL.revokeObjectURL(href);
-  }
-
-  async function share(href: string) {
-    const caption = floorClipCaption(clip.title);
-    await navigator.clipboard.writeText(caption).catch(() => undefined);
-    await download();
-    window.open(href, "_blank", "noopener,noreferrer");
-    setNotice("Caption copied and the video file downloaded. Drop that file into the upload page that just opened.");
   }
 
   async function deviceShare() {
@@ -86,8 +83,8 @@ function ClipExport({
         <button type="button" className="comic-btn-invert" onClick={() => void deviceShare()}>
           Share file
         </button>
-        {SOCIALS.map((social) => (
-          <button key={social.label} type="button" className="comic-btn-invert" onClick={() => void share(social.href)}>
+        {POST_NETWORKS.map((social) => (
+          <button key={social.platform} type="button" className="comic-btn-invert" onClick={() => onPost(clip, social.platform)}>
             {social.label}
           </button>
         ))}
@@ -114,6 +111,8 @@ export function FloorStudio() {
   const [freshBlob, setFreshBlob] = useState<Blob | null>(null);
   const [freshId, setFreshId] = useState("");
   const [deletingId, setDeletingId] = useState("");
+  const [posterMissing, setPosterMissing] = useState(false);
+  const [postNotice, setPostNotice] = useState("");
 
   useEffect(() => {
     void fetch("/api/admin/stream")
@@ -263,6 +262,25 @@ export function FloorStudio() {
     }
   }
 
+  async function postClip(clip: FloorClip, platform: Exclude<PosterPlatform, "marketplace">) {
+    const result: PosterResult = await queuePoster(clipJob(platform, clip));
+    if (result === "missing") {
+      setPosterMissing(true);
+      setPostNotice("");
+      return;
+    }
+    setPosterMissing(false);
+    if (result === "profile") {
+      setPostNotice("Open DealFinder Poster options and connect the personal profile you post from, then try again.");
+      return;
+    }
+    if (result === "supabase") {
+      setPostNotice("Open DealFinder Poster options and connect Supabase, then try again.");
+      return;
+    }
+    setPostNotice(`Opened ${platform} for ${clip.title}. Check the form, then press that site's Post button.`);
+  }
+
   const clock = `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
   const latest = clips.find((clip) => clip.id === freshId) ?? null;
 
@@ -316,6 +334,8 @@ export function FloorStudio() {
           {phase === "saving" ? <p className="font-display text-2xl text-brand-red">Saving…</p> : null}
         </div>
         {error ? <p className="border-4 border-black bg-brand-red p-3 font-comic text-white">{error}</p> : null}
+        {postNotice ? <p className="font-comic text-sm">{postNotice}</p> : null}
+        {posterMissing ? <PosterInstallNote /> : null}
       </div>
 
       {latest ? (
@@ -327,6 +347,7 @@ export function FloorStudio() {
             localBlob={freshBlob}
             deleting={deletingId === latest.id}
             onDelete={(clip) => void removeClip(clip)}
+            onPost={(clip, platform) => void postClip(clip, platform)}
           />
         </div>
       ) : null}
@@ -342,6 +363,7 @@ export function FloorStudio() {
               localBlob={clip.id === freshId ? freshBlob : null}
               deleting={deletingId === clip.id}
               onDelete={(item) => void removeClip(item)}
+              onPost={(item, platform) => void postClip(item, platform)}
             />
           </div>
         ))}

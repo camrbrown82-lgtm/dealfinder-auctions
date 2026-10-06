@@ -77,6 +77,7 @@ export function useAdminDesk() {
 
 export function AdminDeskProvider({ children }: { children: ReactNode }) {
   const [authed, setAuthed] = useState<boolean | null>(null);
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [data, setData] = useState<AdminPayload | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -130,13 +131,17 @@ export function AdminDeskProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let cancelled = false;
     void (async () => {
-      try {
-        await fetch("/api/admin/login", { ...fetchOpts, method: "DELETE" });
-      } catch {
-        /* still show the lock */
-      }
+      // Restore an existing staff cookie. Do not sign out on mount — that
+      // kicked every other open admin tab (and made two staff share a lock).
+      const open = await sessionOk();
       if (cancelled) return;
-      await dropSession();
+      if (!open) {
+        await dropSession();
+        return;
+      }
+      const opened = await load();
+      if (cancelled) return;
+      if (opened === "unauth") await dropSession();
     })();
     return () => {
       cancelled = true;
@@ -152,7 +157,7 @@ export function AdminDeskProvider({ children }: { children: ReactNode }) {
         ...fetchOpts,
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ password }),
+        body: JSON.stringify({ email, password }),
       });
       const json = await response.json().catch(() => ({}));
       if (!response.ok) {
@@ -240,7 +245,8 @@ export function AdminDeskProvider({ children }: { children: ReactNode }) {
           <AdminDarkToggle />
         </div>
         <p className="font-comic text-sm">
-          Staff only. Type the admin password each time you open this desk — it is not saved in the browser.
+          Staff only. Sign in with a DealFinder staff email so personal bidder accounts stay off
+          this desk. More than one staff login can be open at the same time.
         </p>
         <input
           type="text"
@@ -252,6 +258,20 @@ export function AdminDeskProvider({ children }: { children: ReactNode }) {
           readOnly
         />
         <label className="block font-comic font-bold">
+          Staff email
+          <input
+            type="email"
+            name="df-admin-email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            className="mt-2 w-full border-4 border-black bg-white px-3 py-2"
+            required
+            autoFocus
+            autoComplete="username"
+            spellCheck={false}
+          />
+        </label>
+        <label className="block font-comic font-bold">
           Password
           <input
             type="password"
@@ -260,8 +280,7 @@ export function AdminDeskProvider({ children }: { children: ReactNode }) {
             onChange={(e) => setPassword(e.target.value)}
             className="mt-2 w-full border-4 border-black bg-white px-3 py-2"
             required
-            autoFocus
-            autoComplete="new-password"
+            autoComplete="current-password"
             autoCorrect="off"
             autoCapitalize="off"
             spellCheck={false}

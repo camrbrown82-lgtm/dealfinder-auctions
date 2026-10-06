@@ -53,6 +53,8 @@ export async function issueEndedAuctionInvoices() {
       .map((row) => mapLot(row as LotRow))
       .filter((lot) => {
         if (!lot.highBidderId && !lot.highBidder) return false;
+        // Buy Now already billed the buyer the moment they claimed it.
+        if (lot.saleSource === "buy_now" || lot.buyNowStatus === "sold") return false;
         if (seenLotIds.has(lot.id)) return false;
         seenLotIds.add(lot.id);
         return true;

@@ -8,6 +8,7 @@ import { persistPublicImageUrls } from "@/lib/consignmentStorage";
 import { getBidderSession } from "@/lib/bidderAuth";
 import type { SaleChannel } from "@/lib/saleChannel";
 import { sendAdminConsignmentAlertEmail, sendConsignmentReceivedEmail } from "@/lib/notify";
+import { pipelineFromLot, withLotMoney } from "@/lib/consignorPortal";
 import {
   DEFAULT_COMMISSION_RATE,
   MOCK_CONSIGNMENTS,
@@ -49,6 +50,7 @@ function titleKey(title: string) {
 }
 
 const PIPELINE_RANK: Record<ConsignorItem["pipelineStatus"], number> = {
+  paid_out: 5,
   sold: 4,
   live: 3,
   scheduled: 2,
@@ -134,23 +136,24 @@ export async function GET() {
     if (row.status === "approved" && !lot) {
       pipelineStatus = "scheduled";
     }
-    if (lot?.status === "paused" || lot?.status === "draft") pipelineStatus = "scheduled";
-    if (lot?.status === "live") pipelineStatus = "live";
-    if (lot?.status === "ended") pipelineStatus = "sold";
+    if (lot) pipelineStatus = pipelineFromLot(lot);
+    const clearedAt = String(row.consignor_cleared_at ?? lot?.consignor_cleared_at ?? "") || null;
 
-    return {
-      id: row.id,
-      title: row.title,
-      consignor: row.consignor_name,
-      pipelineStatus,
-      startingBid: Number(row.starting_bid ?? lot?.starting_bid ?? 0),
-      buyNowPrice: Number(row.buy_now_price ?? row.reserve_price ?? 0),
-      commissionRate: Number(row.commission_rate ?? DEFAULT_COMMISSION_RATE),
-      saleChannel,
-      charity: row.is_charity === true,
-      lotNumber: lot?.lot_number ? String(lot.lot_number) : null,
-      lotHref: lot ? `/auctions/${encodeURIComponent(String(lot.slug || lot.id))}` : null,
-    };
+    return withLotMoney(
+      {
+        id: String(row.id),
+        title: String(row.title ?? "Item"),
+        consignor: String(row.consignor_name ?? ""),
+        pipelineStatus,
+        startingBid: Number(row.starting_bid ?? lot?.starting_bid ?? 0),
+        buyNowPrice: Number(row.buy_now_price ?? row.reserve_price ?? 0),
+        commissionRate: Number(row.commission_rate ?? DEFAULT_COMMISSION_RATE),
+        saleChannel,
+        charity: row.is_charity === true,
+      },
+      lot,
+      clearedAt,
+    );
   });
 
   const seen = new Set(items.map((item) => item.id));
@@ -161,20 +164,102 @@ export async function GET() {
     if (cid && seen.has(cid)) continue;
     if (seen.has(lot.id as string)) continue;
     seen.add(String(lot.id));
-    items.push({
-      id: String(lot.id),
-      title: String(lot.title ?? "Lot"),
-      consignor: String(lot.consignor_name ?? ""),
-      pipelineStatus: lot.status === "ended" ? "sold" : lot.status === "live" ? "live" : "scheduled",
-      startingBid: Number(lot.starting_bid ?? lot.current_bid ?? 0),
-      buyNowPrice: Number(lot.buy_now_price ?? lot.reserve_price ?? 0),
-      commissionRate: DEFAULT_COMMISSION_RATE,
-      lotNumber: lot.lot_number ? String(lot.lot_number) : null,
-      lotHref: `/auctions/${encodeURIComponent(String(lot.slug || lot.id))}`,
-    });
+    items.push(
+      withLotMoney(
+        {
+          id: String(lot.id),
+          title: String(lot.title ?? "Lot"),
+          consignor: String(lot.consignor_name ?? ""),
+          pipelineStatus: pipelineFromLot(lot),
+          startingBid: Number(lot.starting_bid ?? lot.current_bid ?? 0),
+          buyNowPrice: Number(lot.buy_now_price ?? lot.reserve_price ?? 0),
+          commissionRate: DEFAULT_COMMISSION_RATE,
+        },
+        lot,
+        lot.consignor_cleared_at ? String(lot.consignor_cleared_at) : null,
+      ),
+    );
   }
 
   return NextResponse.json({ source: "supabase", items: preferFiledItems(items) });
+}
+
+export async function PATCH(request: NextRequest) {
+  const session = await getBidderSession();
+  if (!session) {
+    return NextResponse.json({ error: "Log in to update your consignments." }, { status: 401 });
+  }
+  const body = (await request.json()) as { action?: string; ids?: string[] };
+  if (body.action !== "clear") {
+    return NextResponse.json({ error: "Unknown action." }, { status: 400 });
+  }
+  const ids = Array.from(new Set((body.ids ?? []).map((id) => String(id || "").trim()).filter(Boolean)));
+  if (ids.length === 0) {
+    return NextResponse.json({ error: "Pick at least one finished item to clear." }, { status: 400 });
+  }
+
+  const supabase = getSupabaseAdmin();
+  if (!isSupabaseConfigured || !supabase) {
+    return NextResponse.json({ ok: true, cleared: ids.length, source: "demo" });
+  }
+
+  const [queueRes, lotsById, lotsByCid] = await Promise.all([
+    supabase.from("consignments").select("*").in("id", ids),
+    supabase.from("lots").select("*").in("id", ids),
+    supabase.from("lots").select("*").in("consignment_id", ids),
+  ]);
+  if (queueRes.error || lotsById.error || lotsByCid.error) {
+    return NextResponse.json(
+      { error: queueRes.error?.message || lotsById.error?.message || lotsByCid.error?.message },
+      { status: 500 },
+    );
+  }
+  const lotRows = [...(lotsById.data ?? []), ...(lotsByCid.data ?? [])];
+
+  const ownedConsignments = (queueRes.data ?? []).filter((row) =>
+    ownsRow(session, {
+      owner_id: row.owner_id as string | null,
+      contact_email: row.contact_email as string | null,
+      consignor_name: row.consignor_name as string | null,
+    }),
+  );
+  const ownedLots = lotRows.filter((row) =>
+    ownsRow(session, { consignor_name: row.consignor_name as string | null }),
+  );
+  const now = new Date().toISOString();
+  const cleared: string[] = [];
+
+  for (const row of ownedConsignments) {
+    const lot = lotRows.find((item) => item.consignment_id === row.id);
+    const status = lot ? pipelineFromLot(lot) : row.status === "rejected" ? "rejected" : "scheduled";
+    if (status !== "paid_out" && status !== "rejected") continue;
+    const { error } = await supabase.from("consignments").update({ consignor_cleared_at: now }).eq("id", row.id);
+    if (error) {
+      return NextResponse.json(
+        { error: "Could not clear finished items. Apply the payout tracking migration, then try again." },
+        { status: 400 },
+      );
+    }
+    if (lot?.id) {
+      await supabase.from("lots").update({ consignor_cleared_at: now }).eq("id", lot.id);
+    }
+    cleared.push(String(row.id));
+  }
+
+  for (const lot of ownedLots) {
+    if (cleared.includes(String(lot.id))) continue;
+    if (pipelineFromLot(lot) !== "paid_out") continue;
+    const { error } = await supabase.from("lots").update({ consignor_cleared_at: now }).eq("id", lot.id);
+    if (error) {
+      return NextResponse.json(
+        { error: "Could not clear finished items. Apply the payout tracking migration, then try again." },
+        { status: 400 },
+      );
+    }
+    cleared.push(String(lot.id));
+  }
+
+  return NextResponse.json({ ok: true, cleared: cleared.length });
 }
 
 export async function POST(request: NextRequest) {

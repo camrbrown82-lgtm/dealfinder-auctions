@@ -83,7 +83,12 @@ export async function fetchLiveCatalog(): Promise<{
       lot.auctionNumber = row.event_id ? numbers.get(row.event_id) ?? null : lot.auctionNumber;
       return lot;
     })
-    .filter((lot) => lot.status !== "removed" && lot.status !== "draft")
+    .filter((lot) => {
+      if (lot.status === "removed" || lot.status === "draft") return false;
+      if (lot.buyNowStatus === "sold" || lot.saleSource === "buy_now") return false;
+      if (lot.status === "ended" && (lot.highBidder || lot.highBidderId)) return false;
+      return true;
+    })
     .map((lot) => {
       const event = events.find((row) => row.id === lot.eventId);
       const acceptsBids = event ? !event.archivedAt && saleKind(event) !== "past" : false;
