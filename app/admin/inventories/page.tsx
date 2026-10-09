@@ -1,29 +1,47 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useAdminDesk } from "@/components/admin/AdminDesk";
 import { AdminShell } from "@/components/admin/AdminShell";
 import { AuctionCalendarModal } from "@/components/admin/AuctionCalendar";
 import { AuctionInventories } from "@/components/admin/AuctionInventories";
 import { HouseCatalogSettings } from "@/components/admin/HouseCatalogSettings";
 import { RelistLotsModal } from "@/components/admin/RelistLotsModal";
-import { ResetTestData } from "@/components/admin/ResetTestData";
 import { DEFAULT_HOUSE_STARTING_BID } from "@/lib/houseDesk";
 import { listingGradeOf } from "@/lib/listingGrade";
 import { openAuctionEvents } from "@/lib/auctionCalendar";
-import { lotIsUnsoldOrNoBid } from "@/lib/settlements";
+import { lotIsUnsoldOrNoBid, lotWasSold } from "@/lib/settlements";
 import type { AuctionLot } from "@/lib/utils";
+
+type InventoryFilter = "all" | "unsold";
+const FILTER_KEY = "df_auction_inventory_filter";
+
+function readSavedFilter(): InventoryFilter {
+  if (typeof window === "undefined") return "all";
+  const value = window.localStorage.getItem(FILTER_KEY);
+  if (value === "unsold" || value === "all") return value;
+  return "all";
+}
 
 export default function AdminInventoriesPage() {
   const { data, setNotice, setError, mutate } = useAdminDesk();
   const [search, setSearch] = useState("");
   const [filingLots, setFilingLots] = useState<AuctionLot[]>([]);
   const [showArchived, setShowArchived] = useState(false);
-  const [filter, setFilter] = useState<"all" | "unsold">("all");
+  const [filter, setFilter] = useState<InventoryFilter>("all");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [relistOpen, setRelistOpen] = useState(false);
   const [relistBusy, setRelistBusy] = useState(false);
   const [relistError, setRelistError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const saved = readSavedFilter();
+    if (saved !== "all") setFilter(saved);
+  }, []);
+
+  useEffect(() => {
+    window.localStorage.setItem(FILTER_KEY, filter);
+  }, [filter]);
 
   function toggleOne(id: string, checked: boolean) {
     setSelectedIds((current) => {
@@ -83,7 +101,9 @@ export default function AdminInventoriesPage() {
 
   const filteredInventory = useMemo(() => {
     const q = search.trim().toLowerCase();
-    let list = data.inventory.filter((lot) => lot.saleChannel !== "buy_now");
+    let list = data.inventory.filter(
+      (lot) => lot.saleChannel !== "buy_now" && !lotWasSold(lot) && lot.saleSource !== "buy_now" && lot.buyNowStatus !== "sold",
+    );
     if (filter === "unsold") list = list.filter(lotIsUnsoldOrNoBid);
     if (!q) return list;
     return list.filter(
@@ -156,9 +176,8 @@ export default function AdminInventoriesPage() {
   return (
     <AdminShell
       title="Auction inventories"
-      subtitle="File lots into a weekly sale. When a sale ends, unsold lots come back to the warehouse so you can relist them. Create auctions and terms on Auction desk."
+      subtitle="Unsold lots stay here. A sale moves the lot to Settlements. When a sale ends, unsold lots come back to the warehouse so you can relist them."
     >
-      <ResetTestData />
       <HouseCatalogSettings
         settings={
           data.houseSettings ?? {

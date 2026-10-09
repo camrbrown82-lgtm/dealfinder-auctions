@@ -7,6 +7,7 @@ import { structuredIncrement } from "@/lib/bidIncrements";
 import { getSupabaseAdmin, isSupabaseConfigured } from "@/lib/supabaseClient";
 import { isProfileComplete, type BidderProfile } from "@/lib/profileTypes";
 import { patchLotRow } from "@/lib/openFloor";
+import { notifyBuyNowPurchase } from "@/lib/buyNowPurchase";
 import { recordSoldLotSettlement } from "@/lib/recordSale";
 import { notifyOutbid } from "@/lib/notifyOutbid";
 import { mapLot, type LotRow } from "@/lib/mappers";
@@ -268,7 +269,8 @@ async function persistDemo(
       inventory.endsAt = demo.endsAt;
       inventory.highBidder = bidder;
       inventory.highBidderId = bidderId;
-      await recordSoldLotSettlement(inventory, session, inventory.auctionNumber, "buy_now");
+      await recordSoldLotSettlement(inventory, session, inventory.auctionNumber, "buy_now", { notify: false });
+      await notifyBuyNowPurchase(inventory, session);
     }
     return NextResponse.json({
       currentBid: demo.currentBid,
@@ -481,7 +483,8 @@ async function persistSupabase(
         sold.auctionNumber = event?.auction_number ?? sold.auctionNumber;
       }
       sold.saleSource = "buy_now";
-      await recordSoldLotSettlement(sold, session, sold.auctionNumber, "buy_now");
+      await recordSoldLotSettlement(sold, session, sold.auctionNumber, "buy_now", { notify: false });
+      await notifyBuyNowPurchase(sold, session);
       return NextResponse.json({
         currentBid: buyNow,
         endsAt: endedAt,

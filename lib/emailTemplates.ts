@@ -301,6 +301,20 @@ The $10 handling fee is separate from this postage. We will email tracking when 
 DealFinder Auctions
 529 Gateway Rd NE, Airdrie, AB T4B 0J6`,
   },
+  {
+    id: "order_shipped",
+    name: "Order shipped",
+    subject: "Your DealFinder order is on the way — {{item_title}}",
+    body: `Hi {{customer_name}},
+
+Your order {{item_title}} has left the Airdrie desk.
+
+Postage: {{winning_bid}}
+Tracking: {{item_list}}
+
+DealFinder Auctions
+529 Gateway Rd NE, Airdrie, AB T4B 0J6`,
+  },
 ];
 
 export function slugifyTemplateId(name: string) {

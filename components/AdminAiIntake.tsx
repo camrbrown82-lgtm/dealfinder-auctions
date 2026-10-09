@@ -18,11 +18,13 @@ import type { SlothPhotoPhase } from "@/lib/turboSloth";
 export function AdminAiIntake({
   suggestedLotNumber,
   defaultStartingBid,
+  defaultEventId,
   onPosted,
   workspace = false,
 }: {
   suggestedLotNumber: string;
   defaultStartingBid: number;
+  defaultEventId?: string;
   workspace?: boolean;
   onPosted: (message: string, lot?: { id: string; title: string; lotNumber?: string | null }) => Promise<void> | void;
 }) {
@@ -36,7 +38,6 @@ export function AdminAiIntake({
   const [startingBid, setStartingBid] = useState(String(defaultStartingBid));
   const [startingTouched, setStartingTouched] = useState(false);
   const [reservePrice, setReservePrice] = useState("");
-  const buyNowTouched = useRef(false);
   const [marketValue, setMarketValue] = useState("");
   const [lotNumber, setLotNumber] = useState(suggestedLotNumber);
   const [error, setError] = useState<string | null>(null);
@@ -102,9 +103,6 @@ export function AdminAiIntake({
       setDescription(String(catalog.description ?? ""));
       if (catalog.estimated_market_value) {
         setMarketValue(String(catalog.estimated_market_value));
-        // Every lot should carry a Buy Now price so it lands in the store too.
-        // A price typed by hand is never overwritten.
-        if (!buyNowTouched.current) setReservePrice(String(catalog.estimated_market_value));
       }
       setCompsNote(catalog.comps_note ? String(catalog.comps_note) : null);
       let run = catalog.ai ?? null;
@@ -173,6 +171,7 @@ export function AdminAiIntake({
           lotNumber,
           postLive,
           saleChannel,
+          eventId: defaultEventId || undefined,
         }),
       });
       const json = await response.json();
@@ -192,7 +191,6 @@ export function AdminAiIntake({
       setAiRun(null);
       setItemDetails("");
       setListingGrade("Used");
-      buyNowTouched.current = false;
       const sale = json.auctionLabel ?? "the next weekly sale";
       const store = reserve > 0 ? " and into Buy Now" : "";
       await onPosted(
@@ -310,10 +308,7 @@ export function AdminAiIntake({
                 type="number"
                 min={0}
                 value={reservePrice}
-                onChange={(e) => {
-                  buyNowTouched.current = true;
-                  setReservePrice(e.target.value);
-                }}
+                onChange={(e) => setReservePrice(e.target.value)}
                 className="mt-2 w-full border-4 border-black bg-white px-3 py-2 font-normal"
               />
               <span className="mt-1 block font-normal">

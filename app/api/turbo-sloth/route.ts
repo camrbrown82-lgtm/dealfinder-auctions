@@ -43,7 +43,7 @@ export async function POST(request: NextRequest) {
     body: JSON.stringify({
       model: TURBO_SLOTH_MODEL,
       temperature: 0.2,
-      max_tokens: 500,
+      max_tokens: 700,
       messages: [{ role: "system", content: turboSlothSystemPrompt(officialRules) }, ...messages],
     }),
   });

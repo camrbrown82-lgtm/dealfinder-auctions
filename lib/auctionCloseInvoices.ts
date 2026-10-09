@@ -1,5 +1,6 @@
 import { settleEndedAuctions } from "@/lib/closeEndedLots";
 import { mapLot, type LotRow } from "@/lib/mappers";
+import { saleSettlesInCash, stampInvoiceEmailed } from "@/lib/invoiceMail";
 import { sendWinInvoiceEmail } from "@/lib/notify";
 import { invoiceFees } from "@/lib/invoiceFees";
 import { settlementInvoice } from "@/lib/payments";
@@ -139,7 +140,11 @@ export async function issueEndedAuctionInvoices() {
         .select("batch_invoice_sent_at")
         .eq("invoice_number", invoice)
         .maybeSingle();
-      if (!existing?.batch_invoice_sent_at && email) {
+      const cashSale =
+        prior?.paymentChannel === "cash" ||
+        prior?.payment === "cash_pending" ||
+        (await saleSettlesInCash(first.highBidderId, eventId));
+      if (!existing?.batch_invoice_sent_at && email && !cashSale) {
         const mailLines = lines.map((lot) => ({
           title: lot.title,
           lotNumber: lot.lotNumber ?? null,
@@ -158,13 +163,7 @@ export async function issueEndedAuctionInvoices() {
           batch: true,
           lots: mailLines,
         });
-        await supabase
-          .from("settlement_invoices")
-          .update({
-            batch_invoice_sent_at: new Date().toISOString(),
-            win_email_sent_at: new Date().toISOString(),
-          })
-          .eq("invoice_number", invoice);
+        await stampInvoiceEmailed(invoice);
         invoiced += 1;
       }
       const winnerIds = Array.from(

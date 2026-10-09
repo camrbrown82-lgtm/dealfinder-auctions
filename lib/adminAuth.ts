@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { createHmac, timingSafeEqual } from "crypto";
+import { BIDDER_COOKIE, readBidderId } from "@/lib/bidderCookie";
 import { SITE } from "@/lib/site";
 
 export const ADMIN_COOKIE = "df_admin";
@@ -47,21 +48,31 @@ function equalToken(offered: string, expected: string) {
   return timingSafeEqual(a, b);
 }
 
-/** Legacy shared token, kept so an already-open desk is not kicked out. */
-export function adminSessionToken() {
-  return createHmac("sha256", adminPassword()).update("dealfinder-admin").digest("hex");
-}
-
 export function adminSessionValue(email: string) {
   const clean = email.trim().toLowerCase();
   return `${signAdminEmail(clean)}.${encodeEmail(clean)}`;
 }
 
+export function adminCookieOptions() {
+  return {
+    httpOnly: true,
+    sameSite: "lax" as const,
+    secure: process.env.NODE_ENV === "production",
+    path: "/",
+  };
+}
+
+/** A paddle signed in on this browser. The desk must not ride along with it. */
+export function bidderSignedIn() {
+  return Boolean(readBidderId(cookies().get(BIDDER_COOKIE)?.value));
+}
+
 export function adminSessionEmail() {
+  if (bidderSignedIn()) return null;
   const value = cookies().get(ADMIN_COOKIE)?.value;
   if (!value) return null;
   const dot = value.indexOf(".");
-  if (dot === -1) return equalToken(value, adminSessionToken()) ? SITE.email.toLowerCase() : null;
+  if (dot === -1) return null;
   const email = decodeEmail(value.slice(dot + 1));
   if (!isStaffEmail(email)) return null;
   return equalToken(value.slice(0, dot), signAdminEmail(email)) ? email : null;
@@ -69,6 +80,11 @@ export function adminSessionEmail() {
 
 export function isAdminSession() {
   return Boolean(adminSessionEmail());
+}
+
+export function clearAdminCookie(response: NextResponse) {
+  response.cookies.set(ADMIN_COOKIE, "", { ...adminCookieOptions(), maxAge: 0 });
+  return response;
 }
 
 export function unauthorized() {

@@ -7,7 +7,7 @@ import {
 } from "@/lib/commission";
 import { escapeHtml } from "@/lib/emailHtml";
 import { DEFAULT_COMMISSION_RATE, formatCurrency } from "@/lib/utils";
-import { invoiceFees, type InvoiceFeeBreakdown } from "@/lib/invoiceFees";
+import { invoiceFees, SHIPPING_HANDLING_FEE, type InvoiceFeeBreakdown } from "@/lib/invoiceFees";
 import { PICKUP_INSTRUCTIONS } from "@/lib/payments";
 import { SITE, adminNotifyEmail } from "@/lib/site";
 import { sendTransactionalEmail } from "@/lib/transactionalEmail";
@@ -1082,6 +1082,40 @@ export async function sendShippingQuoteEmail(input: {
 Parcel: ${escapeHtml(size)}<br/>
 Lots: ${escapeHtml(lotList)}</p>
 <p>The $10 handling fee is separate from this postage. We will email tracking when the parcel is on its way.</p>
+<p>${escapeHtml(SITE.addressLine)}, ${escapeHtml(SITE.cityLine)}</p>`,
+  });
+}
+
+export async function sendOrderShippedEmail(input: {
+  to: string;
+  name: string;
+  invoice: string;
+  postage: number;
+  tracking: string;
+  lots: string[];
+}) {
+  const lotList = input.lots.filter(Boolean).join(", ") || "your lots";
+  const tracking = input.tracking.trim() || "The desk has not entered a tracking number yet.";
+  return sendTransactionalEmail({
+    templateId: "order_shipped",
+    to: input.to,
+    forceDeliver: true,
+    simpleLayout: true,
+    vars: {
+      customer_name: input.name || "there",
+      item_title: input.invoice,
+      winning_bid: formatCurrency(input.postage),
+      item_list: tracking,
+      payment_link: `${publicAppUrl()}/checkout`,
+      lot_link: `${publicAppUrl()}/checkout`,
+    },
+    subjectOverride: `Your DealFinder order is on the way — ${input.invoice}`,
+    htmlOverride: `<p>Hi ${escapeHtml(input.name || "there")},</p>
+<p>Your order <strong>${escapeHtml(input.invoice)}</strong> has left the Airdrie desk.</p>
+<p>Lots: ${escapeHtml(lotList)}<br/>
+Postage: <strong>${escapeHtml(formatCurrency(input.postage))}</strong><br/>
+Handling: <strong>${escapeHtml(formatCurrency(SHIPPING_HANDLING_FEE))}</strong><br/>
+Tracking: <strong>${escapeHtml(tracking)}</strong></p>
 <p>${escapeHtml(SITE.addressLine)}, ${escapeHtml(SITE.cityLine)}</p>`,
   });
 }

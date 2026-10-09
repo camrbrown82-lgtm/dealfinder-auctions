@@ -2,7 +2,8 @@ import { bidderSettlesInCash } from "@/lib/auctionRegistrations";
 import { demoSettlementInvoices, upsertDemoInvoice } from "@/lib/demoSettlementStore";
 import { markDemoLotPaid } from "@/lib/demoAuctionStore";
 import { invoiceFees } from "@/lib/invoiceFees";
-import { sendAdminCashApprovalEmail, sendCashReceiptEmail } from "@/lib/notify";
+import { sendCashPickupInvoice } from "@/lib/invoiceMail";
+import { sendAdminCashApprovalEmail } from "@/lib/notify";
 import { mapInvoiceRow, upsertSettlementInvoice } from "@/lib/settlementDb";
 import type { SettlementInvoiceRecord } from "@/lib/settlementRecords";
 import { getSupabaseAdmin, isSupabaseConfigured } from "@/lib/supabaseClient";
@@ -116,15 +117,7 @@ export async function resolveCashRequest(invoice: string, approve: boolean) {
           .eq("id", lot.id);
       }
     }
-    if (row.email) {
-      void sendCashReceiptEmail({
-        to: row.email,
-        name: row.name,
-        title: row.lots.map((lot) => lot.title).join(", "),
-        invoice: row.invoice,
-        total: row.total,
-      });
-    }
+    void sendCashPickupInvoice(row);
     return row;
   }
 
@@ -132,6 +125,41 @@ export async function resolveCashRequest(invoice: string, approve: boolean) {
   row.paymentChannel = "helcim";
   row.notes = [row.notes, "Cash request rejected — pay with Helcim."].filter(Boolean).join(" ");
   await persist(row);
+  return row;
+}
+
+/** Staff mark a card or cash sale paid at the desk. Pickup stays separate. */
+export async function markInvoicePaidInCash(seed: SettlementInvoiceRecord) {
+  const supabase = getSupabaseAdmin();
+  let row: SettlementInvoiceRecord | null = null;
+  if (isSupabaseConfigured && supabase) {
+    const { data } = await supabase
+      .from("settlement_invoices")
+      .select("*")
+      .eq("invoice_number", seed.invoice)
+      .maybeSingle();
+    row = data ? mapInvoiceRow(data as Record<string, unknown>) : null;
+  } else {
+    row = demoSettlementInvoices().find((item) => item.invoice === seed.invoice) ?? null;
+  }
+  if (!row) {
+    row = { ...seed, payment: seed.payment ?? "unpaid" };
+  }
+  if (row.payment === "paid" && row.paymentChannel !== "cash") {
+    throw new Error("This invoice is already paid.");
+  }
+  const paidAt = new Date().toISOString();
+  row.payment = "paid";
+  row.paymentChannel = "cash";
+  row.notes = [row.notes, "Marked paid in cash."].filter(Boolean).join(" ");
+  await persist(row);
+  for (const lot of row.lots) {
+    if (!lot.id) continue;
+    markDemoLotPaid(lot.id, `cash-${row.invoice}`);
+    if (isSupabaseConfigured && supabase) {
+      await supabase.from("lots").update({ paid_at: paidAt }).eq("id", lot.id);
+    }
+  }
   return row;
 }
 

@@ -226,7 +226,7 @@ Desk inbox for new consignments and cash-approval requests. The nav badge polls 
 This document.
 
 ### 4.13 Redirects
-`/admin/exports` and `/admin/settlements` redirect to the Auction desk. Settlements work still lives on Auction desk + Pickup & shipping + Consignor tracking.
+`/admin/exports` redirects to the Auction desk. Settlements are their own page at `/admin/settlements`: pick a sale by end date, see who still owes or needs pickup, mark cash paid (including Buy Now), and export that sale to Excel.
 
 ---
 

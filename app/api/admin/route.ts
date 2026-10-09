@@ -867,15 +867,12 @@ export async function POST(request: NextRequest) {
     if (!title) {
       return NextResponse.json({ error: "Title is required." }, { status: 400 });
     }
-    // No Buy Now typed? Fall back to the market estimate so the lot still
-    // reaches the Buy Now store instead of sitting in the sale alone.
-    const buyNow =
-      Number(body.buyNowPrice ?? body.reservePrice) || Number(body.estimatedMarketValue) || 0;
+    const buyNow = Number(body.buyNowPrice ?? body.reservePrice) || 0;
     const starting = openingBid(body.startingBid, buyNow, 5);
     const listingGrade = parseListingGrade(body.listingGrade);
     const itemDetails = String(body.itemDetails ?? "").trim();
     const description = withListedGrade(body.description ?? "", listingGrade);
-    const alsoBuyNow = body.saleChannel === "buy_now" || buyNow > 0;
+    const alsoBuyNow = buyNow > 0;
     const saleChannel = "auction" as const;
     const sale = await resolveSaleEvent(supabase, demo, body.eventId);
     const status: LotStatus = "live";

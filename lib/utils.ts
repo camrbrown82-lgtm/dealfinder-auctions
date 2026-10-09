@@ -56,6 +56,11 @@ export type AuctionLot = {
   consignorPayout?: number | null;
   /** False when the lot's sale has already ended. */
   biddingOpen?: boolean;
+  ebayListingId?: string | null;
+  ebayOfferId?: string | null;
+  ebaySku?: string | null;
+  ebayListingUrl?: string | null;
+  ebayListedAt?: string | null;
 };
 
 export type AuctionEvent = {

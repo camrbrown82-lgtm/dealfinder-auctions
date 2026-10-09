@@ -21,7 +21,8 @@ import {
 } from "@/lib/settlementDb";
 import type { AuctionSettlement } from "@/lib/settlements";
 import { invoiceFees } from "@/lib/invoiceFees";
-import { resolveCashRequest } from "@/lib/cashPayment";
+import { markInvoicePaidInCash, resolveCashRequest } from "@/lib/cashPayment";
+import { sendCashPickupInvoice, sendShippedNotice } from "@/lib/invoiceMail";
 import { getSupabaseAdmin, isSupabaseConfigured } from "@/lib/supabaseClient";
 
 export const dynamic = "force-dynamic";
@@ -109,6 +110,13 @@ export async function PATCH(request: NextRequest) {
         row.fulfillment = current.fulfillment ?? "unset";
       }
       await upsertSettlementInvoice(supabase, row);
+      const previousShipping = current?.shipping;
+      if (row.shipping === "picked_up" && previousShipping !== "picked_up") {
+        void sendCashPickupInvoice(row);
+      }
+      if (row.shipping === "shipped" && previousShipping !== "shipped") {
+        void sendShippedNotice(row);
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : "Could not save invoice.";
       return NextResponse.json({ error: message }, { status: 400 });
@@ -124,9 +132,23 @@ export async function POST(request: NextRequest) {
   const body = (await request.json()) as {
     action?: string;
     invoice?: string;
+    record?: SettlementInvoiceRecord;
     sale?: AuctionSettlement;
     archiveInventory?: boolean;
   };
+  if (body.action === "markCashPaid") {
+    const seed = body.record;
+    if (!seed?.invoice) {
+      return NextResponse.json({ error: "invoice is required." }, { status: 400 });
+    }
+    try {
+      const invoice = await markInvoicePaidInCash(seed);
+      return NextResponse.json({ ok: true, invoice });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Could not mark this invoice paid.";
+      return NextResponse.json({ error: message }, { status: 400 });
+    }
+  }
   if (body.action === "approveCash" || body.action === "rejectCash") {
     if (!body.invoice) {
       return NextResponse.json({ error: "invoice is required." }, { status: 400 });

@@ -34,7 +34,17 @@ export function modelFromLabels(visibleText: string[]) {
 }
 
 export function resolveModel(claimed: string, visibleText: string[]) {
-  return modelFromLabels(visibleText) || confirmedModel(claimed, visibleText);
+  const fromLabel = modelFromLabels(visibleText);
+  if (fromLabel) return fromLabel;
+  const confirmed = confirmedModel(claimed, visibleText);
+  if (!confirmed) return "";
+  // "NON-PROTEIN" matches when "non" and "protein" each appear somewhere.
+  // Keep a negated phrase only when that exact phrase is printed.
+  if (/^(non|not|no)[- ]/i.test(confirmed)) {
+    const hay = identityMarkings(visibleText).join(" ").toLowerCase();
+    if (!hay.includes(confirmed.toLowerCase())) return "";
+  }
+  return confirmed;
 }
 
 export function identityMarkings(visibleText: string[]) {

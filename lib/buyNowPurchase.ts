@@ -1,4 +1,5 @@
 import { notifyConsignorSold } from "@/lib/consignorSold";
+import { saleSettlesInCash, stampInvoiceEmailed } from "@/lib/invoiceMail";
 import { sendWinInvoiceEmail } from "@/lib/notify";
 import { getAdminDemo } from "@/lib/demoAdminStore";
 import { getDemoLot, registerDemoLot } from "@/lib/demoAuctionStore";
@@ -144,30 +145,39 @@ async function notifyConsignorOfBuyNow(lot: AuctionLot) {
   }
 }
 
+export async function notifyBuyNowPurchase(lot: AuctionLot, session: BidderProfile) {
+  const invoice = await writeBuyNowInvoice(lot, session);
+  await emailBuyNowInvoice(lot, session, invoice);
+}
+
 async function emailBuyNowInvoice(
   lot: AuctionLot,
   session: BidderProfile,
   record: SettlementInvoiceRecord,
 ) {
   if (!session.email) return;
+  if (await saleSettlesInCash(session.id, lot.eventId)) return;
   const fees = invoiceFees({
     hammer: buyNowHammer(lot),
     fulfillment: record.fulfillment ?? "unset",
     shippingCost: record.shippingCost,
   });
-  await sendWinInvoiceEmail({
-    to: session.email,
-    name: session.fullName || session.email,
-    title: lot.title,
-    invoice: record.invoice,
-    lotId: lot.id,
-    slug: lot.slug,
-    fees,
-    fulfillment: record.fulfillment ?? "unset",
-    address: record.address,
-    lots: [{ title: lot.title, lotNumber: lot.lotNumber, hammer: buyNowHammer(lot) }],
-    subjectOverride: `Pay now — ${lot.title}`,
-  }).catch((error) => {
+  try {
+    await sendWinInvoiceEmail({
+      to: session.email,
+      name: session.fullName || session.email,
+      title: lot.title,
+      invoice: record.invoice,
+      lotId: lot.id,
+      slug: lot.slug,
+      fees,
+      fulfillment: record.fulfillment ?? "unset",
+      address: record.address,
+      lots: [{ title: lot.title, lotNumber: lot.lotNumber, hammer: buyNowHammer(lot) }],
+      subjectOverride: `Pay now — ${lot.title}`,
+    });
+    await stampInvoiceEmailed(record.invoice);
+  } catch (error) {
     console.error("emailBuyNowInvoice", error instanceof Error ? error.message : error);
-  });
+  }
 }

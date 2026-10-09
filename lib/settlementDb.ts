@@ -52,7 +52,7 @@ export function mapInvoiceRow(row: Record<string, unknown>): SettlementInvoiceRe
     payment: asPayment(row.payment_status),
     paymentChannel: row.payment_channel === "cash" ? "cash" : "helcim",
     shipping: asShipping(row.shipping_status),
-    notes: String(row.notes ?? ""),
+    notes: String(row.notes ?? "").replace(/\n?\[shipped-email\]/g, "").trim(),
     fulfillment:
       row.fulfillment === "ship" || row.fulfillment === "pickup" ? row.fulfillment : "unset",
     weightKg: Number(row.parcel_weight_kg ?? 0) || undefined,

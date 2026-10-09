@@ -315,6 +315,37 @@ ${tracking.trim() ? `<p>Tracking ${escapePrint(tracking.trim())}</p>` : ""}
               <p className="font-comic text-sm">{selected.email}</p>
               <p className="font-comic text-sm">{selected.phone}</p>
               <p className="font-comic text-sm">{selected.address || "No shipping address on the settlement."}</p>
+              {selected.payment === "paid" ? (
+                <p className="mt-3 font-comic text-sm font-bold">
+                  {selected.paymentChannel === "cash" ? "Paid in cash" : "Paid"}
+                </p>
+              ) : (
+                <button
+                  type="button"
+                  className="comic-btn mt-3"
+                  disabled={busy}
+                  onClick={() =>
+                    void fetch("/api/admin/settlements", {
+                      method: "POST",
+                      credentials: "include",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ action: "markCashPaid", record: selected }),
+                    })
+                      .then(async (response) => {
+                        const body = (await response.json()) as { error?: string };
+                        if (!response.ok) {
+                          setError(body.error || "Could not mark this invoice paid.");
+                          return;
+                        }
+                        setNotice(`${selected.name || "This invoice"} is marked paid in cash.`);
+                        await load();
+                      })
+                      .catch(() => setError("Could not mark this invoice paid."))
+                  }
+                >
+                  Mark paid in cash
+                </button>
+              )}
               <div className="mt-3 space-y-2">
                 {selected.lots.length ? (
                   selected.lots.map((lot) => <LotFace key={lot.id || lot.title} lot={lot} />)

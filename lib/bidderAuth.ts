@@ -1,6 +1,6 @@
 import { cookies } from "next/headers";
-import { createHmac, timingSafeEqual } from "crypto";
 import { NextResponse } from "next/server";
+import { BIDDER_COOKIE, readBidderId, signBidderId } from "@/lib/bidderCookie";
 import { getDemoUser, publicProfile } from "@/lib/demoUsers";
 import { normalizePaymentMethod, type BidderProfile } from "@/lib/profileTypes";
 import { BID_PREAUTH_AMOUNT } from "@/lib/helcimCopy";
@@ -8,28 +8,16 @@ import { loadBidderPayment, loadTermsAgreed } from "@/lib/helcim";
 import { isAuthEmailConfirmed, loadAuthUser } from "@/lib/authEmail";
 import { getSupabaseAdmin, isSupabaseConfigured } from "@/lib/supabaseClient";
 
-export const BIDDER_COOKIE = "df_bidder";
+export { BIDDER_COOKIE, readBidderId, signBidderId };
 
-function secret() {
-  return process.env.ADMIN_PASSWORD || "hammer";
-}
-
-export function signBidderId(userId: string) {
-  const mac = createHmac("sha256", secret()).update(userId).digest("hex");
-  return `${userId}.${mac}`;
-}
-
-export function readBidderId(token: string | undefined) {
-  if (!token) return null;
-  const dot = token.lastIndexOf(".");
-  if (dot <= 0) return null;
-  const userId = token.slice(0, dot);
-  const mac = token.slice(dot + 1);
-  const expected = createHmac("sha256", secret()).update(userId).digest("hex");
-  const a = Buffer.from(mac);
-  const b = Buffer.from(expected);
-  if (a.length !== b.length || !timingSafeEqual(a, b)) return null;
-  return userId;
+function dropAdminCookie(response: NextResponse) {
+  response.cookies.set("df_admin", "", {
+    httpOnly: true,
+    sameSite: "lax",
+    path: "/",
+    maxAge: 0,
+    secure: process.env.NODE_ENV === "production",
+  });
 }
 
 export function setBidderCookie(response: NextResponse, userId: string) {
@@ -40,11 +28,13 @@ export function setBidderCookie(response: NextResponse, userId: string) {
     maxAge: 60 * 60 * 24 * 30,
     secure: process.env.NODE_ENV === "production",
   });
+  dropAdminCookie(response);
   return response;
 }
 
 export function clearBidderCookie(response: NextResponse) {
   response.cookies.delete(BIDDER_COOKIE);
+  dropAdminCookie(response);
   return response;
 }
 

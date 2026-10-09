@@ -5,6 +5,7 @@ import { identifyLotProduct } from "@/lib/identifyProduct";
 import { catalogTitle, resolveModel } from "@/lib/lotIdentity";
 import { parseListingGrade } from "@/lib/listingGrade";
 import { processListingPhotos } from "@/lib/processListingPhotos";
+import { findGeneratedListing, listingSku, saveGeneratedListing, type ScrapedProduct } from "@/lib/productListings";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
@@ -103,12 +104,14 @@ async function collectIntake(request: NextRequest) {
       photoUrls?: unknown;
       itemDetails?: unknown;
       listingGrade?: unknown;
+      sku?: unknown;
     };
     const list = body.imageUrls ?? body.photoUrls ?? [];
     return {
       imageUrls: Array.isArray(list) ? list.map(String).filter(Boolean) : [],
       itemDetails: String(body.itemDetails ?? "").trim(),
       listingGrade: parseListingGrade(body.listingGrade),
+      sku: String(body.sku ?? "").trim(),
     };
   }
 
@@ -135,6 +138,7 @@ async function collectIntake(request: NextRequest) {
     imageUrls: [...fromFields, ...fromFiles].slice(0, 4),
     itemDetails: String(form.get("itemDetails") ?? "").trim(),
     listingGrade: parseListingGrade(form.get("listingGrade")),
+    sku: String(form.get("sku") ?? "").trim(),
   };
 }
 
@@ -151,6 +155,17 @@ export async function POST(request: NextRequest) {
   const imageUrls = intake.imageUrls;
   const itemDetails = intake.itemDetails;
   const listingGrade = intake.listingGrade;
+  const scraped: ScrapedProduct = {
+    sku: intake.sku,
+    imageUrls,
+    itemDetails,
+    listingGrade,
+  };
+  const sku = listingSku(scraped);
+  const cached = await findGeneratedListing(sku);
+  if (cached) {
+    return NextResponse.json({ ...cached, cached: true });
+  }
   if (imageUrls.length === 0) {
     return NextResponse.json(
       { error: "Provide at least one photo URL in imageUrls (or upload images)." },
@@ -277,7 +292,9 @@ export async function POST(request: NextRequest) {
   }
 
   model = resolveModel(model, visibleText);
-  title = catalogTitle({ maker, model, objectType, color }) || title;
+  if (!title || title === "Untitled lot") {
+    title = catalogTitle({ maker, model, objectType, color }) || title;
+  }
   description = composeDescription({ ...parsed, description }, { maker, model, color, itemDetails, listingGrade });
 
   let pricing = {
@@ -305,7 +322,7 @@ export async function POST(request: NextRequest) {
     photoBrief = `Generate a new square auction listing photograph of ${title}, full object, three-quarter view, cream paper sweep, no warehouse background.`;
   }
 
-  return NextResponse.json({
+  const generated = {
     title,
     description,
     object_type: objectType,
@@ -320,7 +337,9 @@ export async function POST(request: NextRequest) {
     hero_index: heroIndex,
     ai: {
       ids: [completion.id, ...identifyIds, ...(pricing.openaiIds ?? [])].filter(Boolean),
-      features: ["catalog", "comps"],
+      features: ["catalog", "comps"] as Array<"catalog" | "comps">,
     },
-  });
+  };
+  await saveGeneratedListing(sku, scraped, generated);
+  return NextResponse.json(generated);
 }

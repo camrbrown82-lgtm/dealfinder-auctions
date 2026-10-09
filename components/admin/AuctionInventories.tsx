@@ -53,22 +53,23 @@ export function AuctionInventories({
         empty="No lots waiting. Ended unsold items and new warehouse stock show up here."
       />
       {filingEvents.map((event) => {
-        const grouped = sortLotsByNumber(lots.filter((lot) => lot.eventId === event.id));
-        return (
-          <AuctionLotGroup
-            key={event.id}
-            title={`${event.auctionNumber ? `${event.auctionNumber} · ` : ""}${event.name}`}
-            subtitle={`${new Date(event.startsAt).toLocaleString()} → ${new Date(event.endsAt).toLocaleString()} · ${grouped.length} lots`}
-            lots={grouped}
-            selectedIds={selectedIds}
-            onToggle={onToggle}
-            onToggleGroup={onToggleGroup}
-            onMoveToSale={onMoveToSale}
-            onRemove={onRemove}
-            onDeleteLot={onDeleteLot}
-          />
-        );
-      })}
+            const grouped = sortLotsByNumber(lots.filter((lot) => lot.eventId === event.id));
+            if (!grouped.length && new Date(event.endsAt).getTime() <= Date.now()) return null;
+            return (
+              <AuctionLotGroup
+                key={event.id}
+                title={`${event.auctionNumber ? `${event.auctionNumber} · ` : ""}${event.name}`}
+                subtitle={`${new Date(event.startsAt).toLocaleString()} → ${new Date(event.endsAt).toLocaleString()} · ${grouped.length} lots`}
+                lots={grouped}
+                selectedIds={selectedIds}
+                onToggle={onToggle}
+                onToggleGroup={onToggleGroup}
+                onMoveToSale={onMoveToSale}
+                onRemove={onRemove}
+                onDeleteLot={onDeleteLot}
+              />
+            );
+          })}
     </div>
   );
 }

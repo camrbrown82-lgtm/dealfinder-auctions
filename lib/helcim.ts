@@ -549,6 +549,12 @@ async function syncSettlementPayment(lotId: string) {
         ...(next === "paid" ? { payment_channel: "helcim" } : {}),
       })
       .eq("invoice_number", raw.invoice_number);
+    if (next === "paid") {
+      const { sendOnlinePaymentInvoice } = await import("@/lib/invoiceMail");
+      void sendOnlinePaymentInvoice(String(raw.invoice_number)).catch((error) => {
+        console.error("sendOnlinePaymentInvoice", error instanceof Error ? error.message : error);
+      });
+    }
   }
 }
 

@@ -87,7 +87,11 @@ export function AdminDeskProvider({ children }: { children: ReactNode }) {
 
   async function sessionOk() {
     const response = await fetch("/api/admin/login", fetchOpts);
-    return response.ok;
+    if (response.ok) return true;
+    const json = await response.json().catch(() => ({}));
+    const message = readError(json, "");
+    if (message && message !== "Admin login required.") setError(message);
+    return false;
   }
 
   async function dropSession() {
@@ -245,8 +249,8 @@ export function AdminDeskProvider({ children }: { children: ReactNode }) {
           <AdminDarkToggle />
         </div>
         <p className="font-comic text-sm">
-          Staff only. Sign in with a DealFinder staff email so personal bidder accounts stay off
-          this desk. More than one staff login can be open at the same time.
+          Staff only. A customer login on this browser closes the desk. Log out of that paddle
+          before entering. Each staff browser keeps its own login.
         </p>
         <input
           type="text"

@@ -28,8 +28,8 @@ export function hasBuyNowPrice(lot: {
   return Number.isFinite(price) && price > 0;
 }
 
-/** Any unsold item carrying a Buy Now price lists on Buy Now, whichever auction
- *  it sits in and whenever that auction runs. It stays in the sale as well. */
+/** Only an explicit Buy Now listing. A price or auction channel on its own does not
+ *  put the lot in the store. Listed lots stay in their auction as well. */
 export function isListedBuyNow(lot: {
   saleChannel?: string | null;
   sale_channel?: string | null;
@@ -56,7 +56,7 @@ export function isListedBuyNow(lot: {
     lot.highBidder ?? lot.high_bidder ?? lot.highBidderId ?? lot.high_bidder_id,
   );
   if (lot.status === "ended" && won) return false;
-  return status === "listed" || isBuyNowChannel(lot) || hasBuyNowPrice(lot);
+  return status === "listed";
 }
 
 export function invoiceReadyForSale(lot: {

@@ -1,5 +1,15 @@
-import { redirect } from "next/navigation";
+"use client";
+
+import { AdminShell } from "@/components/admin/AdminShell";
+import { SettlementsDesk } from "@/components/admin/SettlementsDesk";
 
 export default function AdminSettlementsPage() {
-  redirect("/admin/auctions");
+  return (
+    <AdminShell
+      title="Settlements"
+      subtitle="One auction at a time. See who still owes, who needs to pick up, and who has paid. Mark cash when it comes in, including Buy Now."
+    >
+      <SettlementsDesk />
+    </AdminShell>
+  );
 }

@@ -1,19 +1,67 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { LotImage } from "@/components/LotImage";
 import { useAdminDesk } from "@/components/admin/AdminDesk";
 import { AdminShell } from "@/components/admin/AdminShell";
+import { EbayDesk } from "@/components/admin/EbayDesk";
+import { ListOnEbayButton } from "@/components/admin/ListOnEbayButton";
 import { PosterInstallNote } from "@/components/admin/PosterInstallNote";
 import { queuePoster } from "@/components/admin/posterClient";
 import { isListedBuyNow } from "@/lib/saleChannel";
 import { marketplaceJob } from "@/lib/socialPost";
+import type { SettlementInvoiceRecord } from "@/lib/settlementRecords";
 import { formatCurrency, lotImages, type AuctionLot } from "@/lib/utils";
 
 export default function AdminBuyNowPage() {
-  const { data, setNotice, mutate } = useAdminDesk();
+  const { data, setNotice, setError, load, mutate } = useAdminDesk();
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const ebay = params.get("ebay");
+    if (!ebay) return;
+    const messages: Record<string, string> = {
+      connected: "eBay is connected. Listing a Buy Now item reuses this login — you do not sign in per item.",
+      login: "Log into admin first, then Connect eBay.",
+      denied: "eBay access was denied.",
+      state: "eBay connect expired. Press Connect eBay again.",
+      error: params.get("detail") || "eBay connect failed.",
+    };
+    if (ebay === "connected") setNotice(messages.connected);
+    else setError(messages[ebay] || messages.error);
+    window.history.replaceState({}, "", window.location.pathname);
+  }, [setError, setNotice]);
   const [drafts, setDrafts] = useState<Record<string, { title: string; description: string; price: string }>>({});
   const [posterMissing, setPosterMissing] = useState(false);
+  const [soldUnpaid, setSoldUnpaid] = useState<SettlementInvoiceRecord[]>([]);
+
+  async function loadSold() {
+    const response = await fetch("/api/admin/settlements", { credentials: "include", cache: "no-store" });
+    const json = (await response.json()) as { invoices?: SettlementInvoiceRecord[] };
+    setSoldUnpaid(
+      (json.invoices ?? []).filter((row) => !row.eventId && row.payment !== "paid"),
+    );
+  }
+
+  useEffect(() => {
+    void loadSold();
+  }, []);
+
+  async function markCash(row: SettlementInvoiceRecord) {
+    const response = await fetch("/api/admin/settlements", {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "markCashPaid", record: row }),
+    });
+    const json = (await response.json()) as { error?: string };
+    if (!response.ok) {
+      setNotice(json.error || "Could not mark this Buy Now paid.");
+      return;
+    }
+    setNotice(`${row.name} is marked paid in cash.`);
+    await loadSold();
+  }
 
   async function postMarketplace(lot: AuctionLot) {
     const draft = draftFor(lot);
@@ -81,8 +129,29 @@ export default function AdminBuyNowPage() {
   return (
     <AdminShell
       title="Buy Now"
-      subtitle="Lots with a Buy Now price stay in the live auction and show here. Someone can bid, or pay the Buy Now price and take it off the floor."
+      subtitle="Lots with a Buy Now price stay in the live auction and show here. Someone can bid, or pay the Buy Now price and take it off the floor. List on eBay only if you check that box."
     >
+      <EbayDesk />
+      {soldUnpaid.length > 0 ? (
+        <section className="space-y-3">
+          <h2 className="font-display text-2xl">Sold, still unpaid</h2>
+          <p className="font-comic text-sm">Mark these Buy Now invoices paid when the cash comes in.</p>
+          {soldUnpaid.map((row) => (
+            <article key={row.invoice} className="comic-panel flex flex-wrap items-center justify-between gap-3 p-4">
+              <div>
+                <p className="font-display text-sm tracking-widest text-brand-red">{row.invoice}</p>
+                <p className="font-display text-2xl">{row.name}</p>
+                <p className="font-comic text-sm">
+                  {row.lots.map((lot) => lot.title).join(", ")} · {formatCurrency(row.total)}
+                </p>
+              </div>
+              <button type="button" className="comic-btn" onClick={() => void markCash(row)}>
+                Mark paid in cash
+              </button>
+            </article>
+          ))}
+        </section>
+      ) : null}
       {lots.length === 0 ? (
         <p className="comic-panel p-4 font-comic">
           No Buy Now inventory yet. Save warehouse stock to Buy Now, or approve a consignor Buy Now request.
@@ -165,6 +234,13 @@ export default function AdminBuyNowPage() {
                       Delete
                     </button>
                   </div>
+                  <ListOnEbayButton
+                    lot={lot}
+                    onDone={(message) => {
+                      setNotice(message);
+                      void load();
+                    }}
+                  />
                 </div>
               </article>
             );

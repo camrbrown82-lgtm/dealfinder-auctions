@@ -1,9 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
   ADMIN_COOKIE,
+  adminCookieOptions,
   adminPassword,
   adminSessionEmail,
   adminSessionValue,
+  bidderSignedIn,
+  clearAdminCookie,
   isStaffEmail,
   unauthorized,
 } from "@/lib/adminAuth";
@@ -13,20 +16,24 @@ import { timingSafeEqual } from "crypto";
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
+const paddleBlock = {
+  error:
+    "This browser is signed in as a bidder. Log out of that account before opening the desk. Customer and staff logins stay separate.",
+};
+
 export async function GET() {
+  if (bidderSignedIn()) {
+    const response = NextResponse.json(paddleBlock, { status: 401 });
+    clearAdminCookie(response);
+    response.headers.set("Cache-Control", "private, no-store");
+    return response;
+  }
   const email = adminSessionEmail();
   if (!email) return unauthorized();
   const response = NextResponse.json({ ok: true, email });
-  response.headers.set("Cache-Control", "no-store");
+  response.headers.set("Cache-Control", "private, no-store");
   return response;
 }
-
-const cookieOptions = {
-  httpOnly: true,
-  sameSite: "lax" as const,
-  secure: process.env.NODE_ENV === "production",
-  path: "/",
-};
 
 export async function POST(request: NextRequest) {
   const body = (await request.json()) as { email?: string; password?: string };
@@ -43,17 +50,23 @@ export async function POST(request: NextRequest) {
   if (!ok) {
     return NextResponse.json({ error: "Wrong password." }, { status: 401 });
   }
+  if (bidderSignedIn()) {
+    const response = NextResponse.json(paddleBlock, { status: 403 });
+    clearAdminCookie(response);
+    response.headers.set("Cache-Control", "private, no-store");
+    return response;
+  }
 
   await confirmStaffAuthEmail(email);
   const response = NextResponse.json({ ok: true, email });
-  // Per-staff cookie. Another admin can be signed in on a different browser at
-  // the same time — this does not replace their session.
-  response.cookies.set(ADMIN_COOKIE, adminSessionValue(email), cookieOptions);
+  response.cookies.set(ADMIN_COOKIE, adminSessionValue(email), adminCookieOptions());
+  response.headers.set("Cache-Control", "private, no-store");
   return response;
 }
 
 export async function DELETE() {
   const response = NextResponse.json({ ok: true });
-  response.cookies.set(ADMIN_COOKIE, "", { ...cookieOptions, maxAge: 0 });
+  clearAdminCookie(response);
+  response.headers.set("Cache-Control", "private, no-store");
   return response;
 }

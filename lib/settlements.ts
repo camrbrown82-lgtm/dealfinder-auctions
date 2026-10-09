@@ -261,16 +261,105 @@ export function mergePersistedInvoices(
       const lots = [...sale.invoices[index].lots];
       for (const lot of invoice.lots) {
         if (!lots.some((item) => item.id === lot.id)) lots.push(lot);
+        else {
+          const current = lots.find((item) => item.id === lot.id);
+          if (current && !current.image && lot.image) current.image = lot.image;
+        }
       }
+      const current = sale.invoices[index];
       sale.invoices[index] = withBuyerFees({
-        ...sale.invoices[index],
+        ...current,
+        email: current.email || invoice.email,
+        phone: current.phone || invoice.phone,
+        address: current.address && current.address !== "No shipping profile on file" ? current.address : invoice.address || current.address,
         lots,
-        fulfillment: invoice.fulfillment ?? sale.invoices[index].fulfillment,
-        shippingCost: invoice.shippingCost ?? sale.invoices[index].shippingCost,
+        fulfillment: invoice.fulfillment ?? current.fulfillment,
+        shippingCost: invoice.shippingCost ?? current.shippingCost,
       });
     } else {
       sale.invoices.push(buyer);
     }
   }
   return next.filter((row) => row.invoices.length > 0 || row.unsold.length > 0);
+}
+
+export const BUY_NOW_SETTLEMENT_ID = "buy-now";
+
+function isSettledBuyNow(lot: AuctionLot) {
+  return lot.saleSource === "buy_now" || lot.buyNowStatus === "sold";
+}
+
+/** Auction sales by end date, plus Buy Now as its own settlement. */
+export function settlementDeskSales(
+  events: AuctionEvent[],
+  lots: AuctionLot[],
+  customers: CustomerRow[],
+  invoices: SettlementInvoiceRecord[],
+): AuctionSettlement[] {
+  const buyNowLots = lots.filter(isSettledBuyNow);
+  const buyNowLotIds = new Set(buyNowLots.map((lot) => lot.id));
+  const buyNowInvoices = invoices.filter(
+    (row) => !row.eventId || row.lots.some((lot) => buyNowLotIds.has(lot.id)),
+  );
+  const buyNowInvoiceIds = new Set(buyNowInvoices.map((row) => row.invoice));
+  const auctionInvoices = invoices.filter((row) => !buyNowInvoiceIds.has(row.invoice));
+  const auctionSales = mergePersistedInvoices(
+    buildAuctionSettlements(
+      events,
+      lots.filter((lot) => !isSettledBuyNow(lot)),
+      customers,
+    ),
+    auctionInvoices,
+  );
+
+  const latest = buyNowLots.reduce((max, lot) => (lot.endsAt > max ? lot.endsAt : max), "");
+  const buyNowEvent: AuctionEvent = {
+    id: BUY_NOW_SETTLEMENT_ID,
+    name: "Buy Now",
+    auctionNumber: "BUY NOW",
+    startsAt: latest || new Date(0).toISOString(),
+    endsAt: latest || new Date().toISOString(),
+  };
+  const buyNowBuilt = mergePersistedInvoices(
+    buildAuctionSettlements(
+      [buyNowEvent],
+      buyNowLots.map((lot) => ({ ...lot, eventId: BUY_NOW_SETTLEMENT_ID })),
+      customers,
+    ),
+    buyNowInvoices.map((row) => ({ ...row, eventId: BUY_NOW_SETTLEMENT_ID })),
+  );
+  const buyNow = buyNowBuilt.find((sale) => sale.eventId === BUY_NOW_SETTLEMENT_ID);
+
+  const byId = new Map(auctionSales.map((sale) => [sale.eventId, sale]));
+  const fromEvents = [...events]
+    .sort((a, b) => new Date(b.endsAt).getTime() - new Date(a.endsAt).getTime())
+    .map(
+      (event) =>
+        byId.get(event.id) ?? {
+          eventId: event.id,
+          name: event.name,
+          auctionNumber: event.auctionNumber ?? event.name,
+          startsAt: event.startsAt,
+          endsAt: event.endsAt,
+          invoices: [],
+          unsold: [],
+        },
+    );
+  const unfiled = auctionSales.find((sale) => sale.eventId === "house-floor" && sale.invoices.length > 0);
+  const byCustomer = new Map(customers.map((row) => [row.id, row]));
+  const byCustomerName = new Map(customers.map((row) => [row.fullName.toLowerCase(), row]));
+
+  return [
+    ...(buyNow && buyNow.invoices.length > 0 ? [buyNow] : []),
+    ...fromEvents,
+    ...(unfiled ? [unfiled] : []),
+  ].map((sale) => ({
+    ...sale,
+    invoices: sale.invoices.map((invoice) => {
+      if (invoice.email || invoice.phone) return invoice;
+      const profile = byCustomer.get(invoice.buyerKey) || byCustomerName.get(invoice.name.toLowerCase());
+      if (!profile) return invoice;
+      return { ...invoice, email: profile.email, phone: profile.phone };
+    }),
+  }));
 }

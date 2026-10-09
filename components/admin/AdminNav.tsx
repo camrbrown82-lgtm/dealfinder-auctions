@@ -23,6 +23,7 @@ const GROUPS: NavGroup[] = [
       { href: "/admin/stream", label: "Floor stream" },
       { href: "/admin/buy-now", label: "Buy Now" },
       { href: "/admin/shipping", label: "Pickup & shipping" },
+      { href: "/admin/settlements", label: "Settlements" },
       { href: "/admin/consignments", label: "Consignment pipeline" },
       { href: "/operations-guide", label: "Operations guide" },
     ],

@@ -295,6 +295,7 @@ export function buildConsignorLedger(input: {
   const posted = new Set<string>();
 
   for (const row of input.consignments) {
+    if (isHouseConsignor(row.consignor)) continue;
     const name = (row.consignor || "").trim() || "Unnamed consignor";
     if (row.contactEmail && !emails.has(name)) emails.set(name, row.contactEmail);
     const lot = lotByConsignment.get(row.id);
@@ -307,10 +308,10 @@ export function buildConsignorLedger(input: {
     }
   }
 
-  // Lots cataloged straight at the desk never had a consignment row, but they
-  // still belong to whoever dropped them off.
+  // Lots filed at the desk without a consignment still belong to the person
+  // who dropped them off. House stock is inventory, not a consignment.
   for (const lot of input.lots) {
-    if (posted.has(lot.id)) continue;
+    if (posted.has(lot.id) || isHouseConsignor(lot.consignor)) continue;
     items.push(itemFromLot(lot, events));
   }
 

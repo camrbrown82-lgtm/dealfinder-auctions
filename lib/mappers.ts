@@ -44,6 +44,11 @@ export type LotRow = {
   payout_method?: string | null;
   payout_reference?: string | null;
   consignor_payout?: number | string | null;
+  ebay_listing_id?: string | null;
+  ebay_offer_id?: string | null;
+  ebay_sku?: string | null;
+  ebay_listing_url?: string | null;
+  ebay_listed_at?: string | null;
 };
 
 export type ConsignmentRow = {
@@ -128,6 +133,11 @@ export function mapLot(row: LotRow): AuctionLot {
     payoutMethod: row.payout_method ?? null,
     payoutReference: row.payout_reference ?? null,
     consignorPayout: Number(row.consignor_payout ?? 0) || null,
+    ebayListingId: row.ebay_listing_id ?? null,
+    ebayOfferId: row.ebay_offer_id ?? null,
+    ebaySku: row.ebay_sku ?? null,
+    ebayListingUrl: row.ebay_listing_url ?? null,
+    ebayListedAt: row.ebay_listed_at ?? null,
   };
 }
 
