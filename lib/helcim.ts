@@ -506,13 +506,14 @@ export async function markLotPaid(lotId: string, transactionId: string) {
   } else if (error && !/paid_at|helcim_purchase/i.test(error.message)) {
     return { paidAt, transactionId };
   }
-  await syncSettlementPayment(lotId);
-  return { paidAt, transactionId };
+  const invoices = await syncSettlementPayment(lotId);
+  return { paidAt, transactionId, invoices };
 }
 
 async function syncSettlementPayment(lotId: string) {
   const supabase = getSupabaseAdmin();
-  if (!isSupabaseConfigured || !supabase) return;
+  const paidInvoices: string[] = [];
+  if (!isSupabaseConfigured || !supabase) return paidInvoices;
   const matched = await supabase.from("settlement_invoices").select("*").contains("lots", [{ id: lotId }]);
   const rows =
     matched.error
@@ -549,13 +550,9 @@ async function syncSettlementPayment(lotId: string) {
         ...(next === "paid" ? { payment_channel: "helcim" } : {}),
       })
       .eq("invoice_number", raw.invoice_number);
-    if (next === "paid") {
-      const { sendOnlinePaymentInvoice } = await import("@/lib/invoiceMail");
-      void sendOnlinePaymentInvoice(String(raw.invoice_number)).catch((error) => {
-        console.error("sendOnlinePaymentInvoice", error instanceof Error ? error.message : error);
-      });
-    }
+    if (next === "paid") paidInvoices.push(String(raw.invoice_number));
   }
+  return paidInvoices;
 }
 
 export function lotPaidRecord(lotId: string) {

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { bidderUnauthorized, getBidderSession } from "@/lib/bidderAuth";
+import { sendOnlinePaymentInvoice } from "@/lib/invoiceMail";
 import { approveHelcimBidAuth } from "@/lib/auctionRegistrations";
 import {
   clientIp,
@@ -107,7 +108,16 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Missing lot for this Helcim purchase." }, { status: 400 });
     }
     const paid = await markLotPaid(stored.lotId, transactionId);
-    if (stored.invoiceNumber) await markSettlementPaid(stored.invoiceNumber);
+    const invoices = new Set(paid.invoices ?? []);
+    if (stored.invoiceNumber) {
+      await markSettlementPaid(stored.invoiceNumber);
+      invoices.add(stored.invoiceNumber);
+    }
+    for (const invoice of invoices) {
+      void sendOnlinePaymentInvoice(invoice).catch((error) => {
+        console.error("sendOnlinePaymentInvoice", error instanceof Error ? error.message : error);
+      });
+    }
     await recordHelcimTransaction({
       bidderId: session.id,
       lotId: stored.lotId,
