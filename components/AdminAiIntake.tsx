@@ -11,7 +11,7 @@ import { mergeAiRuns, type AiRun } from "@/lib/aiRuns";
 import { AiFeedback } from "@/components/AiFeedback";
 import { GrowingTextarea } from "@/components/GrowingTextarea";
 import { ItemDetailsField, ListingConditionField } from "@/components/ListingGradeFields";
-import { type ListingGrade } from "@/lib/listingGrade";
+import { DEFAULT_LISTING_GRADE, type ListingGrade } from "@/lib/listingGrade";
 import { listingImages, parsePastedImageUrls } from "@/lib/imageUrls";
 import type { SlothPhotoPhase } from "@/lib/turboSloth";
 
@@ -34,7 +34,7 @@ export function AdminAiIntake({
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [itemDetails, setItemDetails] = useState("");
-  const [listingGrade, setListingGrade] = useState<ListingGrade>("Used");
+  const [listingGrade, setListingGrade] = useState<ListingGrade>(DEFAULT_LISTING_GRADE);
   const [startingBid, setStartingBid] = useState(String(defaultStartingBid));
   const [startingTouched, setStartingTouched] = useState(false);
   const [reservePrice, setReservePrice] = useState("");
@@ -190,7 +190,7 @@ export function AdminAiIntake({
       setCompsNote(null);
       setAiRun(null);
       setItemDetails("");
-      setListingGrade("Used");
+      setListingGrade(DEFAULT_LISTING_GRADE);
       const sale = json.auctionLabel ?? "the next weekly sale";
       const store = reserve > 0 ? " and into Buy Now" : "";
       await onPosted(

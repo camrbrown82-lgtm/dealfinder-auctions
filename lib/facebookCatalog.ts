@@ -1,6 +1,6 @@
 import { buyNowPriceOf } from "@/lib/buyNow";
 import { absoluteUrl as siteUrl } from "@/lib/seo";
-import { listingGradeOf } from "@/lib/listingGrade";
+import { catalogCondition, listingGradeOf } from "@/lib/listingGrade";
 import { isBuyNowChannel, isListedBuyNow } from "@/lib/saleChannel";
 import { lotImages, type AuctionLot } from "@/lib/utils";
 
@@ -44,7 +44,7 @@ function facebookCatalogRow(lot: AuctionLot): Record<(typeof COLUMNS)[number], s
     title: plainText(lot.title).slice(0, 200) || "DealFinder lot",
     description,
     availability: inStock ? "in stock" : "out of stock",
-    condition: grade === "New" ? "new" : "used",
+    condition: catalogCondition(grade),
     price: `${price.toFixed(2)} CAD`,
     link: siteUrl(`/auctions/${encodeURIComponent(lot.slug || lot.id)}`),
     image_link: image,

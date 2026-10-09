@@ -3,6 +3,8 @@
 import { Fragment, useEffect, useMemo, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { LotImage } from "@/components/LotImage";
+import { LotStars } from "@/components/LotStars";
+import { listingGradeOf } from "@/lib/listingGrade";
 import type { ConsignorLedgerGroup, ConsignorLedgerItem, LedgerStage } from "@/lib/consignorLedger";
 import { formatCurrency } from "@/lib/utils";
 
@@ -93,7 +95,7 @@ function ItemDetail({
       )}
       <dl className="grid gap-2 sm:grid-cols-2">
         <Field label="Submitted" value={shortDate(item.submittedAt)} />
-        <Field label="Condition grade" value={item.listingGrade || "—"} />
+        <Field label="Condition" value={<LotStars rating={listingGradeOf(item)} />} />
         <Field label="Category" value={item.category || "—"} />
         <Field
           label="Sale"
@@ -142,7 +144,7 @@ function ItemDetail({
   );
 }
 
-function Field({ label, value }: { label: string; value: string }) {
+function Field({ label, value }: { label: string; value: ReactNode }) {
   return (
     <div>
       <dt className="font-display text-xs tracking-widest">{label.toUpperCase()}</dt>

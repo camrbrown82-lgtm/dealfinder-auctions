@@ -7,7 +7,7 @@ import { InterestBeacon } from "@/components/InterestBeacon";
 import { AuctionRoom } from "@/components/AuctionRoom";
 import { BuyNowStore } from "@/components/BuyNowStore";
 import { fetchLot } from "@/lib/lots";
-import { listingGradeOf } from "@/lib/listingGrade";
+import { LotStarsFromLot } from "@/components/LotStars";
 import { isListedBuyNow } from "@/lib/saleChannel";
 import { lotImages } from "@/lib/utils";
 import { pageMetadata } from "@/lib/seo";
@@ -56,8 +56,8 @@ export default async function AuctionLotPage({ params }: PageProps) {
             Buy Now
           </Link>
         ) : null}
-        <p className="mt-3 inline-block border-4 border-black bg-white px-3 py-1 font-display text-brand-red shadow-comic-red-sm">
-          {listingGradeOf(lot)}
+        <p className="mt-3 inline-flex border-4 border-black bg-white px-3 py-1 font-display text-2xl shadow-comic-red-sm">
+          <LotStarsFromLot lot={lot} />
         </p>
         {(lot.lotNumber || lot.auctionNumber) && (
           <p className="mt-2 font-comic text-sm">

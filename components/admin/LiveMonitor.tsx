@@ -176,7 +176,7 @@ export function LiveMonitor({
           </p>
         </div>
       </div>
-      <div className="space-y-3 md:hidden">
+      <div className="space-y-3 xl:hidden">
         {visible.length === 0 ? (
           <p className="comic-panel p-4 font-comic">
             {lots.length === 0
@@ -238,8 +238,8 @@ export function LiveMonitor({
           );
         })}
       </div>
-      <div className="comic-table-wrap hidden md:block">
-        <table className="w-full min-w-[960px] border-collapse font-comic text-sm">
+      <div className="comic-table-wrap hidden xl:block">
+        <table className="w-full border-collapse font-comic text-sm">
           <thead className="bg-[#FF0000] text-left text-white">
             <tr>
               <th className="border-b-4 border-black p-3">Lot</th>

@@ -41,7 +41,7 @@ Vision clues already transcribed:
 - Readable markings (use these for model): ${clues.visibleText.join("; ") || "none"}
 - Materials: ${clues.materials.join(", ") || "unspecified"}
 - Condition: ${clues.condition || "unknown"}
-- Listing grade: ${clues.listingGrade || "Used"}
+- Condition rating: ${clues.listingGrade || "3"} out of 5 stars
 - Staff/consignor notes (size, extras, defects): ${clues.itemDetails || "none"}
 - Uncertain: ${clues.uncertainties.join("; ") || "none"}
 

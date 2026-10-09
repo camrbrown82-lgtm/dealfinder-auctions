@@ -1,7 +1,7 @@
 import type { AuctionLot } from "@/lib/utils";
 import { lotImages } from "@/lib/utils";
 import { isListedBuyNow } from "@/lib/saleChannel";
-import { listingGradeOf } from "@/lib/listingGrade";
+import { ebayConditionId, listingGradeOf } from "@/lib/listingGrade";
 import { getAdminDemo } from "@/lib/demoAdminStore";
 import { getSupabaseAdmin, isSupabaseConfigured } from "@/lib/supabaseClient";
 import { mapLot, type LotRow } from "@/lib/mappers";
@@ -35,10 +35,7 @@ function publicPhotos(lot: AuctionLot) {
 }
 
 function ebayCondition(lot: AuctionLot) {
-  const grade = listingGradeOf(lot);
-  if (grade === "New") return "NEW";
-  if (grade === "Issues") return "USED_ACCEPTABLE";
-  return "USED_GOOD";
+  return ebayConditionId(listingGradeOf(lot));
 }
 
 function listingPrice(lot: AuctionLot) {

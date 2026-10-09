@@ -86,7 +86,9 @@ function studioPrompt(facts: StudioFacts) {
   const setting = catalogScene(facts);
   const materials = facts.materials.length ? `Keep these materials unchanged: ${facts.materials.join(", ")}.` : "";
   const condition = facts.condition ? `Keep this exact wear and condition: ${facts.condition}.` : "";
-  const grade = facts.listingGrade ? `Listing grade is ${facts.listingGrade}.` : "";
+  const grade = facts.listingGrade
+    ? `The desk rated this lot ${facts.listingGrade} out of 5 stars. Keep the wear that matches that rating. Do not clean it up or add damage.`
+    : "";
   const notes = facts.itemDetails ? `Honor these physical notes (size/defects/extras): ${facts.itemDetails}.` : "";
   return [
     "Edit the submitted photograph. The lot in the output MUST be the same physical object as in the input — same silhouette, colors, labels, scratches, and proportions.",

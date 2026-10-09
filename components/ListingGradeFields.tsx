@@ -1,7 +1,7 @@
 "use client";
 
 import { GrowingTextarea } from "@/components/GrowingTextarea";
-import { LISTING_GRADES, type ListingGrade } from "@/lib/listingGrade";
+import { LISTING_STARS, starPhrase, type ListingGrade } from "@/lib/listingGrade";
 
 export function ItemDetailsField({
   details,
@@ -32,20 +32,31 @@ export function ListingConditionField({
   grade: ListingGrade;
   onGrade: (value: ListingGrade) => void;
 }) {
+  const selected = Number(grade);
   return (
     <div>
-      <p className="font-comic font-bold">Listing condition</p>
-      <div className="mt-2 flex flex-wrap gap-2">
-        {LISTING_GRADES.map((option) => (
-          <button
-            key={option}
-            type="button"
-            className={grade === option ? "comic-btn" : "comic-btn-invert"}
-            onClick={() => onGrade(option)}
-          >
-            {option}
-          </button>
-        ))}
+      <p className="font-comic font-bold">Condition</p>
+      <p className="font-comic text-sm">Tap a star. Five is the best shape this lot is in.</p>
+      <div className="mt-2 flex gap-2" role="radiogroup" aria-label="Condition, 1 to 5 stars">
+        {LISTING_STARS.map((option) => {
+          const value = String(option) as ListingGrade;
+          const on = option <= selected;
+          return (
+            <button
+              key={option}
+              type="button"
+              role="radio"
+              aria-checked={grade === value}
+              aria-label={starPhrase(value)}
+              className={`border-4 border-black px-3 py-2 font-display text-3xl leading-none shadow-comic-sm ${
+                on ? "bg-brand-red text-white" : "bg-white text-black/30"
+              }`}
+              onClick={() => onGrade(value)}
+            >
+              ★
+            </button>
+          );
+        })}
       </div>
     </div>
   );

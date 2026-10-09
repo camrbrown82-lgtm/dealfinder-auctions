@@ -49,7 +49,7 @@ export async function requestCatalog(
       body: JSON.stringify({
         imageUrls,
         itemDetails: extras?.itemDetails ?? "",
-        listingGrade: extras?.listingGrade ?? "Used",
+        listingGrade: extras?.listingGrade ?? "3",
       }),
     });
   } else {
@@ -57,7 +57,7 @@ export async function requestCatalog(
     for (const url of fromPaste) form.append("imageUrls", url);
     for (const file of photos) form.append("images", file);
     if (extras?.itemDetails) form.set("itemDetails", extras.itemDetails);
-    form.set("listingGrade", extras?.listingGrade ?? "Used");
+    form.set("listingGrade", extras?.listingGrade ?? "3");
     response = await fetch("/api/ai-intake", { method: "POST", body: form });
   }
 

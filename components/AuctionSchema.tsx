@@ -65,7 +65,7 @@ export default function AuctionSchema({
 }
 
 function schemaCondition(lot: AuctionLot): AuctionItemProps["condition"] {
-  return listingGradeOf(lot) === "New" ? "NewCondition" : "UsedCondition";
+  return listingGradeOf(lot) === "5" ? "NewCondition" : "UsedCondition";
 }
 
 function schemaPrice(lot: AuctionLot) {

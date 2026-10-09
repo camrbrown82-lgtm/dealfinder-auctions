@@ -3,7 +3,7 @@ import OpenAI from "openai";
 import { priceFromMarketComps } from "@/lib/marketComps";
 import { identifyLotProduct } from "@/lib/identifyProduct";
 import { catalogTitle, resolveModel } from "@/lib/lotIdentity";
-import { parseListingGrade } from "@/lib/listingGrade";
+import { parseListingGrade, starPhrase } from "@/lib/listingGrade";
 import { processListingPhotos } from "@/lib/processListingPhotos";
 import { findGeneratedListing, listingSku, saveGeneratedListing, type ScrapedProduct } from "@/lib/productListings";
 
@@ -17,7 +17,7 @@ Product identity must be repeatable: the same object photographed twice must get
 - Do NOT guess a model, generation, SKU, or revision (e.g. DualShock 3 vs 4 vs 5) unless that exact string is readable on the item. Do not invent a marketing name unless those words are printed.
 - Title: specific auction catalog line: maker + product name + confirmed part/model code + color/finish if visible. Example: "Sony DualSense Wireless Controller CFI-ZCT1W White". Never a vague "game controller" or "item in photo".
 - Description: 4–6 auction sentences: what it is, color/finish, visible features (ports, analog sticks, cable), printed model/part numbers from labels, accessories included in the photos, size/specs from staff notes, and condition. Do not narrate the room or the snapshot.
-- Honor staff notes (size, extras, defects) and the listing grade (Used, New, or Issues). If Issues, name the problems. If New, say it appears unused/new in box only when the notes or photos support that.
+- Honor staff notes (size, extras, defects) and the condition rating, which is 1 to 5 stars. 5 is the best shape. Mention wear that matches that rating. Do not label the lot New, Used, or Issues.
 - display_setting: a real catalog scene for this object (not a blank paper sweep). Lamp on a side table, vinyl on a shelf, jewelry on linen, controller on a media console, etc.
 - photo_brief: how to place THIS exact object into that scene.
 
@@ -61,7 +61,7 @@ function composeDescription(
   const maker = String(extras?.maker ?? parsed.maker ?? "").trim();
   const model = String(extras?.model ?? parsed.model ?? "").trim();
   const itemDetails = String(extras?.itemDetails ?? "").trim();
-  const listingGrade = String(extras?.listingGrade ?? "").trim();
+  const listingGrade = starPhrase(parseListingGrade(extras?.listingGrade));
   let description = String(parsed.description ?? "").trim();
 
   if (!description || description.split(/\s+/).length < 28) {
@@ -73,7 +73,7 @@ function composeDescription(
       included.length ? `Included in the photos: ${included.join(", ")}.` : "",
       visibleText.length ? `Printed markings: ${visibleText.slice(0, 8).join("; ")}.` : "",
       itemDetails ? `Seller notes: ${itemDetails}.` : "",
-      listingGrade ? `Listed as ${listingGrade}.` : "",
+      listingGrade ? `Rated ${listingGrade}.` : "",
       condition ? `Condition: ${condition}.` : "",
     ].filter(Boolean);
     description = parts.join(" ");
@@ -85,7 +85,7 @@ function composeDescription(
       description += ` Seller notes: ${itemDetails}.`;
     }
     if (listingGrade && !description.toLowerCase().includes(listingGrade.toLowerCase())) {
-      description += ` Listed as ${listingGrade}.`;
+      description += ` Rated ${listingGrade}.`;
     }
     if (condition && !description.toLowerCase().includes("condition")) {
       description += ` Condition: ${condition}.`;
@@ -200,7 +200,7 @@ export async function POST(request: NextRequest) {
           content: [
             {
               type: "text",
-              text: `Read every label, sticker, and rear marking in this photo and copy them into visible_text before you name the lot.\nListing grade: ${listingGrade}.\nStaff/consignor notes: ${itemDetails || "none"}.\nName the lot from those markings plus the notes. Do not guess a generation that is not printed.`,
+              text: `Read every label, sticker, and rear marking in this photo and copy them into visible_text before you name the lot.\nCondition rating: ${starPhrase(parseListingGrade(listingGrade))}.\nStaff/consignor notes: ${itemDetails || "none"}.\nName the lot from those markings plus the notes. Do not guess a generation that is not printed.`,
             },
             ...visionUrls.map((url) => ({
               type: "image_url" as const,

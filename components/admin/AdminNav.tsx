@@ -81,7 +81,7 @@ function useWaitingCount() {
   return count;
 }
 
-export function AdminNav() {
+export function AdminNav({ layout = "stack" }: { layout?: "stack" | "bar" }) {
   const pathname = usePathname();
   const waiting = useWaitingCount();
   const initiallyOpen = useMemo(
@@ -89,32 +89,79 @@ export function AdminNav() {
     [pathname],
   );
   const [open, setOpen] = useState<Record<string, boolean>>(initiallyOpen);
+  const bar = layout === "bar";
+
+  const monitorLink = (
+    <Link
+      href="/admin"
+      className={`border-4 border-black px-3 py-2 ${bar ? "inline-block" : "block"} ${
+        linkActive(pathname, "/admin") ? "bg-brand-red text-white" : "bg-white"
+      }`}
+    >
+      Live Monitor
+    </Link>
+  );
+
+  const notificationsLink = (
+    <Link
+      href="/admin/notifications"
+      className={`flex items-center justify-between gap-2 border-4 border-black px-3 py-2 ${
+        linkActive(pathname, "/admin/notifications") ? "bg-brand-red text-white" : "bg-white"
+      }`}
+    >
+      <span className="font-bold">Notifications</span>
+      <span
+        className={`min-w-6 border-2 border-black px-2 text-center font-bold ${
+          waiting.total > 0 ? "bg-brand-red text-white" : "bg-[#FFF7D1] text-black"
+        }`}
+      >
+        {waiting.total}
+      </span>
+    </Link>
+  );
+
+  if (bar) {
+    return (
+      <nav className="space-y-2 font-comic text-sm">
+        <div className="flex flex-wrap items-center gap-2">
+          {monitorLink}
+          {notificationsLink}
+        </div>
+        {GROUPS.map((group) => (
+          <div key={group.id} className="flex flex-wrap items-center gap-2">
+            <span className="font-bold uppercase tracking-wide">{group.label}</span>
+            {group.items.map((item) => {
+              const badge =
+                item.href === "/admin/consignments" && waiting.consignments > 0
+                  ? waiting.consignments
+                  : 0;
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className={`inline-flex items-center gap-2 border-4 border-black px-2 py-1 ${
+                    linkActive(pathname, item.href) ? "bg-brand-red text-white" : "bg-[#FFF7D1]"
+                  }`}
+                >
+                  <span>{item.label}</span>
+                  {badge > 0 ? (
+                    <span className="min-w-6 border-2 border-black bg-brand-red px-2 text-center font-bold text-white">
+                      {badge}
+                    </span>
+                  ) : null}
+                </Link>
+              );
+            })}
+          </div>
+        ))}
+      </nav>
+    );
+  }
 
   return (
     <nav className="space-y-2 font-comic text-sm">
-      <Link
-        href="/admin"
-        className={`block border-4 border-black px-3 py-2 ${
-          linkActive(pathname, "/admin") ? "bg-brand-red text-white" : "bg-white"
-        }`}
-      >
-        Live Monitor
-      </Link>
-      <Link
-        href="/admin/notifications"
-        className={`flex items-center justify-between gap-2 border-4 border-black px-3 py-2 ${
-          linkActive(pathname, "/admin/notifications") ? "bg-brand-red text-white" : "bg-white"
-        }`}
-      >
-        <span className="font-bold">Notifications</span>
-        <span
-          className={`min-w-6 border-2 border-black px-2 text-center font-bold ${
-            waiting.total > 0 ? "bg-brand-red text-white" : "bg-[#FFF7D1] text-black"
-          }`}
-        >
-          {waiting.total}
-        </span>
-      </Link>
+      {monitorLink}
+      {notificationsLink}
       {GROUPS.map((group) => {
         const expanded = open[group.id] ?? groupOpen(pathname, group);
         return (

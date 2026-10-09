@@ -76,8 +76,8 @@ export function AdminShell({
   }
 
   return (
-    <div className="flex flex-col gap-4 md:flex-row md:items-start md:gap-6">
-      <aside className="w-full shrink-0 print:hidden md:w-64">
+    <div className="min-w-0 space-y-4">
+      <div className="print:hidden">
         <details className="comic-panel p-3 md:hidden">
           <summary className="cursor-pointer font-display text-2xl text-brand-red">Staff desk</summary>
           <p className="mt-1 font-comic text-xs text-black/70">Source: {data.source}</p>
@@ -89,23 +89,25 @@ export function AdminShell({
             Log out
           </button>
         </details>
-        <div className="hidden flex-col gap-4 md:flex">
-          <div className="comic-panel p-3">
-            <p className="font-display text-2xl text-brand-red">Staff desk</p>
-            <p className="font-comic text-xs text-black/70">Source: {data.source}</p>
-          </div>
-          <AdminNav />
-          <div className="comic-panel p-3">
-            <p className="font-comic text-xs font-bold uppercase tracking-wide">Signed in</p>
-            <p className="font-comic text-sm">Admin</p>
-            <AdminDarkToggle className="mt-3 w-full" />
-            <button type="button" className="comic-btn-invert mt-3 w-full" onClick={() => void logout()}>
-              Log out
-            </button>
+        <div className="comic-panel hidden p-3 md:block">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="min-w-0 flex-1">
+              <p className="font-display text-2xl text-brand-red">Staff desk</p>
+              <p className="font-comic text-xs text-black/70">Source: {data.source}</p>
+              <div className="mt-3">
+                <AdminNav layout="bar" />
+              </div>
+            </div>
+            <div className="flex shrink-0 flex-wrap items-center gap-2">
+              <AdminDarkToggle />
+              <button type="button" className="comic-btn-invert !px-3 !py-1 !text-base" onClick={() => void logout()}>
+                Log out
+              </button>
+            </div>
           </div>
         </div>
-      </aside>
-      <div className="min-w-0 flex-1 space-y-6">
+      </div>
+      <div className="min-w-0 space-y-6">
         <div className="print:hidden">
           <h1 className="break-words font-display text-3xl text-brand-red sm:text-5xl">{title}</h1>
           {subtitle ? <p className="font-comic text-sm">{subtitle}</p> : null}

@@ -16,7 +16,7 @@ import { requestStudioImage } from "@/lib/studioClient";
 import { mergeAiRuns, type AiRun } from "@/lib/aiRuns";
 import { GrowingTextarea } from "@/components/GrowingTextarea";
 import { ItemDetailsField, ListingConditionField } from "@/components/ListingGradeFields";
-import { type ListingGrade } from "@/lib/listingGrade";
+import { DEFAULT_LISTING_GRADE, type ListingGrade } from "@/lib/listingGrade";
 import type { SlothPhotoPhase } from "@/lib/turboSloth";
 import { buyNowDisclaimer, buyNowOfferError } from "@/lib/buyNowOffer";
 import { canClearItem, isActiveAccepted, isPayoutRow } from "@/lib/consignorPortal";
@@ -56,7 +56,7 @@ export default function ConsignorPage() {
   const [aiRun, setAiRun] = useState<AiRun | null>(null);
   const [termsOpen, setTermsOpen] = useState(false);
   const [itemDetails, setItemDetails] = useState("");
-  const [listingGrade, setListingGrade] = useState<ListingGrade>("Used");
+  const [listingGrade, setListingGrade] = useState<ListingGrade>(DEFAULT_LISTING_GRADE);
   const [charity, setCharity] = useState(false);
   const [showCleared, setShowCleared] = useState(false);
   const [clearing, setClearing] = useState(false);
@@ -277,7 +277,7 @@ export default function ConsignorPage() {
       setPhotoPhase(null);
       setAiRun(null);
       setItemDetails("");
-      setListingGrade("Used");
+      setListingGrade(DEFAULT_LISTING_GRADE);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Submit failed");
     } finally {

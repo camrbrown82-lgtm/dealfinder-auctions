@@ -1,6 +1,6 @@
 import { buyNowPriceOf } from "@/lib/buyNow";
 import { floorClipCaption, type FloorClip } from "@/lib/floorClips";
-import { listingGradeOf } from "@/lib/listingGrade";
+import { catalogCondition, listingGradeOf } from "@/lib/listingGrade";
 import { SITE_ORIGIN } from "@/lib/seo";
 import { lotImages, type AuctionLot } from "@/lib/utils";
 
@@ -39,7 +39,7 @@ export function marketplaceJob(
     title,
     text: `${description} ${PICKUP} ${pageUrl}`.trim().slice(0, 5000),
     price: Number.isFinite(price) && price > 0 ? price.toFixed(2) : "",
-    condition: listingGradeOf(lot) === "New" ? "new" : "used",
+    condition: catalogCondition(listingGradeOf(lot)),
     category: lot.category,
     imageUrls: lotImages(lot)
       .filter((url) => /^https?:\/\//i.test(url))
