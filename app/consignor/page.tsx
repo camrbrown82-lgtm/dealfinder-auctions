@@ -417,7 +417,7 @@ export default function ConsignorPage() {
             <input
               type="number"
               min={0}
-              step="0.01"
+              step="1"
               value={startingBid}
               onChange={(e) => setStartingBid(e.target.value)}
               className="mt-2 w-full border-4 border-black bg-white px-3 py-2 font-normal"

@@ -23,13 +23,11 @@ export async function GET() {
   if (isSundayBidReminderWindow()) {
     await sendSundayBidReminders().catch(() => undefined);
   }
-  if (isAuctionEndDay()) {
-    const now = Date.now();
-    if (!globalThis.__dealfinderSundaySweepAt || now - globalThis.__dealfinderSundaySweepAt > 10 * 60 * 1000) {
-      globalThis.__dealfinderSundaySweepAt = now;
-      void runSundayPreauthSweep("127.0.0.1").catch(() => undefined);
-      void issueEndedAuctionInvoices().catch(() => undefined);
-    }
+  const now = Date.now();
+  if (!globalThis.__dealfinderSundaySweepAt || now - globalThis.__dealfinderSundaySweepAt > 10 * 60 * 1000) {
+    globalThis.__dealfinderSundaySweepAt = now;
+    if (isAuctionEndDay()) void runSundayPreauthSweep("127.0.0.1").catch(() => undefined);
+    void issueEndedAuctionInvoices().catch(() => undefined);
   }
   const catalog = await fetchLiveCatalog();
   const sales = pickSaleWindow(catalog.events);

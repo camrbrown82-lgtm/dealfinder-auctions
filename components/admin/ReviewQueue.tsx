@@ -133,7 +133,7 @@ function ReviewCard({
           <input
             type="number"
             min={0}
-            step="0.01"
+            step="1"
             value={draft.startingBid}
             onChange={(e) => onDraft({ ...draft, startingBid: e.target.value })}
             className="mt-1 w-40 border-4 border-black bg-white px-3 py-2 font-normal"

@@ -7,6 +7,8 @@ export const ANTI_SNIPE_EXTEND_MS = 2 * 60 * 1000;
 export type AbsenteeMax = {
   bidder: string;
   max: number;
+  /** When this max was entered. An earlier time wins a tie at the same max. */
+  placedAt?: number;
 };
 
 export type BidKind = "live" | "absentee";
@@ -52,9 +54,15 @@ export function extendIfSniping(endsAt: string, now = Date.now()) {
   return { endsAt, extended: false };
 }
 
-function upsertAbsentee(list: AbsenteeMax[], bidder: string, max: number) {
+function placedAtOf(row: AbsenteeMax) {
+  return row.placedAt ?? Number.MAX_SAFE_INTEGER;
+}
+
+function upsertAbsentee(list: AbsenteeMax[], bidder: string, max: number, placedAt: number) {
+  const prior = list.find((row) => row.bidder === bidder);
   const next = list.filter((row) => row.bidder !== bidder);
-  next.push({ bidder, max });
+  const sameMax = prior && prior.max === max;
+  next.push({ bidder, max, placedAt: sameMax ? placedAtOf(prior) : placedAt });
   return next;
 }
 
@@ -62,8 +70,13 @@ function bestChallenger(state: AuctionClock) {
   const floor = nextAsk(state);
   const challengers = state.absentees
     .filter((row) => row.bidder !== state.highBidder && row.max >= floor)
-    .sort((a, b) => b.max - a.max || a.bidder.localeCompare(b.bidder));
+    .sort((a, b) => b.max - a.max || placedAtOf(a) - placedAtOf(b) || a.bidder.localeCompare(b.bidder));
   return challengers[0] ?? null;
+}
+
+function holderOf(state: AuctionClock) {
+  if (!state.highBidder) return null;
+  return state.absentees.find((row) => row.bidder === state.highBidder) ?? null;
 }
 
 function runProxy(state: AuctionClock, events: BidEvent[]) {
@@ -74,6 +87,20 @@ function runProxy(state: AuctionClock, events: BidEvent[]) {
     if (!challenger) break;
     const amount = nextAsk(state);
     if (amount > challenger.max) break;
+    const holder = holderOf(state);
+    if (
+      holder &&
+      challenger.max === holder.max &&
+      placedAtOf(challenger) > placedAtOf(holder) &&
+      amount >= holder.max
+    ) {
+      if (state.currentBid < holder.max) {
+        state.currentBid = holder.max;
+        state.highBidder = holder.bidder;
+        events.push({ bidder: holder.bidder, amount: holder.max, kind: "absentee" });
+      }
+      break;
+    }
     state.currentBid = amount;
     state.highBidder = challenger.bidder;
     events.push({ bidder: challenger.bidder, amount, kind: "absentee" });
@@ -88,7 +115,7 @@ export function placeLiveBid(
 ) {
   const minimum = nextAsk(state);
   if (amount < minimum) {
-    throw new Error(`Bid must be at least ${minimum}`);
+    throw new Error(`Next paddle is ${minimum}. Try that amount.`);
   }
 
   const events: BidEvent[] = [{ bidder, amount, kind: "live" }];
@@ -100,7 +127,17 @@ export function placeLiveBid(
   const afterProxy = extendIfSniping(state.endsAt, now);
   state.endsAt = afterProxy.endsAt;
 
-  return { state, events, extended: snipe.extended || afterProxy.extended };
+  return { state, events: uniqueTapeEvents(events), extended: snipe.extended || afterProxy.extended };
+}
+
+function uniqueTapeEvents(events: BidEvent[]) {
+  const seen = new Set<string>();
+  return events.filter((event) => {
+    const key = `${event.bidder}|${event.amount}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 export function placeAbsenteeMax(
@@ -111,13 +148,28 @@ export function placeAbsenteeMax(
 ) {
   const minimum = nextAsk(state);
   if (maxAmount < minimum) {
-    throw new Error(`Max bid must be at least ${minimum}`);
+    throw new Error(`A max bid has to be at least ${minimum}.`);
   }
 
-  state.absentees = upsertAbsentee(state.absentees, bidder, maxAmount);
+  state.absentees = upsertAbsentee(state.absentees, bidder, maxAmount, now);
   const events: BidEvent[] = [];
   const opening = nextAsk(state);
-  if (opening <= maxAmount) {
+  const mine = state.absentees.find((row) => row.bidder === bidder);
+  const earlierTie = state.absentees
+    .filter(
+      (row) =>
+        row.bidder !== bidder &&
+        row.max === maxAmount &&
+        placedAtOf(row) < placedAtOf(mine ?? { bidder, max: maxAmount, placedAt: now }),
+    )
+    .sort((a, b) => placedAtOf(a) - placedAtOf(b))[0];
+  if (earlierTie && opening >= earlierTie.max) {
+    if (state.currentBid < earlierTie.max || state.highBidder !== earlierTie.bidder) {
+      state.currentBid = earlierTie.max;
+      state.highBidder = earlierTie.bidder;
+      events.push({ bidder: earlierTie.bidder, amount: earlierTie.max, kind: "absentee" });
+    }
+  } else if (opening <= maxAmount) {
     state.currentBid = opening;
     state.highBidder = bidder;
     events.push({ bidder, amount: opening, kind: "absentee" });
@@ -129,5 +181,5 @@ export function placeAbsenteeMax(
   const afterProxy = extendIfSniping(state.endsAt, now);
   state.endsAt = afterProxy.endsAt;
 
-  return { state, events, extended: snipe.extended || afterProxy.extended };
+  return { state, events: uniqueTapeEvents(events), extended: snipe.extended || afterProxy.extended };
 }

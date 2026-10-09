@@ -174,7 +174,7 @@ export function AuthModal({
       if (!me.user) throw new Error("Session missing after signup.");
       await onAuthenticated(me.user);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Auth failed.");
+      setError(err instanceof Error ? err.message : "That did not go through. Try again.");
     } finally {
       setBusy(false);
     }
@@ -247,7 +247,7 @@ export function AuthModal({
                         : "We sent another confirmation email.",
                     );
                   } catch (err) {
-                    setError(err instanceof Error ? err.message : "Could not resend.");
+                    setError(err instanceof Error ? err.message : "We could not resend that email. Try again.");
                   } finally {
                     setBusy(false);
                   }

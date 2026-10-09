@@ -15,6 +15,14 @@
     {
       "path": "/api/cron/bid-reminder?when=mst",
       "schedule": "0 17 * * 0"
+    },
+    {
+      "path": "/api/cron/outbid-reminder?when=mdt",
+      "schedule": "0 21 * * 0"
+    },
+    {
+      "path": "/api/cron/outbid-reminder?when=mst",
+      "schedule": "0 22 * * 0"
     }
   ]
 }

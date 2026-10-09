@@ -5,6 +5,7 @@ export type InterestProfile = {
   consignors: string[];
   keywords: string[];
   lotIds: string[];
+  searches: string[];
 };
 
 const STORAGE_KEY = "df_interest";
@@ -16,6 +17,7 @@ const empty = (): InterestProfile => ({
   consignors: [],
   keywords: [],
   lotIds: [],
+  searches: [],
 });
 
 function remember(list: string[], value: string) {
@@ -35,13 +37,19 @@ export function readInterest(): InterestProfile {
   if (typeof window === "undefined") return empty();
   try {
     const fromStore = window.localStorage.getItem(STORAGE_KEY);
-    if (fromStore) return { ...empty(), ...JSON.parse(fromStore) };
+    if (fromStore) {
+      const parsed = JSON.parse(fromStore);
+      return { ...empty(), ...parsed, searches: parsed.searches ?? [] };
+    }
   } catch {
     /* ignore */
   }
   try {
     const match = document.cookie.match(/(?:^|; )df_interest=([^;]*)/);
-    if (match?.[1]) return { ...empty(), ...JSON.parse(decodeURIComponent(match[1])) };
+    if (match?.[1]) {
+      const parsed = JSON.parse(decodeURIComponent(match[1]));
+      return { ...empty(), ...parsed, searches: parsed.searches ?? [] };
+    }
   } catch {
     /* ignore */
   }
@@ -69,6 +77,7 @@ export function recordInterest(lot: Pick<AuctionLot, "id" | "title" | "category"
       .filter((word, index, list) => list.indexOf(word) === index)
       .slice(0, LIMIT),
     lotIds: remember(current.lotIds, lot.id),
+    searches: current.searches ?? [],
   };
   writeInterest(next);
   return next;
@@ -106,4 +115,46 @@ export function interestScore(lot: AuctionLot, profile: InterestProfile) {
 
 export function rankLotsByInterest(lots: AuctionLot[], profile: InterestProfile) {
   return [...lots].sort((a, b) => interestScore(b, profile) - interestScore(a, profile));
+}
+
+export function recordSearch(query: string) {
+  const current = readInterest();
+  const next = { ...current, searches: remember(current.searches ?? [], query) };
+  writeInterest(next);
+  return next;
+}
+
+export function rememberLotIds(ids: string[]) {
+  const current = readInterest();
+  let lotIds = current.lotIds;
+  for (const id of ids) lotIds = remember(lotIds, id);
+  const next = { ...current, lotIds };
+  writeInterest(next);
+  return next;
+}
+
+function endMs(lot: AuctionLot) {
+  const ms = new Date(lot.endsAt).getTime();
+  return Number.isFinite(ms) ? ms : Number.MAX_SAFE_INTEGER;
+}
+
+function lotHaystack(lot: AuctionLot) {
+  return [lot.title, lot.description, lot.consignor, lot.lotNumber, lot.auctionNumber, lot.category]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+}
+
+export function isPersonalLot(lot: AuctionLot, profile: InterestProfile, query = "") {
+  const id = lot.id.toLowerCase();
+  if ((profile.lotIds ?? []).some((row) => row === id)) return true;
+  const haystack = lotHaystack(lot);
+  const q = query.trim().toLowerCase();
+  if (q && haystack.includes(q)) return true;
+  return (profile.searches ?? []).some((search) => search && haystack.includes(search));
+}
+
+/** Soonest close first. Caller includes searches, bids, and purchases in the same list. */
+export function orderLotsForFloor(lots: AuctionLot[]) {
+  return [...lots].sort((a, b) => endMs(a) - endMs(b) || a.title.localeCompare(b.title));
 }

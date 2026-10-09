@@ -9,6 +9,7 @@ import { MOCK_LOTS, getLotById, filterLots, isLotOpen, lotImages, uniqueImageUrl
 import { settleEndedAuctions } from "@/lib/closeEndedLots";
 import { saleKind } from "@/lib/liveSales";
 import { ensureWeeklySales } from "@/lib/weeklySales";
+import { ensureStaggeredClocks } from "@/lib/lotStagger";
 
 function withGallery(lot: AuctionLot): AuctionLot {
   if (isSupabaseConfigured) return lot;
@@ -49,6 +50,9 @@ export async function fetchLiveCatalog(): Promise<{
     return { lots: [], events: [] };
   }
 
+  await ensureStaggeredClocks().catch((error) => {
+    console.error("ensureStaggeredClocks", error instanceof Error ? error.message : error);
+  });
   await settleEndedAuctions().catch((error) => {
     console.error("settleEndedAuctions", error instanceof Error ? error.message : error);
   });
@@ -91,7 +95,7 @@ export async function fetchLiveCatalog(): Promise<{
     })
     .map((lot) => {
       const event = events.find((row) => row.id === lot.eventId);
-      const acceptsBids = event ? !event.archivedAt && saleKind(event) !== "past" : false;
+      const acceptsBids = Boolean(event && !event.archivedAt);
       return { ...lot, biddingOpen: acceptsBids && isLotOpen(lot) };
     });
 
@@ -171,14 +175,8 @@ export async function fetchLot(id: string): Promise<AuctionLot | undefined> {
             .eq("id", lot.eventId)
             .maybeSingle();
           lot.auctionNumber = event?.auction_number ?? lot.auctionNumber;
-          if (event?.starts_at && event?.ends_at) {
-            const acceptsBids = saleKind({
-              id: lot.eventId,
-              name: "",
-              startsAt: String(event.starts_at),
-              endsAt: String(event.ends_at),
-            }) !== "past";
-            lot.biddingOpen = acceptsBids && isLotOpen(lot);
+          if (event?.ends_at) {
+            lot.biddingOpen = isLotOpen(lot);
           }
         }
       }

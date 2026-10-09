@@ -34,7 +34,7 @@ export function BuyNowStore({ lots, compact = false }: { lots: AuctionLot[]; com
       }
       router.push(String(json.checkout || `/checkout?lot=${encodeURIComponent(lot.id)}`));
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not start checkout.");
+      setError(err instanceof Error ? err.message : "Checkout did not open. Try again.");
     } finally {
       setBusyId(null);
     }

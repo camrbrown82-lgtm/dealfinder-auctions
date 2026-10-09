@@ -83,5 +83,5 @@ export async function getBidderSession(): Promise<BidderProfile | null> {
 }
 
 export function bidderUnauthorized() {
-  return NextResponse.json({ error: "Log in to bid." }, { status: 401 });
+  return NextResponse.json({ error: "Log in to raise your paddle." }, { status: 401 });
 }

@@ -41,6 +41,11 @@ export async function issueEndedAuctionInvoices() {
   for (const event of events ?? []) {
     const eventId = String(event.id);
     const { data: live } = await supabase.from("lots").select("*").eq("event_id", eventId).eq("status", "live");
+    const stillBidding = (live ?? []).some((row) => {
+      const ends = new Date(String(row.ends_at ?? "")).getTime();
+      return Number.isFinite(ends) && ends > Date.now();
+    });
+    if (stillBidding) continue;
     for (const row of live ?? []) {
       await supabase.from("lots").update({ status: "ended" }).eq("id", row.id);
     }

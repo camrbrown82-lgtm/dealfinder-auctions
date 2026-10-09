@@ -13,18 +13,11 @@ export async function closeEndedSoldLots() {
   let closed = 0;
   const supabase = getSupabaseAdmin();
   if (isSupabaseConfigured && supabase) {
-    const nowIso = new Date(now).toISOString();
-    const { data: pastEvents } = await supabase
-      .from("auction_events")
-      .select("id")
-      .lt("ends_at", nowIso);
-    const pastEventIds = new Set((pastEvents ?? []).map((event) => String(event.id)));
     const { data } = await supabase.from("lots").select("*").in("status", ["live", "paused"]);
     for (const row of data ?? []) {
       if (row.sale_channel === "buy_now") continue;
       const clockPast = row.ends_at ? new Date(String(row.ends_at)).getTime() <= now : false;
-      const eventPast = row.event_id ? pastEventIds.has(String(row.event_id)) : false;
-      if (!clockPast && !eventPast) continue;
+      if (!clockPast) continue;
       if (!row.high_bidder && !row.high_bidder_id) {
         await supabase.from("lots").update({ status: "ended" }).eq("id", row.id);
         closed += 1;
@@ -60,12 +53,8 @@ export async function closeEndedSoldLots() {
   for (const demo of listDemoLots()) {
     if (demo.status === "ended" || demo.status === "removed") continue;
     const inventory = getAdminDemo().inventory.find((row) => row.id === demo.id);
-    const event = inventory?.eventId
-      ? getAdminDemo().events.find((row) => row.id === inventory.eventId)
-      : null;
-    const eventPast = event ? new Date(event.endsAt).getTime() <= now : false;
     const clockPast = new Date(demo.endsAt).getTime() <= now;
-    if (!eventPast && !clockPast) continue;
+    if (!clockPast) continue;
     demo.status = "ended";
     if (inventory) inventory.status = "ended";
     if (!demo.highBidder && !demo.highBidderId) {
@@ -129,11 +118,13 @@ export async function returnUnsoldFromClosedSales() {
 
     const { data: lots } = await supabase
       .from("lots")
-      .select("id, event_id, status, high_bidder, high_bidder_id, sale_channel")
+      .select("id, event_id, status, high_bidder, high_bidder_id, sale_channel, ends_at")
       .in("event_id", closedIds);
 
     for (const row of lots ?? []) {
       if (String(row.sale_channel ?? "") === "buy_now") continue;
+      const ends = new Date(String(row.ends_at ?? "")).getTime();
+      if (Number.isFinite(ends) && ends > now) continue;
       const status = String(row.status ?? "");
       if (status === "removed" || status === "draft") continue;
       const sold = Boolean(row.high_bidder || row.high_bidder_id);

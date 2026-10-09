@@ -55,7 +55,7 @@ A complete name and address are needed before the first bid. The address is requ
 
 A WEEKLY SALE
 A typical sale opens Monday and closes Sunday at 6:00 p.m. Mountain Time (America/Edmonton).
-A sale is upcoming before its start, live while the clock is running, and past after it ends. Bids belong on open lots in a live sale. Past weeks can still be looked at.
+A sale is upcoming before its start, live while the clock is running, and past after it ends. A lot can be bid as soon as it is on the floor, even when that sale has not started yet. It still closes on that sale's end time. Past weeks can still be looked at.
 By placing a bid, the bidder enters a binding contract to buy if they win.
 All items are sold AS-IS, WHERE-IS, with all faults, unless the lot description says otherwise.
 
@@ -67,7 +67,9 @@ HOW TO BID
 5. The bid posts.
 
 Increments, from the current hammer: ${INCREMENT_TABLE_COPY}.
-Max Bid is the most they will pay. The site only bids as far as the next increment requires, up to that ceiling. It does not jump straight to the max. Someone else can still outbid them if they bid higher than the max.
+Max Bid is the most they will pay. The site only bids as far as the next increment requires, up to that ceiling. It does not jump straight to the max. Someone else can still outbid them if they bid higher than the max. If two bidders set the same max, the one who entered that max first keeps the lot. If two paddles hit at the same instant, that is a cross bid: only one bid sticks, and the other bidder is told to try again.
+Lots in a sale close 30 seconds apart. The first lot entered closes first. Each lot entered after it closes 30 seconds later. The live list shows the soonest close first, and keeps lots this bidder searched, bid on, or bought in that list.
+An outbid email is sent the first time a bidder loses the high bid on a lot. If they are still behind about three hours before that lot closes, they get one more email. Later bids on the same lot do not send another outbid email.
 On a standard weekly auction, a bid in the last ${MINUTES} minutes extends that lot by ${MINUTES} minutes. That is the live-floor anti-snipe. It is not the 8-hour high-bid extension.
 
 THE $50

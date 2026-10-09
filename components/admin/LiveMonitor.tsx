@@ -221,7 +221,7 @@ export function LiveMonitor({
                   <input
                     type="number"
                     min={0}
-                    step="0.01"
+                    step="1"
                     value={draft.start}
                     onChange={(e) => editStart(lot.id, e.target.value)}
                     className="mt-1 w-28 border-4 border-black bg-white px-2 py-1"
@@ -293,7 +293,7 @@ export function LiveMonitor({
                         <input
                           type="number"
                           min={0}
-                          step="0.01"
+                          step="1"
                           value={draft.start}
                           onChange={(e) => editStart(lot.id, e.target.value)}
                           className="mt-1 w-24 border-4 border-black bg-white px-2 py-1"

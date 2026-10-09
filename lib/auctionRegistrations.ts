@@ -267,7 +267,7 @@ export async function evaluateBidAuth(userId: string, eventId: string | null | u
       trustedCash: false,
       preauthHeld: false,
       code: "AUCTION_TERMS_REQUIRED",
-      error: "This lot is not filed in an auction yet.",
+      error: "This lot is not on a sale yet.",
     };
   }
   const registration = await getAuctionRegistration(userId, eventId);
@@ -287,7 +287,7 @@ export async function evaluateBidAuth(userId: string, eventId: string | null | u
       trustedCash,
       preauthHeld,
       code: "AUCTION_TERMS_REQUIRED",
-      error: "Agree to this auction's terms before placing a paddle.",
+      error: "Agree to this sale's terms, then your paddle can hit.",
     };
   }
   if (authorized) {
@@ -311,7 +311,7 @@ export async function evaluateBidAuth(userId: string, eventId: string | null | u
       trustedCash,
       preauthHeld,
       code: "CASH_PENDING",
-      error: "Cash pickup is waiting on desk approval. You cannot bid until it is approved.",
+      error: "Cash pickup is with the desk. Your paddle waits until they approve it.",
     };
   }
   return {
@@ -323,7 +323,7 @@ export async function evaluateBidAuth(userId: string, eventId: string | null | u
     trustedCash,
     preauthHeld,
     code: "BID_AUTH_REQUIRED",
-    error: "Authorize a $50 Helcim hold or request cash-on-pickup before bidding.",
+    error: "Authorize the $50 Sunday hold, or ask for cash on pickup, before this paddle can hit.",
   };
 }
 

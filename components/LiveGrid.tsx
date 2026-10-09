@@ -6,9 +6,12 @@ import { LotTimer } from "@/components/LotTimer";
 import { LotGallery } from "@/components/LotGallery";
 import {
   interestScore,
+  isPersonalLot,
   mergeWinsIntoInterest,
-  rankLotsByInterest,
+  orderLotsForFloor,
   readInterest,
+  recordSearch,
+  rememberLotIds,
   type InterestProfile,
 } from "@/lib/interest";
 import { listingGradeOf } from "@/lib/listingGrade";
@@ -56,6 +59,7 @@ export function LiveGrid({
     consignors: [],
     keywords: [],
     lotIds: [],
+    searches: [],
   });
 
   const selected = floorSales.find((item) => item.event.id === saleId) ?? floorSales[0];
@@ -91,6 +95,15 @@ export function LiveGrid({
         }
       })
       .catch(() => undefined);
+    void fetch("/api/bidder/activity", { credentials: "include", cache: "no-store" })
+      .then((res) => res.json())
+      .then((json) => {
+        const ids = [...(json.bidLotIds ?? []), ...(json.boughtLotIds ?? [])].filter(
+          (id): id is string => typeof id === "string" && id.length > 0,
+        );
+        if (ids.length) setInterest(rememberLotIds(ids));
+      })
+      .catch(() => undefined);
   }, []);
 
   useEffect(() => {
@@ -100,6 +113,13 @@ export function LiveGrid({
       /* ignore */
     }
   }, [view]);
+
+  useEffect(() => {
+    const q = query.trim();
+    if (q.length < 2) return;
+    const handle = window.setTimeout(() => setInterest(recordSearch(q)), 500);
+    return () => window.clearTimeout(handle);
+  }, [query]);
 
   useEffect(() => {
     let cancelled = false;
@@ -162,23 +182,11 @@ export function LiveGrid({
       });
     const pool = lotsForSale(merged, selected);
     const q = query.trim().toLowerCase();
-    const filtered = q
-      ? pool.filter((lot) => {
-          const haystack = [
-            lot.title,
-            lot.description,
-            listingGradeOf(lot),
-            lot.consignor,
-            lot.lotNumber,
-            lot.auctionNumber,
-          ]
-            .filter(Boolean)
-            .join(" ")
-            .toLowerCase();
-          return haystack.includes(q);
-        })
-      : pool;
-    return rankLotsByInterest(filtered, interest);
+    const poolIds = new Set(pool.map((lot) => lot.id));
+    const personal = merged.filter(
+      (lot) => !poolIds.has(lot.id) && isPersonalLot(lot, interest, q),
+    );
+    return orderLotsForFloor([...pool, ...personal]);
   }, [floorLots, selected, query, interest, clocks]);
 
   return (
@@ -188,8 +196,8 @@ export function LiveGrid({
           <p className="font-display text-lg">Auctions</p>
           <p className="font-comic text-sm">
             {liveSale
-              ? `Live floor is ${liveLabel} only. Earlier sales stay up for viewing until the desk removes them. Later sales are upcoming, not live.`
-              : "No sale is live right now. Past sales stay up for viewing. Later sales are upcoming."}
+              ? `Live floor is ${liveLabel}. Lots close 30 seconds apart, first one entered first. Your searches, bids, and purchases stay in that list.`
+              : "No sale is live right now. Lots close 30 seconds apart, first one entered first. Your searches, bids, and purchases stay in the list."}
           </p>
           <div className="mt-3 flex flex-wrap gap-2">
             {floorSales.map((item) => {
@@ -263,7 +271,7 @@ export function LiveGrid({
           {selected?.kind === "past" ? " from this past sale (viewing only)" : ""}
           {selected?.kind === "upcoming" ? " in this upcoming sale" : ""}
           {selected?.kind === "live" ? " on the live floor" : ""}
-          {query.trim() ? ` matching "${query.trim()}"` : ""}
+          {query.trim() ? ` · "${query.trim()}" mixed in by close time` : ""}
           <span className="hidden sm:inline"> · {view} per row</span>
         </p>
       </div>

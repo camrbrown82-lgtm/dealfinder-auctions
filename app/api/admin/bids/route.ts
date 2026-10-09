@@ -37,9 +37,14 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    const bids: AdminBid[] = (data ?? []).map((row) => {
+    const seen = new Set<string>();
+    const bids: AdminBid[] = [];
+    for (const row of data ?? []) {
+      const key = `${row.bidder_name}|${Number(row.amount)}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
       const profile = row.bidder_id ? emails.get(row.bidder_id) : undefined;
-      return {
+      bids.push({
         id: row.id,
         lotId: row.lot_id,
         bidder: profile?.name || row.bidder_name,
@@ -48,8 +53,8 @@ export async function GET(request: NextRequest) {
         kind: row.kind === "absentee" ? "absentee" : "live",
         createdAt: row.created_at,
         bidderId: row.bidder_id,
-      };
-    });
+      });
+    }
     return NextResponse.json({ bids });
   }
 

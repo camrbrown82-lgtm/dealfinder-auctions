@@ -13,6 +13,7 @@ import { notifyOutbid } from "@/lib/notifyOutbid";
 import { mapLot, type LotRow } from "@/lib/mappers";
 import { evaluateBidAuth } from "@/lib/auctionRegistrations";
 import { assertBuyNowLimit } from "@/lib/pendingInvoices";
+import { BID_SLIPPED_MESSAGE, CROSS_BID_MESSAGE } from "@/lib/brandVoice";
 
 export const dynamic = "force-dynamic";
 
@@ -45,6 +46,49 @@ function isUuid(value: string) {
 function pgMessage(error: { message?: string; details?: string; hint?: string } | null) {
   if (!error) return "";
   return [error.message, error.details, error.hint].filter(Boolean).join(" ");
+}
+
+const lotLocks = new Map<string, Promise<unknown>>();
+
+function withLotLock<T>(lotId: string, run: () => Promise<T>) {
+  const previous = lotLocks.get(lotId) ?? Promise.resolve();
+  const current = previous.then(run, run);
+  lotLocks.set(lotId, current.then(() => undefined, () => undefined));
+  return current;
+}
+
+function crossBidResponse(currentBid?: number, highBidder?: string | null) {
+  return NextResponse.json(
+    {
+      error: CROSS_BID_MESSAGE,
+      code: "CROSS_BID",
+      currentBid,
+      highBidder: highBidder ?? null,
+    },
+    { status: 409 },
+  );
+}
+
+function bidderFacing(raw: string) {
+  if (/cross bid/i.test(raw)) return CROSS_BID_MESSAGE;
+  if (/column|relation|syntax|jwt|schema/i.test(raw)) return BID_SLIPPED_MESSAGE;
+  return raw;
+}
+
+async function claimLotRow(
+  supabase: NonNullable<ReturnType<typeof getSupabaseAdmin>>,
+  lotId: string,
+  seenUpdatedAt: string | null,
+) {
+  const stamp = new Date().toISOString();
+  const update = supabase.from("lots").update({ updated_at: stamp }).eq("id", lotId);
+  const filtered = seenUpdatedAt ? update.eq("updated_at", seenUpdatedAt) : update.is("updated_at", null);
+  const { data, error } = await filtered.select("id");
+  if (error) {
+    if (/updated_at/i.test(error.message)) return true;
+    return false;
+  }
+  return Boolean(data?.length);
 }
 
 async function resolveSingleLotId(
@@ -102,6 +146,16 @@ async function recordTape(
     amount: row.amount,
     kind: row.kind ?? "live",
   };
+  const existing = await supabase
+    .from("bids")
+    .select("id")
+    .eq("lot_id", payload.lot_id)
+    .eq("bidder_name", payload.bidder_name)
+    .eq("amount", payload.amount)
+    .limit(1)
+    .maybeSingle();
+  if (existing.data?.id) return null;
+
   let { error } = await supabase.from("bids").insert(payload);
   if (error && /bidder_email|bidder_id|kind/i.test(error.message)) {
     ({ error } = await supabase.from("bids").insert({
@@ -144,13 +198,18 @@ export async function GET(request: NextRequest) {
     if (fallback.error) {
       return NextResponse.json({ error: fallback.error.message }, { status: 400 });
     }
-    return NextResponse.json({
-      bids: (fallback.data ?? []).map((row: { bidder_name?: string; amount?: number; kind?: string }) => ({
+    const seen = new Set<string>();
+    const bids = (fallback.data ?? []).flatMap((row: { bidder_name?: string; amount?: number; kind?: string }) => {
+      const key = `${row.bidder_name}|${Number(row.amount)}`;
+      if (seen.has(key)) return [];
+      seen.add(key);
+      return [{
         bidder: row.bidder_name,
         amount: Number(row.amount),
         kind: row.kind === "absentee" ? "absentee" : "live",
-      })),
+      }];
     });
+    return NextResponse.json({ bids });
   }
 
   const demo = getDemoLot(lotId);
@@ -162,13 +221,13 @@ export async function POST(request: NextRequest) {
   if (!session) return bidderUnauthorized();
   if (session.status === "suspended") {
     return NextResponse.json(
-      { error: "Bidding privileges are suspended." },
+      { error: "This paddle is suspended. Call the desk if that is a surprise." },
       { status: 403 },
     );
   }
   if (!isProfileComplete(session)) {
     return NextResponse.json(
-      { error: "Finish your bidder profile before placing a bid." },
+      { error: "Finish your bidder card before you raise a paddle." },
       { status: 400 },
     );
   }
@@ -186,17 +245,17 @@ export async function POST(request: NextRequest) {
   }
   if (body.mode === "buy_now") {
     return NextResponse.json(
-      { error: "Buy now is only available on the Buy Now page." },
+      { error: "Buy Now lives on the Buy Now page." },
       { status: 400 },
     );
   }
 
   const supabase = getSupabaseAdmin();
   if (isSupabaseConfigured && supabase) {
-    return persistSupabase(supabase, lotId, session, body);
+    return withLotLock(lotId, () => persistSupabase(supabase, lotId, session, body));
   }
 
-  return persistDemo(lotId, session, body);
+  return withLotLock(lotId, () => persistDemo(lotId, session, body));
 }
 
 async function persistDemo(
@@ -209,25 +268,19 @@ async function persistDemo(
   const email = session.email;
   const demo = getDemoLot(lotId);
   if (!demo) {
-    return NextResponse.json({ error: "Lot not found" }, { status: 404 });
+    return NextResponse.json({ error: "We cannot find that lot." }, { status: 404 });
   }
   const catalog = getAdminDemo().inventory.find((row) => row.id === lotId || row.slug === lotId);
   const blocked = await requireBidAuthorization(session.id, catalog?.eventId ?? null);
   if (blocked) return blocked;
   if (demo.status === "removed") {
-    return NextResponse.json({ error: "This lot was removed from the sale." }, { status: 400 });
+    return NextResponse.json({ error: "This lot was pulled from the sale." }, { status: 400 });
   }
   if (demo.status === "ended") {
-    return NextResponse.json({ error: "This lot is closed. Relist it from auction inventory to sell it again." }, { status: 400 });
+    return NextResponse.json({ error: "This lot is closed." }, { status: 400 });
   }
   if (new Date(demo.endsAt).getTime() <= Date.now()) {
-    return NextResponse.json({ error: "This auction has ended. Lots are view only until they are relisted." }, { status: 400 });
-  }
-  const catalogEvent = catalog?.eventId
-    ? getAdminDemo().events.find((row) => row.id === catalog.eventId)
-    : null;
-  if (catalogEvent && new Date(catalogEvent.endsAt).getTime() <= Date.now()) {
-    return NextResponse.json({ error: "This auction has ended. Lots are view only until they are relisted." }, { status: 400 });
+    return NextResponse.json({ error: "This sale is over. Lots stay up to look at until the desk puts them back." }, { status: 400 });
   }
   const previousBidderId = demo.highBidderId;
   const previousBidderName = demo.highBidder;
@@ -236,7 +289,7 @@ async function persistDemo(
     const catalog = getAdminDemo().inventory.find((row) => row.id === lotId || row.slug === lotId);
     const amount = Number(catalog?.buyNowPrice ?? body.amount);
     if (!amount || amount < demo.currentBid) {
-      return NextResponse.json({ error: "Buy now is no longer available on this lot." }, { status: 400 });
+      return NextResponse.json({ error: "Buy Now is gone on this lot." }, { status: 400 });
     }
     const limitError = await assertBuyNowLimit({
       session,
@@ -323,10 +376,12 @@ async function persistDemo(
       previousBidderId,
       previousBidderName,
       nextBidderId: demo.highBidderId,
+      nextBidderName: demo.highBidder,
       title: catalog?.title || "Lot",
       currentBid: demo.currentBid,
       lotId,
       slug: catalog?.slug,
+      endsAt: demo.endsAt,
     });
 
     return NextResponse.json({
@@ -339,7 +394,7 @@ async function persistDemo(
     });
   } catch (error) {
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Bid failed" },
+      { error: bidderFacing(error instanceof Error ? error.message : BID_SLIPPED_MESSAGE) },
       { status: 400 },
     );
   }
@@ -378,36 +433,23 @@ async function persistSupabase(
     }
   }
   if (lotError || !lot) {
-    return NextResponse.json({ error: lotError?.message || "Lot not found" }, { status: 404 });
+    return NextResponse.json({ error: bidderFacing(lotError?.message || "We cannot find that lot.") }, { status: 404 });
   }
   const blocked = await requireBidAuthorization(session.id, (lot.event_id as string | null) ?? null);
   if (blocked) return blocked;
   const resolvedId = String(lot.id);
   if (lot.status === "removed") {
-    return NextResponse.json({ error: "This lot was removed from the sale." }, { status: 400 });
+    return NextResponse.json({ error: "This lot was pulled from the sale." }, { status: 400 });
   }
   if (lot.status === "ended") {
     return NextResponse.json(
-      { error: "This lot is closed. Relist it from auction inventory to sell it again." },
+      { error: "This lot is closed." },
       { status: 400 },
     );
   }
-  if (lot.event_id) {
-    const { data: event } = await supabase
-      .from("auction_events")
-      .select("starts_at, ends_at")
-      .eq("id", lot.event_id)
-      .maybeSingle();
-    const now = Date.now();
-    if (event?.ends_at && new Date(String(event.ends_at)).getTime() <= now) {
-      return NextResponse.json(
-        { error: "This auction has ended. Lots are view only until they are relisted." },
-        { status: 400 },
-      );
-    }
-  } else if (lot.ends_at && new Date(String(lot.ends_at)).getTime() <= Date.now()) {
+  if (lot.ends_at && new Date(String(lot.ends_at)).getTime() <= Date.now()) {
     return NextResponse.json(
-      { error: "This auction has ended. Lots are view only until they are relisted." },
+      { error: "This sale is over. Lots stay up to look at until the desk puts them back." },
       { status: 400 },
     );
   }
@@ -416,7 +458,7 @@ async function persistSupabase(
 
   const { data: absenteeRows } = await supabase
     .from("absentee_bids")
-    .select("bidder_name, max_amount")
+    .select("bidder_name, max_amount, created_at")
     .eq("lot_id", resolvedId);
 
   const clock: AuctionClock = {
@@ -427,15 +469,33 @@ async function persistSupabase(
     absentees: (absenteeRows ?? []).map((row) => ({
       bidder: row.bidder_name,
       max: Number(row.max_amount),
+      placedAt: new Date(String(row.created_at ?? "")).getTime() || Date.now(),
     })),
   };
 
   try {
+    const claimed = await claimLotRow(
+      supabase,
+      resolvedId,
+      lot.updated_at ? String(lot.updated_at) : null,
+    );
+    if (!claimed) {
+      const fresh = await supabase
+        .from("lots")
+        .select("current_bid, high_bidder")
+        .eq("id", resolvedId)
+        .maybeSingle();
+      return crossBidResponse(
+        Number(fresh.data?.current_bid ?? lot.current_bid),
+        (fresh.data?.high_bidder as string | null) ?? (lot.high_bidder as string | null),
+      );
+    }
+
     if (body.mode === "buy_now") {
       const listed = Number(lot.buy_now_price ?? lot.reserve_price ?? 0);
       const buyNow = listed > 0 ? listed : Number(body.amount) || 0;
       if (!buyNow) {
-        return NextResponse.json({ error: "This lot has no buy now price." }, { status: 400 });
+        return NextResponse.json({ error: "This lot has no Buy Now price." }, { status: 400 });
       }
       const limitError = await assertBuyNowLimit({
         session,
@@ -508,18 +568,22 @@ async function persistSupabase(
           );
 
     if (body.mode === "absentee") {
+      const nextMax = Number(body.maxAmount);
+      const prior = (absenteeRows ?? []).find((row) => row.bidder_name === bidder);
+      const sameMax = prior && Number(prior.max_amount) === nextMax;
       await supabase.from("absentee_bids").upsert(
         {
           lot_id: resolvedId,
           bidder_name: bidder,
-          max_amount: Number(body.maxAmount),
+          max_amount: nextMax,
+          ...(sameMax ? {} : { created_at: new Date().toISOString() }),
         },
         { onConflict: "lot_id,bidder_name" },
       );
     }
 
     for (const event of result.events) {
-      await recordTape(supabase, {
+      const tapeError = await recordTape(supabase, {
         lot_id: resolvedId,
         bidder_name: event.bidder,
         bidder_id: event.bidder === bidder ? bidderId : null,
@@ -527,6 +591,13 @@ async function persistSupabase(
         amount: event.amount,
         kind: event.kind,
       });
+      if (tapeError) {
+        const detail = pgMessage(tapeError);
+        if (/at least|not open|already|duplicate|conflict/i.test(detail)) {
+          return crossBidResponse(Number(lot.current_bid), (lot.high_bidder as string | null) ?? null);
+        }
+        return NextResponse.json({ error: BID_SLIPPED_MESSAGE }, { status: 400 });
+      }
     }
 
     const persistError = await writeLot(supabase, resolvedId, {
@@ -538,17 +609,19 @@ async function persistSupabase(
       ends_at: result.state.endsAt,
     });
     if (persistError) {
-      return NextResponse.json({ error: pgMessage(persistError) }, { status: 400 });
+      return NextResponse.json({ error: bidderFacing(pgMessage(persistError)) }, { status: 400 });
     }
 
     void notifyOutbid({
       previousBidderId,
       previousBidderName,
       nextBidderId: result.state.highBidder === bidder ? bidderId : null,
+      nextBidderName: result.state.highBidder,
       title: String(lot.title ?? "Lot"),
       currentBid: result.state.currentBid,
       lotId: resolvedId,
       slug: lot.slug ? String(lot.slug) : null,
+      endsAt: result.state.endsAt,
     });
 
     return NextResponse.json({
@@ -562,7 +635,7 @@ async function persistSupabase(
     });
   } catch (error) {
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Bid failed" },
+      { error: bidderFacing(error instanceof Error ? error.message : BID_SLIPPED_MESSAGE) },
       { status: 400 },
     );
   }

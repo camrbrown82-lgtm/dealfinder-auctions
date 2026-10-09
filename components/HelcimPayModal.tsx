@@ -124,7 +124,7 @@ export function HelcimPayModal({
           await confirmToken(String(json.checkoutToken), undefined, true);
         }
       } catch (error) {
-        if (!cancelled) setMessage(error instanceof Error ? error.message : "Could not start Helcim.");
+        if (!cancelled) setMessage(error instanceof Error ? error.message : "The card window did not open. Try again.");
       } finally {
         if (!cancelled) setBusy(false);
       }
@@ -157,7 +157,7 @@ export function HelcimPayModal({
         warning: typeof json.warning === "string" ? json.warning : undefined,
       });
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Helcim could not confirm this payment.");
+      setMessage(error instanceof Error ? error.message : "We could not confirm that card. Try again.");
     } finally {
       setBusy(false);
     }
@@ -189,7 +189,7 @@ export function HelcimPayModal({
           destroyHelcimIframe();
           setBusy(false);
           if (purpose === "checkout_purchase") {
-            setMessage(String(event.data.eventMessage || "Card was declined."));
+            setMessage(String(event.data.eventMessage || "That card was declined. Try another card."));
             onDeclinedRef.current?.();
           } else {
             onClose();
@@ -205,7 +205,7 @@ export function HelcimPayModal({
       window.appendHelcimPayIframe(token, true);
     } catch (error) {
       setBusy(false);
-      setMessage(error instanceof Error ? error.message : "Could not open HelcimPay.");
+      setMessage(error instanceof Error ? error.message : "The card window did not open. Try again.");
     }
   }
 

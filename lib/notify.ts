@@ -617,15 +617,29 @@ export async function sendOutbidEmail(input: {
   currentBid: number;
   lotId: string;
   slug?: string | null;
+  closing?: boolean;
 }) {
   const link = lotHref(input.slug || input.lotId);
+  const name = input.name || "Bidder";
+  const title = input.title;
+  const high = formatCurrency(input.currentBid);
   return sendTransactionalEmail({
     templateId: "outbid",
     to: input.to,
+    forceDeliver: true,
+    subjectOverride: input.closing
+      ? `Still outbid on ${title} — about 3 hours left`
+      : undefined,
+    htmlOverride: input.closing
+      ? `<p>Hi ${escapeHtml(name)},</p>
+<p>You are still outbid on <strong>${escapeHtml(title)}</strong>. The high bid is ${escapeHtml(high)}. This auction closes in about 3 hours.</p>
+<p><a href="${escapeHtml(link)}" style="color:#111111;font-weight:bold;">Bid again</a></p>
+<p>${escapeHtml(link)}</p>`
+      : undefined,
     vars: {
-      customer_name: input.name || "Bidder",
-      item_title: input.title,
-      winning_bid: formatCurrency(input.currentBid),
+      customer_name: name,
+      item_title: title,
+      winning_bid: high,
       payment_link: link,
       lot_link: link,
     },

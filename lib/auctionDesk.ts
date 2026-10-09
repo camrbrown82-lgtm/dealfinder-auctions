@@ -229,7 +229,11 @@ export async function loadAuctionDesk(eventId?: string | null): Promise<AuctionD
       .order("created_at", { ascending: false })
       .limit(400);
     const titles = new Map(lots.map((lot) => [lot.id, lot]));
+    const seen = new Set<string>();
     for (const row of data ?? []) {
+      const key = `${row.lot_id}|${row.bidder_name}|${Number(row.amount)}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
       const lot = titles.get(String(row.lot_id));
       const profile = row.bidder_id ? byId.get(String(row.bidder_id)) : undefined;
       bids.push({

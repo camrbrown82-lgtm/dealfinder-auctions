@@ -28,6 +28,7 @@ import { markConsignorPayoutSent } from "@/lib/consignorPayout";
 import { resetAuctionData } from "@/lib/resetTestData";
 import { attachLotToSale, ensureWeeklySales } from "@/lib/weeklySales";
 import { settleEndedAuctions } from "@/lib/closeEndedLots";
+import { applySaleStagger, lotClosesAt } from "@/lib/lotStagger";
 import { canPostIntoSale, salesOpenForPosting } from "@/lib/liveSales";
 import { notifyConsignmentApproved, notifyConsignmentRejected, sendConsignmentRejectedEmail } from "@/lib/notify";
 import { buyNowApprovalNote, BUY_NOW_MINIMUM } from "@/lib/buyNowOffer";
@@ -754,6 +755,7 @@ export async function POST(request: NextRequest) {
           );
         }
       }
+      await applySaleStagger(supabase, String(eventId), sale.endsAt, false);
       return NextResponse.json({
         ok: true,
         eventId: sale.id,
@@ -840,6 +842,7 @@ export async function POST(request: NextRequest) {
       if (!moved.length) {
         return NextResponse.json({ error: errors[0] || "Could not move those lots." }, { status: 400 });
       }
+      await applySaleStagger(supabase, String(eventId), sale.endsAt, false);
       return NextResponse.json({
         ok: true,
         eventId: sale.id,
@@ -1026,12 +1029,13 @@ export async function PATCH(request: NextRequest) {
         event.bidderTerms = cols.bidder_terms;
       }
       stampAuctionNumbers(demo);
-      for (const lot of demo.inventory) {
-        if (lot.eventId === event.id) {
-          lot.endsAt = event.endsAt;
-          lot.auctionNumber = event.auctionNumber;
-        }
-      }
+      const staggered = demo.inventory.filter(
+        (lot) => lot.eventId === event.id && lot.saleChannel !== "buy_now" && lot.status !== "removed",
+      );
+      staggered.forEach((lot, index) => {
+        lot.endsAt = lotClosesAt(event.endsAt, index);
+        lot.auctionNumber = event.auctionNumber;
+      });
     }
     if (isSupabaseConfigured && supabase) {
       const updates: Record<string, unknown> = {};
@@ -1070,7 +1074,7 @@ export async function PATCH(request: NextRequest) {
         return NextResponse.json({ error: error.message }, { status: 400 });
       }
       if (body.endsAt) {
-        await supabase.from("lots").update({ ends_at: body.endsAt }).eq("event_id", body.id);
+        await applySaleStagger(supabase, body.id, body.endsAt, true);
       }
     }
     return NextResponse.json({ ok: true });
@@ -1341,6 +1345,9 @@ export async function PATCH(request: NextRequest) {
           lot.auctionNumber = event?.auctionNumber ?? lot.auctionNumber;
           lot.eventId = eventId ?? lot.eventId;
           lot.status = "live";
+          if (eventId && event?.endsAt && !listBuyNow) {
+            await applySaleStagger(supabase, String(eventId), event.endsAt, false);
+          }
           void notifyConsignmentApproved({
             supabase,
             row,
@@ -1401,6 +1408,9 @@ export async function PATCH(request: NextRequest) {
               ends_at: eventEnds,
               status: "live",
             });
+            if (event?.endsAt && !listBuyNow) {
+              await applySaleStagger(supabase, String(eventId), event.endsAt, false);
+            }
           }
           const lot = mapLot(lotRow as LotRow);
           if (event) attachLotToSale(lot, event);

@@ -31,6 +31,19 @@ type BidRow = {
   kind: "live" | "absentee";
 };
 
+function mergeTape(current: BidRow[], incoming: BidRow[]) {
+  const seen = new Set<string>();
+  const unique: BidRow[] = [];
+  for (const row of [...incoming, ...current]) {
+    const key = `${row.bidder}|${row.amount}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    unique.push(row);
+    if (unique.length >= 12) break;
+  }
+  return unique;
+}
+
 export function AuctionRoom({ lot }: { lot: AuctionLot }) {
   const { user, requestAuth, refresh } = useBidder();
   const [currentBid, setCurrentBid] = useState(lot.currentBid);
@@ -177,14 +190,13 @@ export function AuctionRoom({ lot }: { lot: AuctionLot }) {
           setCurrentBid(Number(row.amount));
           setHighBidder(row.bidder_name ?? null);
           setFeed((current) =>
-            [
+            mergeTape(current, [
               {
                 bidder: row.bidder_name ?? "Paddle",
                 amount: Number(row.amount),
                 kind: (row.kind === "absentee" ? "absentee" : "live") as BidRow["kind"],
               },
-              ...current,
-            ].slice(0, 12),
+            ]),
           );
         },
       )
@@ -265,11 +277,17 @@ export function AuctionRoom({ lot }: { lot: AuctionLot }) {
             ? err
             : err && typeof err === "object" && "message" in err
               ? String((err as { message: string }).message)
-              : "Bid failed";
+              : "That bid did not land. Try again.";
+        if (json.code === "CROSS_BID") {
+          if (json.currentBid != null) setCurrentBid(Number(json.currentBid));
+          if (json.highBidder !== undefined) setHighBidder(json.highBidder);
+          if (json.highBidderId !== undefined) setHighBidderId(json.highBidderId ?? null);
+          throw new Error(text);
+        }
         if (response.status === 402 || json.code === "AUCTION_TERMS_REQUIRED") {
           setRegistered(false);
           setAgreeOpen(true);
-          throw new Error("Agree to this auction's terms, then authorize payment before the bid is submitted.");
+          throw new Error("Agree to this sale's terms, then authorize your paddle, and we will send the bid.");
         }
         if (json.code === "CASH_PENDING") {
           setPayOpen(true);
@@ -291,7 +309,7 @@ export function AuctionRoom({ lot }: { lot: AuctionLot }) {
       if (json.highBidderId) setHighBidderId(json.highBidderId);
       setExtended(Boolean(json.extended));
       if (Array.isArray(json.events)) {
-        setFeed((current) => [...json.events.slice().reverse(), ...current].slice(0, 12));
+        setFeed((current) => mergeTape(current, json.events.slice().reverse()));
       }
       if (json.status) setStatus(json.status);
       setMessage(
@@ -300,7 +318,7 @@ export function AuctionRoom({ lot }: { lot: AuctionLot }) {
           : `High bid is now ${formatCurrency(json.currentBid)}`,
       );
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Bid failed.");
+      setMessage(error instanceof Error ? error.message : "That bid did not land. Try again.");
     } finally {
       setBusy(false);
     }
@@ -313,7 +331,7 @@ export function AuctionRoom({ lot }: { lot: AuctionLot }) {
       return;
     }
     if (!lot.eventId) {
-      setMessage("This lot is not filed in an auction yet.");
+      setMessage("This lot is not on a sale yet.");
       return;
     }
     if (!registered) {
@@ -357,7 +375,7 @@ export function AuctionRoom({ lot }: { lot: AuctionLot }) {
       });
       const json = await response.json().catch(() => ({}));
       if (!response.ok) {
-        throw new Error(typeof json.error === "string" ? json.error : "Could not save auction agreement.");
+        throw new Error(typeof json.error === "string" ? json.error : "We could not save your agreement. Try again.");
       }
       setRegistered(true);
       setAgreeOpen(false);
@@ -389,7 +407,7 @@ export function AuctionRoom({ lot }: { lot: AuctionLot }) {
         body: JSON.stringify({ eventId: lot.eventId, method: "helcim" }),
       });
       const json = await response.json();
-      if (!response.ok) throw new Error(json.error || "Could not start card authorization.");
+      if (!response.ok) throw new Error(json.error || "The card window did not open. Try again.");
       if (json.needHelcim) {
         setPayOpen(false);
         setHelcimOpen(true);
@@ -419,7 +437,7 @@ export function AuctionRoom({ lot }: { lot: AuctionLot }) {
         body: JSON.stringify({ eventId: lot.eventId, method: "cash" }),
       });
       const json = await response.json();
-      if (!response.ok) throw new Error(json.error || "Could not request cash approval.");
+      if (!response.ok) throw new Error(json.error || "Cash pickup did not go to the desk. Try again.");
       setAuthorized(Boolean(json.authorized));
       setAuthStatus(String(json.authStatus || "pending"));
       setPayError(null);
@@ -461,12 +479,12 @@ export function AuctionRoom({ lot }: { lot: AuctionLot }) {
       });
       const json = await response.json().catch(() => ({}));
       if (!response.ok) {
-        throw new Error(typeof json.error === "string" ? json.error : "Could not save delivery.");
+        throw new Error(typeof json.error === "string" ? json.error : "We could not save pickup or shipping. Try again.");
       }
       setFulfillment(next);
       setMessage(next === "ship" ? "We will ship this lot." : "Marked for pickup.");
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Could not save delivery.");
+      setMessage(error instanceof Error ? error.message : "We could not save pickup or shipping. Try again.");
     } finally {
       setBusy(false);
     }
@@ -536,8 +554,8 @@ export function AuctionRoom({ lot }: { lot: AuctionLot }) {
           <div className="comic-panel space-y-3 p-5">
             <p className="font-display text-sm tracking-[0.25em] text-brand-red">VIEW ONLY</p>
             <p className="font-comic text-sm">
-              Bidding is open only during the current week&apos;s auction. This lot can be looked at,
-              not bid on, until it is in that live sale.
+              This lot&apos;s clock has run out. It stays up to look at. A lot can be bid as soon as it
+              hits the floor, including a sale that has not started, until the end time on that sale.
             </p>
             <Link href="/live" className="comic-btn inline-block">
               Back to live lots

@@ -27,6 +27,12 @@ export function houseDateKey(now = new Date()) {
   return `${parts.year}-${parts.month}-${parts.day}`;
 }
 
+/** Sunday 3:00–3:59 p.m. America/Edmonton — about three hours before the 6 p.m. hammer. */
+export function isOutbidClosingWindow(now = new Date()) {
+  const parts = houseParts(now);
+  return parts.weekday === "Sun" && parts.hour === 15;
+}
+
 /** Sunday 10:00 through 17:59 America/Edmonton — 10 a.m. Mountain, before the 6 p.m. hammer. */
 export function isSundayBidReminderWindow(now = new Date()) {
   const parts = houseParts(now);
