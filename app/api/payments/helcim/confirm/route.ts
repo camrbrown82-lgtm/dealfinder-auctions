@@ -113,7 +113,7 @@ export async function POST(request: NextRequest) {
       await markSettlementPaid(stored.invoiceNumber);
       invoices.add(stored.invoiceNumber);
     }
-    for (const invoice of invoices) {
+    for (const invoice of Array.from(invoices)) {
       void sendOnlinePaymentInvoice(invoice).catch((error) => {
         console.error("sendOnlinePaymentInvoice", error instanceof Error ? error.message : error);
       });
