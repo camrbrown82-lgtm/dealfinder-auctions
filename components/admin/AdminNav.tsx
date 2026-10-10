@@ -38,6 +38,8 @@ const GROUPS: NavGroup[] = [
   },
 ];
 
+const BAR_SHADOW = "shadow-comic-red-sm transition hover:-translate-y-0.5 hover:shadow-comic-red";
+
 function linkActive(pathname: string, href: string) {
   if (href === "/admin") return pathname === "/admin" || pathname === "/admin/live";
   return pathname === href || pathname.startsWith(`${href}/`);
@@ -94,9 +96,9 @@ export function AdminNav({ layout = "stack" }: { layout?: "stack" | "bar" }) {
   const monitorLink = (
     <Link
       href="/admin"
-      className={`border-4 border-black px-3 py-2 ${bar ? "inline-block" : "block"} ${
-        linkActive(pathname, "/admin") ? "bg-brand-red text-white" : "bg-white"
-      }`}
+      className={`border-4 border-black px-3 py-2 ${
+        bar ? `inline-block ${BAR_SHADOW}` : "block"
+      } ${linkActive(pathname, "/admin") ? "bg-brand-red text-white" : "bg-white"}`}
     >
       Live Monitor
     </Link>
@@ -106,8 +108,8 @@ export function AdminNav({ layout = "stack" }: { layout?: "stack" | "bar" }) {
     <Link
       href="/admin/notifications"
       className={`flex items-center justify-between gap-2 border-4 border-black px-3 py-2 ${
-        linkActive(pathname, "/admin/notifications") ? "bg-brand-red text-white" : "bg-white"
-      }`}
+        bar ? BAR_SHADOW : ""
+      } ${linkActive(pathname, "/admin/notifications") ? "bg-brand-red text-white" : "bg-white"}`}
     >
       <span className="font-bold">Notifications</span>
       <span
@@ -139,7 +141,7 @@ export function AdminNav({ layout = "stack" }: { layout?: "stack" | "bar" }) {
                 <Link
                   key={item.href}
                   href={item.href}
-                  className={`inline-flex items-center gap-2 border-4 border-black px-2 py-1 ${
+                  className={`inline-flex items-center gap-2 border-4 border-black px-2 py-1 ${BAR_SHADOW} ${
                     linkActive(pathname, item.href) ? "bg-brand-red text-white" : "bg-[#FFF7D1]"
                   }`}
                 >
